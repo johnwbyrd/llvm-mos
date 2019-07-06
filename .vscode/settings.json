@@ -1,0 +1,21 @@
+{
+    "cmake.buildDirectory": "${workspaceRoot}/build/cmake",
+    "cmake.installPrefix": "${workspaceRoot}/build/install",
+    "cmake.sourceDirectory": "${workspaceRoot}/llvm",
+    "cmake.parallelJobs": 4,
+    "cmake.useCMakeServer": false,
+    "cmake.configureSettings": {
+        "LLVM_TARGETS_TO_BUILD": "X86",
+        "LLVM_OPTIMIZED_TABLEGEN": "1",
+        "CMAKE_LINKER" : "C:/git/llvm-project/build/ninja-clang-release/bin/lld-link.exe"
+    },
+    "cmake.cacheInit": "..\\llvm-cache.cmake",
+    "files.associations": {
+        "*.inc": "cpp"
+    },
+    "cmake.autoRestartBuild": true,
+    "C_Cpp.clang_format_style": "LLVM",
+    "C_Cpp.default.intelliSenseMode": "msvc-x64",
+    "C_Cpp.intelliSenseEngineFallback": "Enabled",
+    "C_Cpp.workspaceParsingPriority": "low",
+}
