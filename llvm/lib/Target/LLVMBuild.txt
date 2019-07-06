@@ -27,6 +27,7 @@ subdirectories =
  BPF
  Lanai
  Hexagon
+ MOS
  MSP430
  NVPTX
  Mips
