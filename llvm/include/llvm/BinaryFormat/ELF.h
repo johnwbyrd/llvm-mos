@@ -311,6 +311,8 @@ enum {
   EM_RISCV = 243,         // RISC-V
   EM_LANAI = 244,         // Lanai 32-bit processor
   EM_BPF = 247,           // Linux kernel bpf virtual machine
+
+  EM_MOS = 6502,          // MOS Technologies 65xx
 };
 
 // Object file classes.
@@ -471,6 +473,10 @@ enum : unsigned {
   EF_AVR_ARCH_XMEGA5 = 105,
   EF_AVR_ARCH_XMEGA6 = 106,
   EF_AVR_ARCH_XMEGA7 = 107
+};
+
+enum : unsigned {
+  EF_MOS_ARCH_GENERIC = 1,
 };
 
 // ELF Relocation types for AVR
