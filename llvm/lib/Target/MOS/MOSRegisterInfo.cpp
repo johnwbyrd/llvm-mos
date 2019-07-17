@@ -36,17 +36,13 @@ const uint16_t *
 MOSRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   CallingConv::ID CC = MF->getFunction().getCallingConv();
 
-  return ((CC == CallingConv::MOS_INTR || CC == CallingConv::MOS_SIGNAL)
-              ? CSR_Interrupts_SaveList
-              : CSR_Normal_SaveList);
+  return CSR_Normal_SaveList;
 }
 
 const uint32_t *
 MOSRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
                                       CallingConv::ID CC) const {
-  return ((CC == CallingConv::MOS_INTR || CC == CallingConv::MOS_SIGNAL)
-              ? CSR_Interrupts_RegMask
-              : CSR_Normal_RegMask);
+  return CSR_Normal_RegMask;
 }
 
 BitVector MOSRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
@@ -54,6 +50,7 @@ BitVector MOSRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
   // Reserve the intermediate result registers r1 and r2
   // The result of instructions like 'mul' is always stored here.
+  /*
   Reserved.set(MOS::R0);
   Reserved.set(MOS::R1);
   Reserved.set(MOS::R1R0);
@@ -74,8 +71,8 @@ BitVector MOSRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   //       convert one or two of the spills inside to use the Y register.
   Reserved.set(MOS::R28);
   Reserved.set(MOS::R29);
-  Reserved.set(MOS::R29R28);
-
+  Reserved.set(MOS::R29R28);  
+  */
   return Reserved;
 }
 

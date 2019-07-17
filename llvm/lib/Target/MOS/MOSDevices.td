@@ -125,6 +125,7 @@ class ELFArch<string name>  : SubtargetFeature<"", "ELFArch",
                                     !strconcat("ELF::",name), "">;
 
 // ELF e_flags architecture values
+/*
 def ELFArchMOS1    : ELFArch<"EF_MOS_ARCH_MOS1">;
 def ELFArchMOS2    : ELFArch<"EF_MOS_ARCH_MOS2">;
 def ELFArchMOS25   : ELFArch<"EF_MOS_ARCH_MOS25">;
@@ -143,6 +144,7 @@ def ELFArchXMEGA4  : ELFArch<"EF_MOS_ARCH_XMEGA4">;
 def ELFArchXMEGA5  : ELFArch<"EF_MOS_ARCH_XMEGA5">;
 def ELFArchXMEGA6  : ELFArch<"EF_MOS_ARCH_XMEGA6">;
 def ELFArchXMEGA7  : ELFArch<"EF_MOS_ARCH_XMEGA7">;
+*/
 
 //===---------------------------------------------------------------------===//
 // MOS Families
@@ -222,6 +224,7 @@ class Device<string Name, Family Fam, ELFArch Arch,
 // Note that several versions of GCC has strange ELF architecture
 // settings for backwards compatibility - see `gas/config/tc-avr.c`
 // in MOS binutils. We do not replicate this.
+/*
 def : Device<"avr1",      FamilyMOS1,    ELFArchMOS1>;
 def : Device<"avr2",      FamilyMOS2,    ELFArchMOS2>;
 def : Device<"avr25",     FamilyMOS25,   ELFArchMOS25>;
@@ -487,4 +490,4 @@ def : Device<"attiny20",           FamilyTiny, ELFArchTiny>;
 def : Device<"attiny40",           FamilyTiny, ELFArchTiny>;
 def : Device<"attiny102",          FamilyTiny, ELFArchTiny>;
 def : Device<"attiny104",          FamilyTiny, ELFArchTiny>;
-
+*/

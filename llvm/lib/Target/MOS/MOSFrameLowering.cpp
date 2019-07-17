@@ -52,168 +52,12 @@ bool MOSFrameLowering::hasReservedCallFrame(const MachineFunction &MF) const {
 
 void MOSFrameLowering::emitPrologue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
-  MachineBasicBlock::iterator MBBI = MBB.begin();
-  CallingConv::ID CallConv = MF.getFunction().getCallingConv();
-  DebugLoc DL = (MBBI != MBB.end()) ? MBBI->getDebugLoc() : DebugLoc();
-  const MOSSubtarget &STI = MF.getSubtarget<MOSSubtarget>();
-  const MOSInstrInfo &TII = *STI.getInstrInfo();
-  bool HasFP = hasFP(MF);
-
-  // Interrupt handlers re-enable interrupts in function entry.
-  if (CallConv == CallingConv::MOS_INTR) {
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::BSETs))
-        .addImm(0x07)
-        .setMIFlag(MachineInstr::FrameSetup);
-  }
-
-  // Save the frame pointer if we have one.
-  if (HasFP) {
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::PUSHWRr))
-        .addReg(MOS::R29R28, RegState::Kill)
-        .setMIFlag(MachineInstr::FrameSetup);
-  }
-
-  // Emit special prologue code to save R1, R0 and SREG in interrupt/signal
-  // handlers before saving any other registers.
-  if (CallConv == CallingConv::MOS_INTR ||
-      CallConv == CallingConv::MOS_SIGNAL) {
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::PUSHWRr))
-        .addReg(MOS::R1R0, RegState::Kill)
-        .setMIFlag(MachineInstr::FrameSetup);
-
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::INRdA), MOS::R0)
-        .addImm(0x3f)
-        .setMIFlag(MachineInstr::FrameSetup);
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::PUSHRr))
-        .addReg(MOS::R0, RegState::Kill)
-        .setMIFlag(MachineInstr::FrameSetup);
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::EORRdRr))
-        .addReg(MOS::R0, RegState::Define)
-        .addReg(MOS::R0, RegState::Kill)
-        .addReg(MOS::R0, RegState::Kill)
-        .setMIFlag(MachineInstr::FrameSetup);
-  }
-
-  // Early exit if the frame pointer is not needed in this function.
-  if (!HasFP) {
-    return;
-  }
-
-  const MachineFrameInfo &MFI = MF.getFrameInfo();
-  const MOSMachineFunctionInfo *AFI = MF.getInfo<MOSMachineFunctionInfo>();
-  unsigned FrameSize = MFI.getStackSize() - AFI->getCalleeSavedFrameSize();
-
-  // Skip the callee-saved push instructions.
-  while (
-      (MBBI != MBB.end()) && MBBI->getFlag(MachineInstr::FrameSetup) &&
-      (MBBI->getOpcode() == MOS::PUSHRr || MBBI->getOpcode() == MOS::PUSHWRr)) {
-    ++MBBI;
-  }
-
-  // Update Y with the new base value.
-  BuildMI(MBB, MBBI, DL, TII.get(MOS::SPREAD), MOS::R29R28)
-      .addReg(MOS::SP)
-      .setMIFlag(MachineInstr::FrameSetup);
-
-  // Mark the FramePtr as live-in in every block except the entry.
-  for (MachineFunction::iterator I = std::next(MF.begin()), E = MF.end();
-       I != E; ++I) {
-    I->addLiveIn(MOS::R29R28);
-  }
-
-  if (!FrameSize) {
-    return;
-  }
-
-  // Reserve the necessary frame memory by doing FP -= <size>.
-  unsigned Opcode = (isUInt<6>(FrameSize)) ? MOS::SBIWRdK : MOS::SUBIWRdK;
-
-  MachineInstr *MI = BuildMI(MBB, MBBI, DL, TII.get(Opcode), MOS::R29R28)
-                         .addReg(MOS::R29R28, RegState::Kill)
-                         .addImm(FrameSize)
-                         .setMIFlag(MachineInstr::FrameSetup);
-  // The SREG implicit def is dead.
-  MI->getOperand(3).setIsDead();
-
-  // Write back R29R28 to SP and temporarily disable interrupts.
-  BuildMI(MBB, MBBI, DL, TII.get(MOS::SPWRITE), MOS::SP)
-      .addReg(MOS::R29R28)
-      .setMIFlag(MachineInstr::FrameSetup);
+//todo
 }
 
 void MOSFrameLowering::emitEpilogue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
-  CallingConv::ID CallConv = MF.getFunction().getCallingConv();
-  bool isHandler = (CallConv == CallingConv::MOS_INTR ||
-                    CallConv == CallingConv::MOS_SIGNAL);
-
-  // Early exit if the frame pointer is not needed in this function except for
-  // signal/interrupt handlers where special code generation is required.
-  if (!hasFP(MF) && !isHandler) {
-    return;
-  }
-
-  MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
-  assert(MBBI->getDesc().isReturn() &&
-         "Can only insert epilog into returning blocks");
-
-  DebugLoc DL = MBBI->getDebugLoc();
-  const MachineFrameInfo &MFI = MF.getFrameInfo();
-  const MOSMachineFunctionInfo *AFI = MF.getInfo<MOSMachineFunctionInfo>();
-  unsigned FrameSize = MFI.getStackSize() - AFI->getCalleeSavedFrameSize();
-  const MOSSubtarget &STI = MF.getSubtarget<MOSSubtarget>();
-  const MOSInstrInfo &TII = *STI.getInstrInfo();
-
-  // Emit special epilogue code to restore R1, R0 and SREG in interrupt/signal
-  // handlers at the very end of the function, just before reti.
-  if (isHandler) {
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::POPRd), MOS::R0);
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::OUTARr))
-        .addImm(0x3f)
-        .addReg(MOS::R0, RegState::Kill);
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::POPWRd), MOS::R1R0);
-  }
-
-  if (hasFP(MF))
-    BuildMI(MBB, MBBI, DL, TII.get(MOS::POPWRd), MOS::R29R28);
-
-  // Early exit if there is no need to restore the frame pointer.
-  if (!FrameSize) {
-    return;
-  }
-
-  // Skip the callee-saved pop instructions.
-  while (MBBI != MBB.begin()) {
-    MachineBasicBlock::iterator PI = std::prev(MBBI);
-    int Opc = PI->getOpcode();
-
-    if (Opc != MOS::POPRd && Opc != MOS::POPWRd && !PI->isTerminator()) {
-      break;
-    }
-
-    --MBBI;
-  }
-
-  unsigned Opcode;
-
-  // Select the optimal opcode depending on how big it is.
-  if (isUInt<6>(FrameSize)) {
-    Opcode = MOS::ADIWRdK;
-  } else {
-    Opcode = MOS::SUBIWRdK;
-    FrameSize = -FrameSize;
-  }
-
-  // Restore the frame pointer by doing FP += <size>.
-  MachineInstr *MI = BuildMI(MBB, MBBI, DL, TII.get(Opcode), MOS::R29R28)
-                         .addReg(MOS::R29R28, RegState::Kill)
-                         .addImm(FrameSize);
-  // The SREG implicit def is dead.
-  MI->getOperand(3).setIsDead();
-
-  // Write back R29R28 to SP and temporarily disable interrupts.
-  BuildMI(MBB, MBBI, DL, TII.get(MOS::SPWRITE), MOS::SP)
-      .addReg(MOS::R29R28, RegState::Kill);
+//todo
 }
 
 // Return true if the specified function should have a dedicated frame
@@ -277,24 +121,6 @@ bool MOSFrameLowering::restoreCalleeSavedRegisters(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
     std::vector<CalleeSavedInfo> &CSI,
     const TargetRegisterInfo *TRI) const {
-  if (CSI.empty()) {
-    return false;
-  }
-
-  DebugLoc DL = MBB.findDebugLoc(MI);
-  const MachineFunction &MF = *MBB.getParent();
-  const MOSSubtarget &STI = MF.getSubtarget<MOSSubtarget>();
-  const TargetInstrInfo &TII = *STI.getInstrInfo();
-
-  for (const CalleeSavedInfo &CCSI : CSI) {
-    unsigned Reg = CCSI.getReg();
-
-    assert(TRI->getRegSizeInBits(*TRI->getMinimalPhysRegClass(Reg)) == 8 &&
-           "Invalid register size");
-
-    BuildMI(MBB, MI, DL, TII.get(MOS::POPRd), Reg);
-  }
-
   return true;
 }
 
