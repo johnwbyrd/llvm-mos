@@ -13,5 +13,7 @@
     "files.associations": {
         "*.inc": "cpp"
     },
-    "cmake.autoRestartBuild": true
+    "cmake.autoRestartBuild": true,
+    "C_Cpp.clang_format_style": "LLVM",
+    "C_Cpp.default.intelliSenseMode": "clang-x64"
 }

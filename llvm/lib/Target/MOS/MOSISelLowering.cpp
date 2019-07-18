@@ -165,13 +165,6 @@ MOSTargetLowering::MOSTargetLowering(const MOSTargetMachine &TM,
   setOperationAction(ISD::SMUL_LOHI, MVT::i16, Expand);
   setOperationAction(ISD::UMUL_LOHI, MVT::i16, Expand);
 
-  // Expand multiplications to libcalls when there is
-  // no hardware MUL.
-  if (!Subtarget.supportsMultiplication()) {
-    setOperationAction(ISD::SMUL_LOHI, MVT::i8, Expand);
-    setOperationAction(ISD::UMUL_LOHI, MVT::i8, Expand);
-  }
-
   for (MVT VT : MVT::integer_valuetypes()) {
     setOperationAction(ISD::MULHS, VT, Expand);
     setOperationAction(ISD::MULHU, VT, Expand);

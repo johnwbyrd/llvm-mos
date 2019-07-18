@@ -124,119 +124,9 @@ bool MOSFrameLowering::restoreCalleeSavedRegisters(
   return true;
 }
 
-/// Replace pseudo store instructions that pass arguments through the stack with
-/// real instructions. If insertPushes is true then all instructions are
-/// replaced with push instructions, otherwise regular std instructions are
-/// inserted.
-static void fixStackStores(MachineBasicBlock &MBB,
-                           MachineBasicBlock::iterator MI,
-                           const TargetInstrInfo &TII, bool insertPushes) {
-  const MOSSubtarget &STI = MBB.getParent()->getSubtarget<MOSSubtarget>();
-  const TargetRegisterInfo &TRI = *STI.getRegisterInfo();
-
-  // Iterate through the BB until we hit a call instruction or we reach the end.
-  for (auto I = MI, E = MBB.end(); I != E && !I->isCall();) {
-    MachineBasicBlock::iterator NextMI = std::next(I);
-    MachineInstr &MI = *I;
-    unsigned Opcode = I->getOpcode();
-
-    // Only care of pseudo store instructions where SP is the base pointer.
-    if (Opcode != MOS::STDSPQRr && Opcode != MOS::STDWSPQRr) {
-      I = NextMI;
-      continue;
-    }
-
-    assert(MI.getOperand(0).getReg() == MOS::SP &&
-           "Invalid register, should be SP!");
-    if (insertPushes) {
-      // Replace this instruction with a push.
-      unsigned SrcReg = MI.getOperand(2).getReg();
-      bool SrcIsKill = MI.getOperand(2).isKill();
-
-      // We can't use PUSHWRr here because when expanded the order of the new
-      // instructions are reversed from what we need. Perform the expansion now.
-      if (Opcode == MOS::STDWSPQRr) {
-        BuildMI(MBB, I, MI.getDebugLoc(), TII.get(MOS::PUSHRr))
-            .addReg(TRI.getSubReg(SrcReg, MOS::sub_hi),
-                    getKillRegState(SrcIsKill));
-        BuildMI(MBB, I, MI.getDebugLoc(), TII.get(MOS::PUSHRr))
-            .addReg(TRI.getSubReg(SrcReg, MOS::sub_lo),
-                    getKillRegState(SrcIsKill));
-      } else {
-        BuildMI(MBB, I, MI.getDebugLoc(), TII.get(MOS::PUSHRr))
-            .addReg(SrcReg, getKillRegState(SrcIsKill));
-      }
-
-      MI.eraseFromParent();
-      I = NextMI;
-      continue;
-    }
-
-    // Replace this instruction with a regular store. Use Y as the base
-    // pointer since it is guaranteed to contain a copy of SP.
-    unsigned STOpc =
-        (Opcode == MOS::STDWSPQRr) ? MOS::STDWPtrQRr : MOS::STDPtrQRr;
-
-    MI.setDesc(TII.get(STOpc));
-    MI.getOperand(0).setReg(MOS::R29R28);
-
-    I = NextMI;
-  }
-}
-
 MachineBasicBlock::iterator MOSFrameLowering::eliminateCallFramePseudoInstr(
     MachineFunction &MF, MachineBasicBlock &MBB,
     MachineBasicBlock::iterator MI) const {
-  const MOSSubtarget &STI = MF.getSubtarget<MOSSubtarget>();
-  const TargetFrameLowering &TFI = *STI.getFrameLowering();
-  const MOSInstrInfo &TII = *STI.getInstrInfo();
-
-  // There is nothing to insert when the call frame memory is allocated during
-  // function entry. Delete the call frame pseudo and replace all pseudo stores
-  // with real store instructions.
-  if (TFI.hasReservedCallFrame(MF)) {
-    fixStackStores(MBB, MI, TII, false);
-    return MBB.erase(MI);
-  }
-
-  DebugLoc DL = MI->getDebugLoc();
-  unsigned int Opcode = MI->getOpcode();
-  int Amount = TII.getFrameSize(*MI);
-
-  // Adjcallstackup does not need to allocate stack space for the call, instead
-  // we insert push instructions that will allocate the necessary stack.
-  // For adjcallstackdown we convert it into an 'adiw reg, <amt>' handling
-  // the read and write of SP in I/O space.
-  if (Amount != 0) {
-    assert(TFI.getStackAlignment() == 1 && "Unsupported stack alignment");
-
-    if (Opcode == TII.getCallFrameSetupOpcode()) {
-      fixStackStores(MBB, MI, TII, true);
-    } else {
-      assert(Opcode == TII.getCallFrameDestroyOpcode());
-
-      // Select the best opcode to adjust SP based on the offset size.
-      unsigned addOpcode;
-      if (isUInt<6>(Amount)) {
-        addOpcode = MOS::ADIWRdK;
-      } else {
-        addOpcode = MOS::SUBIWRdK;
-        Amount = -Amount;
-      }
-
-      // Build the instruction sequence.
-      BuildMI(MBB, MI, DL, TII.get(MOS::SPREAD), MOS::R31R30).addReg(MOS::SP);
-
-      MachineInstr *New = BuildMI(MBB, MI, DL, TII.get(addOpcode), MOS::R31R30)
-                              .addReg(MOS::R31R30, RegState::Kill)
-                              .addImm(Amount);
-      New->getOperand(3).setIsDead();
-
-      BuildMI(MBB, MI, DL, TII.get(MOS::SPWRITE), MOS::SP)
-          .addReg(MOS::R31R30, RegState::Kill);
-    }
-  }
-
   return MBB.erase(MI);
 }
 
@@ -258,54 +148,6 @@ struct MOSFrameAnalyzer : public MachineFunctionPass {
   MOSFrameAnalyzer() : MachineFunctionPass(ID) {}
 
   bool runOnMachineFunction(MachineFunction &MF) {
-    const MachineFrameInfo &MFI = MF.getFrameInfo();
-    MOSMachineFunctionInfo *FuncInfo = MF.getInfo<MOSMachineFunctionInfo>();
-
-    // If there are no fixed frame indexes during this stage it means there
-    // are allocas present in the function.
-    if (MFI.getNumObjects() != MFI.getNumFixedObjects()) {
-      // Check for the type of allocas present in the function. We only care
-      // about fixed size allocas so do not give false positives if only
-      // variable sized allocas are present.
-      for (unsigned i = 0, e = MFI.getObjectIndexEnd(); i != e; ++i) {
-        // Variable sized objects have size 0.
-        if (MFI.getObjectSize(i)) {
-          FuncInfo->setHasAllocas(true);
-          break;
-        }
-      }
-    }
-
-    // If there are fixed frame indexes present, scan the function to see if
-    // they are really being used.
-    if (MFI.getNumFixedObjects() == 0) {
-      return false;
-    }
-
-    // Ok fixed frame indexes present, now scan the function to see if they
-    // are really being used, otherwise we can ignore them.
-    for (const MachineBasicBlock &BB : MF) {
-      for (const MachineInstr &MI : BB) {
-        int Opcode = MI.getOpcode();
-
-        if ((Opcode != MOS::LDDRdPtrQ) && (Opcode != MOS::LDDWRdPtrQ) &&
-            (Opcode != MOS::STDPtrQRr) && (Opcode != MOS::STDWPtrQRr)) {
-          continue;
-        }
-
-        for (const MachineOperand &MO : MI.operands()) {
-          if (!MO.isFI()) {
-            continue;
-          }
-
-          if (MFI.isFixedObjectIndex(MO.getIndex())) {
-            FuncInfo->setHasStackArgs(true);
-            return false;
-          }
-        }
-      }
-    }
-
     return false;
   }
 
@@ -327,9 +169,6 @@ struct MOSDynAllocaSR : public MachineFunctionPass {
 
   bool runOnMachineFunction(MachineFunction &MF) {
     // Early exit when there are no variable sized objects in the function.
-    if (!MF.getFrameInfo().hasVarSizedObjects()) {
-      return false;
-    }
 
     const MOSSubtarget &STI = MF.getSubtarget<MOSSubtarget>();
     const TargetInstrInfo &TII = *STI.getInstrInfo();
@@ -343,18 +182,6 @@ struct MOSDynAllocaSR : public MachineFunctionPass {
     // Create a copy of SP in function entry before any dynallocas are
     // inserted.
     BuildMI(EntryMBB, MBBI, DL, TII.get(MOS::COPY), SPCopy).addReg(MOS::SP);
-
-    // Restore SP in all exit basic blocks.
-    for (MachineBasicBlock &MBB : MF) {
-      // If last instruction is a return instruction, add a restore copy.
-      if (!MBB.empty() && MBB.back().isReturn()) {
-        MBBI = MBB.getLastNonDebugInstr();
-        DL = MBBI->getDebugLoc();
-        BuildMI(MBB, MBBI, DL, TII.get(MOS::COPY), MOS::SP)
-            .addReg(SPCopy, RegState::Kill);
-      }
-    }
-
     return true;
   }
 
