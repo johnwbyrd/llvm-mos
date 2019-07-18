@@ -476,6 +476,10 @@ enum : unsigned {
   EF_AVR_ARCH_XMEGA7 = 107
 };
 
+enum : unsigned {
+  EF_MOS_ARCH_GENERIC = 1,
+};
+
 // ELF Relocation types for AVR
 enum {
 #include "ELFRelocs/AVR.def"
