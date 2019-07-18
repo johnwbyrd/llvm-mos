@@ -34,7 +34,6 @@ MOSRegisterInfo::MOSRegisterInfo() : MOSGenRegisterInfo(0) {}
 
 const uint16_t *
 MOSRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
-  CallingConv::ID CC = MF->getFunction().getCallingConv();
 
   return CSR_Normal_SaveList;
 }
@@ -224,10 +223,6 @@ void MOSRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     New->getOperand(3).setIsDead();
 
     // Restore SREG.
-    BuildMI(MBB, std::next(II), dl, TII.get(MOS::OUTARr))
-        .addImm(0x3f)
-        .addReg(MOS::R0, RegState::Kill);
-
     // No need to set SREG as dead here otherwise if the next instruction is a
     // cond branch it will be using a dead register.
     New = BuildMI(MBB, std::next(II), dl, TII.get(SubOpc), MOS::R29R28)
