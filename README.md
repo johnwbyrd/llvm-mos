@@ -1,5 +1,5 @@
-# The LLVM Compiler Infrastructure
+# LLVM Experimental MOS Fork
 
-This directory and its subdirectories contain source code for LLVM,
-a toolkit for the construction of highly optimized compilers,
-optimizers, and runtime environments.
+This is an experimental effort to provide MOS target support for LLVM.
+This fork of LLVM doesn't do anything useful yet.  Come back later.
+
