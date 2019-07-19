@@ -397,6 +397,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("thumb", Triple::thumb)
     .Case("thumbeb", Triple::thumbeb)
     .Case("avr", Triple::avr)
+    .Case("mos", Triple::mos)
     .Case("msp430", Triple::msp430)
     .Cases("mips", "mipseb", "mipsallegrex", "mipsisa32r6",
            "mipsr6", Triple::mips)
