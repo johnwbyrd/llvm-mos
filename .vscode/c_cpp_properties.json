@@ -11,10 +11,10 @@
                 "_UNICODE"
             ],
             "windowsSdkVersion": "10.0.18362.0",
-            "compilerPath": "C:/Program Files (x86)/Microsoft Visual Studio/2019/Preview/VC/Tools/MSVC/14.22.27812/bin/Hostx64/x64/cl.exe",
+            "compilerPath": "C:/git/llvm-project/build/ninja-clang-release/install/bin/clang-cl.exe",
             "cStandard": "c11",
             "cppStandard": "c++17",
-            "intelliSenseMode": "msvc-x64",
+            "intelliSenseMode": "clang-x64",
             "configurationProvider": "vector-of-bool.cmake-tools",
             "compileCommands": "${workspaceFolder}/build/cmake/compile_commands.json"
         }

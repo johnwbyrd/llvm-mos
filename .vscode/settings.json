@@ -15,5 +15,7 @@
     },
     "cmake.autoRestartBuild": true,
     "C_Cpp.clang_format_style": "LLVM",
-    "C_Cpp.default.intelliSenseMode": "clang-x64"
+    "C_Cpp.default.intelliSenseMode": "msvc-x64",
+    "C_Cpp.intelliSenseEngineFallback": "Enabled",
+    "C_Cpp.workspaceParsingPriority": "low",
 }
