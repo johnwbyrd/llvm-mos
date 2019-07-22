@@ -9,7 +9,7 @@
                 "_UNICODE"
             ],
             "windowsSdkVersion": "10.0.18362.0",
-            "compilerPath": "C:\\git\\llvm-project\\build\\ninja-clang-release\\install\\bin\\clang++.exe -I${env:INCLUDE}",
+            "compilerPath": "C:\\git\\llvm-project\\build\\ninja-clang-release\\install\\bin\\clang++.exe",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "clang-x64",
