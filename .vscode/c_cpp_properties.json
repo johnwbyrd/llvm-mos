@@ -2,16 +2,14 @@
     "configurations": [
         {
             "name": "Win32",
-            "includePath": [
-                "${workspaceFolder}/**"
-            ],
+            "includePath": [],
             "defines": [
                 "_DEBUG",
                 "UNICODE",
                 "_UNICODE"
             ],
             "windowsSdkVersion": "10.0.18362.0",
-            "compilerPath": "C:/git/llvm-project/build/ninja-clang-release/install/bin/clang-cl.exe",
+            "compilerPath": "C:\\git\\llvm-project\\build\\ninja-clang-release\\install\\bin\\clang++.exe -I${env:INCLUDE}",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "intelliSenseMode": "clang-x64",
