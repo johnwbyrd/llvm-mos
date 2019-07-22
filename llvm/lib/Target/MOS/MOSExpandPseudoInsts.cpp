@@ -13,10 +13,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MCTargetDesc/MOSMCTargetDesc.h"
 #include "MOS.h"
 #include "MOSInstrInfo.h"
 #include "MOSTargetMachine.h"
-#include "MCTargetDesc/MOSMCTargetDesc.h"
 
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -69,7 +69,9 @@ private:
     return BuildMI(MBB, MBBI, MBBI->getDebugLoc(), TII->get(Opcode), DstReg);
   }
 
-  MachineRegisterInfo &getRegInfo(Block &MBB) { return MBB.getParent()->getRegInfo(); }
+  MachineRegisterInfo &getRegInfo(Block &MBB) {
+    return MBB.getParent()->getRegInfo();
+  }
 
   bool expandArith(unsigned OpLo, unsigned OpHi, Block &MBB, BlockIt MBBI);
   bool expandLogic(unsigned Op, Block &MBB, BlockIt MBBI);
@@ -124,8 +126,8 @@ bool MOSExpandPseudo::runOnMachineFunction(MachineFunction &MF) {
   return Modified;
 }
 
-bool MOSExpandPseudo::
-expandArith(unsigned OpLo, unsigned OpHi, Block &MBB, BlockIt MBBI) {
+bool MOSExpandPseudo::expandArith(unsigned OpLo, unsigned OpHi, Block &MBB,
+                                  BlockIt MBBI) {
   MachineInstr &MI = *MBBI;
   unsigned SrcLoReg, SrcHiReg, DstLoReg, DstHiReg;
   unsigned DstReg = MI.getOperand(0).getReg();
@@ -138,14 +140,15 @@ expandArith(unsigned OpLo, unsigned OpHi, Block &MBB, BlockIt MBBI) {
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
   buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg, getKillRegState(DstIsKill))
-    .addReg(SrcLoReg, getKillRegState(SrcIsKill));
+      .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+      .addReg(DstLoReg, getKillRegState(DstIsKill))
+      .addReg(SrcLoReg, getKillRegState(SrcIsKill));
 
-  auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, getKillRegState(DstIsKill))
-    .addReg(SrcHiReg, getKillRegState(SrcIsKill));
+  auto MIBHI =
+      buildMI(MBB, MBBI, OpHi)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg, getKillRegState(DstIsKill))
+          .addReg(SrcHiReg, getKillRegState(SrcIsKill));
 
   if (ImpIsDead)
     MIBHI->getOperand(3).setIsDead();
@@ -157,8 +160,7 @@ expandArith(unsigned OpLo, unsigned OpHi, Block &MBB, BlockIt MBBI) {
   return true;
 }
 
-bool MOSExpandPseudo::
-expandLogic(unsigned Op, Block &MBB, BlockIt MBBI) {
+bool MOSExpandPseudo::expandLogic(unsigned Op, Block &MBB, BlockIt MBBI) {
   MachineInstr &MI = *MBBI;
   unsigned SrcLoReg, SrcHiReg, DstLoReg, DstHiReg;
   unsigned DstReg = MI.getOperand(0).getReg();
@@ -170,18 +172,20 @@ expandLogic(unsigned Op, Block &MBB, BlockIt MBBI) {
   TRI->splitReg(SrcReg, SrcLoReg, SrcHiReg);
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
-  auto MIBLO = buildMI(MBB, MBBI, Op)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg, getKillRegState(DstIsKill))
-    .addReg(SrcLoReg, getKillRegState(SrcIsKill));
+  auto MIBLO =
+      buildMI(MBB, MBBI, Op)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstLoReg, getKillRegState(DstIsKill))
+          .addReg(SrcLoReg, getKillRegState(SrcIsKill));
 
   // SREG is always implicitly dead
   MIBLO->getOperand(3).setIsDead();
 
-  auto MIBHI = buildMI(MBB, MBBI, Op)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, getKillRegState(DstIsKill))
-    .addReg(SrcHiReg, getKillRegState(SrcIsKill));
+  auto MIBHI =
+      buildMI(MBB, MBBI, Op)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg, getKillRegState(DstIsKill))
+          .addReg(SrcHiReg, getKillRegState(SrcIsKill));
 
   if (ImpIsDead)
     MIBHI->getOperand(3).setIsDead();
@@ -190,8 +194,8 @@ expandLogic(unsigned Op, Block &MBB, BlockIt MBBI) {
   return true;
 }
 
-bool MOSExpandPseudo::
-  isLogicImmOpRedundant(unsigned Op, unsigned ImmVal) const {
+bool MOSExpandPseudo::isLogicImmOpRedundant(unsigned Op,
+                                            unsigned ImmVal) const {
 
   // ANDI Rd, 0xff is redundant.
   if (Op == MOS::ANDIRdK && ImmVal == 0xff)
@@ -204,8 +208,7 @@ bool MOSExpandPseudo::
   return false;
 }
 
-bool MOSExpandPseudo::
-expandLogicImm(unsigned Op, Block &MBB, BlockIt MBBI) {
+bool MOSExpandPseudo::expandLogicImm(unsigned Op, Block &MBB, BlockIt MBBI) {
   MachineInstr &MI = *MBBI;
   unsigned DstLoReg, DstHiReg;
   unsigned DstReg = MI.getOperand(0).getReg();
@@ -218,20 +221,22 @@ expandLogicImm(unsigned Op, Block &MBB, BlockIt MBBI) {
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
   if (!isLogicImmOpRedundant(Op, Lo8)) {
-    auto MIBLO = buildMI(MBB, MBBI, Op)
-      .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-      .addReg(DstLoReg, getKillRegState(SrcIsKill))
-      .addImm(Lo8);
+    auto MIBLO =
+        buildMI(MBB, MBBI, Op)
+            .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+            .addReg(DstLoReg, getKillRegState(SrcIsKill))
+            .addImm(Lo8);
 
     // SREG is always implicitly dead
     MIBLO->getOperand(3).setIsDead();
   }
 
   if (!isLogicImmOpRedundant(Op, Hi8)) {
-    auto MIBHI = buildMI(MBB, MBBI, Op)
-      .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-      .addReg(DstHiReg, getKillRegState(SrcIsKill))
-      .addImm(Hi8);
+    auto MIBHI =
+        buildMI(MBB, MBBI, Op)
+            .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+            .addReg(DstHiReg, getKillRegState(SrcIsKill))
+            .addImm(Hi8);
 
     if (ImpIsDead)
       MIBHI->getOperand(3).setIsDead();
@@ -266,13 +271,15 @@ bool MOSExpandPseudo::expand<MOS::SUBIWRdK>(Block &MBB, BlockIt MBBI) {
   bool ImpIsDead = MI.getOperand(3).isDead();
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
-  auto MIBLO = buildMI(MBB, MBBI, MOS::SUBIRdK)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg, getKillRegState(SrcIsKill));
+  auto MIBLO =
+      buildMI(MBB, MBBI, MOS::SUBIRdK)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstLoReg, getKillRegState(SrcIsKill));
 
-  auto MIBHI = buildMI(MBB, MBBI, MOS::SBCIRdK)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, getKillRegState(SrcIsKill));
+  auto MIBHI =
+      buildMI(MBB, MBBI, MOS::SBCIRdK)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg, getKillRegState(SrcIsKill));
 
   switch (MI.getOperand(2).getType()) {
   case MachineOperand::MO_GlobalAddress: {
@@ -323,18 +330,20 @@ bool MOSExpandPseudo::expand<MOS::SBCIWRdK>(Block &MBB, BlockIt MBBI) {
   OpHi = MOS::SBCIRdK;
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
-  auto MIBLO = buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg, getKillRegState(SrcIsKill))
-    .addImm(Lo8);
+  auto MIBLO =
+      buildMI(MBB, MBBI, OpLo)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstLoReg, getKillRegState(SrcIsKill))
+          .addImm(Lo8);
 
   // SREG is always implicitly killed
   MIBLO->getOperand(4).setIsKill();
 
-  auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, getKillRegState(SrcIsKill))
-    .addImm(Hi8);
+  auto MIBHI =
+      buildMI(MBB, MBBI, OpHi)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg, getKillRegState(SrcIsKill))
+          .addImm(Hi8);
 
   if (ImpIsDead)
     MIBHI->getOperand(3).setIsDead();
@@ -383,16 +392,18 @@ bool MOSExpandPseudo::expand<MOS::COMWRd>(Block &MBB, BlockIt MBBI) {
   OpHi = MOS::COMRd;
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
-  auto MIBLO = buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg, getKillRegState(DstIsKill));
+  auto MIBLO =
+      buildMI(MBB, MBBI, OpLo)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstLoReg, getKillRegState(DstIsKill));
 
   // SREG is always implicitly dead
   MIBLO->getOperand(2).setIsDead();
 
-  auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, getKillRegState(DstIsKill));
+  auto MIBHI =
+      buildMI(MBB, MBBI, OpHi)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg, getKillRegState(DstIsKill));
 
   if (ImpIsDead)
     MIBHI->getOperand(2).setIsDead();
@@ -417,12 +428,12 @@ bool MOSExpandPseudo::expand<MOS::CPWRdRr>(Block &MBB, BlockIt MBBI) {
 
   // Low part
   buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, getKillRegState(DstIsKill))
-    .addReg(SrcLoReg, getKillRegState(SrcIsKill));
+      .addReg(DstLoReg, getKillRegState(DstIsKill))
+      .addReg(SrcLoReg, getKillRegState(SrcIsKill));
 
   auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, getKillRegState(DstIsKill))
-    .addReg(SrcHiReg, getKillRegState(SrcIsKill));
+                   .addReg(DstHiReg, getKillRegState(DstIsKill))
+                   .addReg(SrcHiReg, getKillRegState(SrcIsKill));
 
   if (ImpIsDead)
     MIBHI->getOperand(2).setIsDead();
@@ -449,15 +460,15 @@ bool MOSExpandPseudo::expand<MOS::CPCWRdRr>(Block &MBB, BlockIt MBBI) {
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
   auto MIBLO = buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, getKillRegState(DstIsKill))
-    .addReg(SrcLoReg, getKillRegState(SrcIsKill));
+                   .addReg(DstLoReg, getKillRegState(DstIsKill))
+                   .addReg(SrcLoReg, getKillRegState(SrcIsKill));
 
   // SREG is always implicitly killed
   MIBLO->getOperand(3).setIsKill();
 
   auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, getKillRegState(DstIsKill))
-    .addReg(SrcHiReg, getKillRegState(SrcIsKill));
+                   .addReg(DstHiReg, getKillRegState(DstIsKill))
+                   .addReg(SrcHiReg, getKillRegState(SrcIsKill));
 
   if (ImpIsDead)
     MIBHI->getOperand(2).setIsDead();
@@ -479,11 +490,13 @@ bool MOSExpandPseudo::expand<MOS::LDIWRdK>(Block &MBB, BlockIt MBBI) {
   OpHi = MOS::LDIRdK;
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
-  auto MIBLO = buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead));
+  auto MIBLO =
+      buildMI(MBB, MBBI, OpLo)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead));
 
-  auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead));
+  auto MIBHI =
+      buildMI(MBB, MBBI, OpHi)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead));
 
   switch (MI.getOperand(1).getType()) {
   case MachineOperand::MO_GlobalAddress: {
@@ -518,7 +531,6 @@ bool MOSExpandPseudo::expand<MOS::LDIWRdK>(Block &MBB, BlockIt MBBI) {
   return true;
 }
 
-
 template <>
 bool MOSExpandPseudo::expand<MOS::LPMWRdZ>(Block &MBB, BlockIt MBBI) {
   MachineInstr &MI = *MBBI;
@@ -540,8 +552,8 @@ bool MOSExpandPseudo::expand<MOS::LPMWRdZ>(Block &MBB, BlockIt MBBI) {
 
   // Load low byte.
   auto MIBLO = buildMI(MBB, MBBI, OpLo)
-      .addReg(CurDstLoReg, RegState::Define)
-      .addReg(SrcReg);
+                   .addReg(CurDstLoReg, RegState::Define)
+                   .addReg(SrcReg);
 
   // Push low byte onto stack if necessary.
   if (TmpReg)
@@ -549,8 +561,8 @@ bool MOSExpandPseudo::expand<MOS::LPMWRdZ>(Block &MBB, BlockIt MBBI) {
 
   // Load high byte.
   auto MIBHI = buildMI(MBB, MBBI, OpHi)
-      .addReg(CurDstHiReg, RegState::Define)
-      .addReg(SrcReg, getKillRegState(SrcIsKill));
+                   .addReg(CurDstHiReg, RegState::Define)
+                   .addReg(SrcReg, getKillRegState(SrcIsKill));
 
   if (TmpReg) {
     // Move the high byte into the final destination.
@@ -567,7 +579,6 @@ bool MOSExpandPseudo::expand<MOS::LPMWRdZ>(Block &MBB, BlockIt MBBI) {
   return true;
 }
 
-
 unsigned MOSExpandPseudo::scavengeGPR8(MachineInstr &MI) {
   MachineBasicBlock &MBB = *MI.getParent();
   RegScavenger RS;
@@ -576,8 +587,7 @@ unsigned MOSExpandPseudo::scavengeGPR8(MachineInstr &MI) {
   RS.forward(MI);
 
   BitVector Candidates =
-      TRI->getAllocatableSet
-      (*MBB.getParent(), &MOS::GPR8RegClass);
+      TRI->getAllocatableSet(*MBB.getParent(), &MOS::GPR8RegClass);
 
   // Exclude all the registers being used by the instruction.
   for (MachineOperand &MO : MI.operands()) {
@@ -593,7 +603,6 @@ unsigned MOSExpandPseudo::scavengeGPR8(MachineInstr &MI) {
   assert(Reg != -1 && "ran out of registers");
   return Reg;
 }
-
 
 template <>
 bool MOSExpandPseudo::expand<MOS::STSWKRr>(Block &MBB, BlockIt MBBI) {
@@ -641,7 +650,6 @@ bool MOSExpandPseudo::expand<MOS::STSWKRr>(Block &MBB, BlockIt MBBI) {
   return true;
 }
 
-
 template <>
 bool MOSExpandPseudo::expand<MOS::INWRdA>(Block &MBB, BlockIt MBBI) {
   MachineInstr &MI = *MBBI;
@@ -653,17 +661,19 @@ bool MOSExpandPseudo::expand<MOS::INWRdA>(Block &MBB, BlockIt MBBI) {
   OpHi = MOS::INRdA;
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
-  // Since we add 1 to the Imm value for the high byte below, and 63 is the highest Imm value
-  // allowed for the instruction, 62 is the limit here.
+  // Since we add 1 to the Imm value for the high byte below, and 63 is the
+  // highest Imm value allowed for the instruction, 62 is the limit here.
   assert(Imm <= 62 && "Address is out of range");
 
-  auto MIBLO = buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addImm(Imm);
+  auto MIBLO =
+      buildMI(MBB, MBBI, OpLo)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addImm(Imm);
 
-  auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addImm(Imm + 1);
+  auto MIBHI =
+      buildMI(MBB, MBBI, OpHi)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addImm(Imm + 1);
 
   MIBLO.setMemRefs(MI.memoperands());
   MIBHI.setMemRefs(MI.memoperands());
@@ -686,14 +696,15 @@ bool MOSExpandPseudo::expand<MOS::LSLWRd>(Block &MBB, BlockIt MBBI) {
 
   // Low part
   buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg)
-    .addReg(DstLoReg, getKillRegState(DstIsKill));
+      .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+      .addReg(DstLoReg)
+      .addReg(DstLoReg, getKillRegState(DstIsKill));
 
-  auto MIBHI = buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg)
-    .addReg(DstHiReg, getKillRegState(DstIsKill));
+  auto MIBHI =
+      buildMI(MBB, MBBI, OpHi)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg)
+          .addReg(DstHiReg, getKillRegState(DstIsKill));
 
   if (ImpIsDead)
     MIBHI->getOperand(3).setIsDead();
@@ -719,12 +730,13 @@ bool MOSExpandPseudo::expand<MOS::LSRWRd>(Block &MBB, BlockIt MBBI) {
 
   // High part
   buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, getKillRegState(DstIsKill));
+      .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+      .addReg(DstHiReg, getKillRegState(DstIsKill));
 
-  auto MIBLO = buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg, getKillRegState(DstIsKill));
+  auto MIBLO =
+      buildMI(MBB, MBBI, OpLo)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstLoReg, getKillRegState(DstIsKill));
 
   if (ImpIsDead)
     MIBLO->getOperand(2).setIsDead();
@@ -762,12 +774,13 @@ bool MOSExpandPseudo::expand<MOS::ASRWRd>(Block &MBB, BlockIt MBBI) {
 
   // High part
   buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, getKillRegState(DstIsKill));
+      .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+      .addReg(DstHiReg, getKillRegState(DstIsKill));
 
-  auto MIBLO = buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstLoReg, getKillRegState(DstIsKill));
+  auto MIBLO =
+      buildMI(MBB, MBBI, OpLo)
+          .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstLoReg, getKillRegState(DstIsKill));
 
   if (ImpIsDead)
     MIBLO->getOperand(2).setIsDead();
@@ -803,9 +816,10 @@ template <> bool MOSExpandPseudo::expand<MOS::SEXT>(Block &MBB, BlockIt MBBI) {
   TRI->splitReg(DstReg, DstLoReg, DstHiReg);
 
   if (SrcReg != DstLoReg) {
-    auto MOV = buildMI(MBB, MBBI, MOS::MOVRdRr)
-      .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-      .addReg(SrcReg);
+    auto MOV =
+        buildMI(MBB, MBBI, MOS::MOVRdRr)
+            .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+            .addReg(SrcReg);
 
     if (SrcReg == DstHiReg) {
       MOV->getOperand(1).setIsKill();
@@ -814,19 +828,20 @@ template <> bool MOSExpandPseudo::expand<MOS::SEXT>(Block &MBB, BlockIt MBBI) {
 
   if (SrcReg != DstHiReg) {
     buildMI(MBB, MBBI, MOS::MOVRdRr)
-      .addReg(DstHiReg, RegState::Define)
-      .addReg(SrcReg, getKillRegState(SrcIsKill));
+        .addReg(DstHiReg, RegState::Define)
+        .addReg(SrcReg, getKillRegState(SrcIsKill));
   }
 
   buildMI(MBB, MBBI, MOS::ADDRdRr) // LSL Rd <==> ADD Rd, Rr
-    .addReg(DstHiReg, RegState::Define)
-    .addReg(DstHiReg)
-    .addReg(DstHiReg, RegState::Kill);
+      .addReg(DstHiReg, RegState::Define)
+      .addReg(DstHiReg)
+      .addReg(DstHiReg, RegState::Kill);
 
-  auto SBC = buildMI(MBB, MBBI, MOS::SBCRdRr)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, RegState::Kill)
-    .addReg(DstHiReg, RegState::Kill);
+  auto SBC =
+      buildMI(MBB, MBBI, MOS::SBCRdRr)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg, RegState::Kill)
+          .addReg(DstHiReg, RegState::Kill);
 
   if (ImpIsDead)
     SBC->getOperand(3).setIsDead();
@@ -858,14 +873,15 @@ template <> bool MOSExpandPseudo::expand<MOS::ZEXT>(Block &MBB, BlockIt MBBI) {
 
   if (SrcReg != DstLoReg) {
     buildMI(MBB, MBBI, MOS::MOVRdRr)
-      .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-      .addReg(SrcReg, getKillRegState(SrcIsKill));
+        .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+        .addReg(SrcReg, getKillRegState(SrcIsKill));
   }
 
-  auto EOR = buildMI(MBB, MBBI, MOS::EORRdRr)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addReg(DstHiReg, RegState::Kill)
-    .addReg(DstHiReg, RegState::Kill);
+  auto EOR =
+      buildMI(MBB, MBBI, MOS::EORRdRr)
+          .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+          .addReg(DstHiReg, RegState::Kill)
+          .addReg(DstHiReg, RegState::Kill);
 
   if (ImpIsDead)
     EOR->getOperand(3).setIsDead();
@@ -887,15 +903,15 @@ bool MOSExpandPseudo::expand<MOS::SPREAD>(Block &MBB, BlockIt MBBI) {
 
   // Low part
   buildMI(MBB, MBBI, OpLo)
-    .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addImm(0x3d)
-    .setMIFlags(Flags);
+      .addReg(DstLoReg, RegState::Define | getDeadRegState(DstIsDead))
+      .addImm(0x3d)
+      .setMIFlags(Flags);
 
   // High part
   buildMI(MBB, MBBI, OpHi)
-    .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
-    .addImm(0x3e)
-    .setMIFlags(Flags);
+      .addReg(DstHiReg, RegState::Define | getDeadRegState(DstIsDead))
+      .addImm(0x3e)
+      .setMIFlags(Flags);
 
   MI.eraseFromParent();
   return true;
@@ -910,13 +926,12 @@ bool MOSExpandPseudo::expand<MOS::SPWRITE>(Block &MBB, BlockIt MBBI) {
   TRI->splitReg(SrcReg, SrcLoReg, SrcHiReg);
 
   buildMI(MBB, MBBI, MOS::INRdA)
-    .addReg(MOS::R0, RegState::Define)
-    .addImm(SREG_ADDR)
-    .setMIFlags(Flags);
+      .addReg(MOS::R0, RegState::Define)
+      .addImm(SREG_ADDR)
+      .setMIFlags(Flags);
 
   buildMI(MBB, MBBI, MOS::BCLRs).addImm(0x07).setMIFlags(Flags);
 
-  
   MI.eraseFromParent();
   return true;
 }
@@ -925,8 +940,8 @@ bool MOSExpandPseudo::expandMI(Block &MBB, BlockIt MBBI) {
   MachineInstr &MI = *MBBI;
   int Opcode = MBBI->getOpcode();
 
-#define EXPAND(Op)               \
-  case Op:                       \
+#define EXPAND(Op)                                                             \
+  case Op:                                                                     \
     return expand<Op>(MBB, MI)
 
   switch (Opcode) {
@@ -960,8 +975,8 @@ bool MOSExpandPseudo::expandMI(Block &MBB, BlockIt MBBI) {
 
 } // end of anonymous namespace
 
-INITIALIZE_PASS(MOSExpandPseudo, "mos-expand-pseudo",
-                MOS_EXPAND_PSEUDO_NAME, false, false)
+INITIALIZE_PASS(MOSExpandPseudo, "mos-expand-pseudo", MOS_EXPAND_PSEUDO_NAME,
+                false, false)
 namespace llvm {
 
 FunctionPass *createMOSExpandPseudoPass() { return new MOSExpandPseudo(); }
