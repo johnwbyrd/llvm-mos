@@ -12,10 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "InstPrinter/MOSInstPrinter.h"
 #include "MOS.h"
 #include "MOSMCInstLower.h"
 #include "MOSSubtarget.h"
-#include "InstPrinter/MOSInstPrinter.h"
 
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -37,9 +37,8 @@ namespace llvm {
 /// An MOS assembly code printer.
 class MOSAsmPrinter : public AsmPrinter {
 public:
-  MOSAsmPrinter(TargetMachine &TM,
-                std::unique_ptr<MCStreamer> Streamer)
-      : AsmPrinter(TM, std::move(Streamer)), MRI(*TM.getMCRegisterInfo()) { }
+  MOSAsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer)
+      : AsmPrinter(TM, std::move(Streamer)), MRI(*TM.getMCRegisterInfo()) {}
 
   StringRef getPassName() const override { return "MOS Assembly Printer"; }
 
@@ -186,4 +185,3 @@ void MOSAsmPrinter::EmitInstruction(const MachineInstr *MI) {
 extern "C" void LLVMInitializeMOSAsmPrinter() {
   llvm::RegisterAsmPrinter<llvm::MOSAsmPrinter> X(llvm::getTheMOSTarget());
 }
-
