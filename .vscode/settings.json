@@ -1,26 +1,21 @@
 {
     "cmake.buildDirectory": "${workspaceRoot}/build/cmake",
-    "cmake.installPrefix": "${workspaceRoot}/build/install",
+    "cmake.installPrefix": "${workspaceRoot}/build/cmake/install",
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.parallelJobs": 4,
+    "cmake.generator": "Ninja",
     "cmake.useCMakeServer": false,
     "cmake.configureSettings": {
         "LLVM_TARGETS_TO_BUILD": "X86",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
         "CMAKE_LINKER" : "C:/git/llvm-project/build/ninja-clang-release/bin/lld-link.exe"
     },
-    "cmake.cacheInit": "..\\llvm-cache.cmake",
-    "files.associations": {
-        "*.inc": "cpp"
-    },
+    "cmake.cacheInit": "../llvm-cache.cmake",
     "cmake.autoRestartBuild": true,
-    "C_Cpp.clang_format_style": "LLVM",
-    "C_Cpp.default.intelliSenseMode": "clang-x64",
-    "C_Cpp.intelliSenseEngineFallback": "Enabled",
-    "C_Cpp.workspaceParsingPriority": "low",
-    "C_Cpp.default.cStandard": "c11",
-    "C_Cpp.default.cppStandard": "c++17",
-    "C_Cpp.loggingLevel": "Information",
+    "cmake.buildBeforeRun": false,
+    "C_Cpp.default.compileCommands": "${workspaceRoot}/build/cmake/compile_commands.json",
     "C_Cpp.clang_format_fallbackStyle": "LLVM",
-    "C_Cpp.errorSquiggles": "Enabled",
+    "C_Cpp.clang_format_sortIncludes": true,
+    "C_Cpp.clang_format_style": "LLVM",
+    "C_Cpp.loggingLevel": "Debug"
 }
