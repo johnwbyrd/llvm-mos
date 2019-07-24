@@ -70,9 +70,16 @@ def XClass : MOSReg8Class<(add X), 1>;
 def Y : MOSReg< 66, "Y" >, DwarfRegNum<[66]>;
 def YClass : MOSReg8Class<(add Y), 2>;
 
+// Subregister indices.
+let Namespace = "MOS" in
+{
+  def sub_lo : SubRegIndex<8>;
+  def sub_hi : SubRegIndex<8, 8>;
+}
+
 let 
   CoveredBySubRegs = 1,
-  SubRegIndices = [SubRegIndex< 8 >, SubRegIndex< 8, 8 >]
+  SubRegIndices = [sub_lo, sub_hi]
  in
 {
 
@@ -83,12 +90,6 @@ let
 def AXClass : MOSReg16Class<(add AX), 3>;
 def AYClass : MOSReg16Class<(add AY), 4>;
 
-// Subregister indices.
-let Namespace = "MOS" in
-{
-  def sub_lo : SubRegIndex<8>;
-  def sub_hi : SubRegIndex<8, 8>;
-}
 
 let Namespace = "MOS" in {
   def ptr : RegAltNameIndex;

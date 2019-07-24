@@ -25,7 +25,7 @@ def FeatureYellow         : SubtargetFeature<"yellow", "m_hasYellowInsns", "true
 def FeatureRed            : SubtargetFeature<"red", "m_hasRedInsns", "true",
                             "The device supports 65816 additional instructions">;
 
-def FeatureSWEET16        : SubtargetFeature<"sweet16", "m_hasSweet16", "true",
+def FeatureSWEET16        : SubtargetFeature<"sweet16", "m_hasSweet16Insns", "true",
                             "The device supports SWEET16 instructions">;
 
 class ELFArch<string name>  : SubtargetFeature<"", "ELFArch",

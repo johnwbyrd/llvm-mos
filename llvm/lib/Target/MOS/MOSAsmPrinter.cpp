@@ -120,11 +120,12 @@ bool MOSAsmPrinter::PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
 
       Reg = MI->getOperand(OpNum + RegIdx).getReg();
 
+/*
       if (BytesPerReg == 2) {
         Reg = TRI.getSubReg(Reg, ByteNumber % BytesPerReg ? MOS::sub_hi
                                                           : MOS::sub_lo);
       }
-
+*/
       O << MOSInstPrinter::getPrettyRegisterName(Reg, MRI);
       return false;
     }

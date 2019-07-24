@@ -93,12 +93,14 @@ MOSRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC,
 /// Fold a frame offset shared between two add instructions into a single one.
 static void foldFrameOffset(MachineBasicBlock::iterator &II, int &Offset, unsigned DstReg) {
   MachineInstr &MI = *II;
+  /*
   int Opcode = MI.getOpcode();
 
   // Don't bother trying if the next instruction is not an add or a sub.
   if ((Opcode != MOS::SUBIWRdK) && (Opcode != MOS::ADIWRdK)) {
     return;
   }
+  */
 
   // Check that DstReg matches with next instruction, otherwise the instruction
   // is not related to stack address manipulation.
@@ -107,6 +109,7 @@ static void foldFrameOffset(MachineBasicBlock::iterator &II, int &Offset, unsign
   }
 
   // Add the offset in the next instruction to our offset.
+  /*
   switch (Opcode) {
   case MOS::SUBIWRdK:
     Offset += -MI.getOperand(2).getImm();
@@ -115,6 +118,7 @@ static void foldFrameOffset(MachineBasicBlock::iterator &II, int &Offset, unsign
     Offset += MI.getOperand(2).getImm();
     break;
   }
+  */
 
   // Finally remove the instruction.
   II++;
@@ -175,10 +179,6 @@ void MOSRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     case MOS::R25R24:
     case MOS::R27R26:
     case MOS::R31R30: {
-      if (isUInt<6>(Offset)) {
-        Opcode = MOS::ADIWRdK;
-        break;
-      }
       LLVM_FALLTHROUGH;
     }
     default: {
@@ -201,15 +201,8 @@ void MOSRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   // to materialize a valid load/store with displacement.
   //:TODO: consider using only one adiw/sbiw chain for more than one frame index
   if (Offset > 62) {
-    unsigned AddOpc = MOS::ADIWRdK, SubOpc = MOS::SBIWRdK;
     int AddOffset = Offset - 63 + 1;
 
-    // For huge offsets where adiw/sbiw cannot be used use a pair of subi/sbci.
-    if ((Offset - 63 + 1) > 63) {
-      AddOpc = MOS::SUBIWRdK;
-      SubOpc = MOS::SUBIWRdK;
-      AddOffset = -AddOffset;
-    }
 
     // It is possible that the spiller places this frame instruction in between
     // a compare and branch, invalidating the contents of SREG set by the
@@ -217,24 +210,21 @@ void MOSRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
     // restore SREG before and after each add/sub pair.
     BuildMI(MBB, II, dl, TII.get(MOS::INRdA), MOS::R0).addImm(0x3f);
 
-    MachineInstr *New = BuildMI(MBB, II, dl, TII.get(AddOpc), MOS::R29R28)
-                            .addReg(MOS::R29R28, RegState::Kill)
-                            .addImm(AddOffset);
-    New->getOperand(3).setIsDead();
-
-    // Restore SREG.
-    // No need to set SREG as dead here otherwise if the next instruction is a
-    // cond branch it will be using a dead register.
-    New = BuildMI(MBB, std::next(II), dl, TII.get(SubOpc), MOS::R29R28)
-              .addReg(MOS::R29R28, RegState::Kill)
-              .addImm(Offset - 63 + 1);
-
     Offset = 62;
   }
 
   MI.getOperand(FIOperandNum).ChangeToRegister(MOS::R29R28, false);
   assert(isUInt<6>(Offset) && "Offset is out of range");
   MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Offset);
+}
+
+const TargetRegisterClass *
+MOSRegisterInfo::getPointerRegClass(const MachineFunction &MF,
+                                    unsigned Kind) const {
+  // FIXME: Currently we're using avr-gcc as reference, so we restrict
+  // ptrs to Y and Z regs. Though avr-gcc has buggy implementation
+  // of memory constraint, so we can fix it and bit avr-gcc here ;-)
+  return &MOS::AXClassRegClass;
 }
 
 unsigned MOSRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
@@ -245,15 +235,6 @@ unsigned MOSRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   }
 
   return MOS::SP;
-}
-
-const TargetRegisterClass *
-MOSRegisterInfo::getPointerRegClass(const MachineFunction &MF,
-                                    unsigned Kind) const {
-  // FIXME: Currently we're using avr-gcc as reference, so we restrict
-  // ptrs to Y and Z regs. Though avr-gcc has buggy implementation
-  // of memory constraint, so we can fix it and bit avr-gcc here ;-)
-  return &MOS::PTRDISPREGSRegClass;
 }
 
 void MOSRegisterInfo::splitReg(unsigned Reg,

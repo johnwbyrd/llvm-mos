@@ -588,7 +588,7 @@ bool MOSAsmParser::ParseInstruction(ParseInstructionInfo &Info,
     if (!first) eatComma();
 
     first = false;
-
+/*
     auto MatchResult = MatchOperandParserImpl(Operands, Mnemonic);
 
     if (MatchResult == MatchOperand_Success) {
@@ -602,6 +602,7 @@ bool MOSAsmParser::ParseInstruction(ParseInstructionInfo &Info,
       return Error(Loc, "failed to parse register and immediate pair");
     }
 
+*/
     if (parseOperand(Operands)) {
       SMLoc Loc = getLexer().getLoc();
       Parser.eatToEndOfStatement();

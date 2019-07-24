@@ -181,7 +181,6 @@ unsigned MOSDAGToDAGISel::selectIndexedProgMemLoad(const LoadSDNode *LD,
     if (Offs != 1) {
       return 0;
     }
-    Opcode = MOS::LPMRdZPi;
     break;
   }
   case MVT::i16: {
@@ -204,20 +203,8 @@ bool MOSDAGToDAGISel::SelectInlineAsmMemoryOperand(const SDValue &Op,
          ConstraintCode == InlineAsm::Constraint_Q) &&
       "Unexpected asm memory constraint");
 
-  MachineRegisterInfo &RI = MF->getRegInfo();
-  const MOSSubtarget &STI = MF->getSubtarget<MOSSubtarget>();
-  const TargetLowering &TL = *STI.getTargetLowering();
   SDLoc dl(Op);
   auto DL = CurDAG->getDataLayout();
-
-  const RegisterSDNode *RegNode = dyn_cast<RegisterSDNode>(Op);
-
-  // If address operand is of PTRDISPREGS class, all is OK, then.
-  if (RegNode &&
-      RI.getRegClass(RegNode->getReg()) == &MOS::PTRDISPREGSRegClass) {
-    OutOps.push_back(Op);
-    return false;
-  }
 
   if (Op->getOpcode() == ISD::FrameIndex) {
     SDValue Base, Disp;
@@ -249,8 +236,6 @@ bool MOSDAGToDAGISel::SelectInlineAsmMemoryOperand(const SDValue &Op,
       RegisterSDNode *RegNode =
           cast<RegisterSDNode>(CopyFromRegOp->getOperand(1));
       Reg = RegNode->getReg();
-      CanHandleRegImmOpt &= (TargetRegisterInfo::isVirtualRegister(Reg) ||
-                             MOS::PTRDISPREGSRegClass.contains(Reg));
     } else {
       CanHandleRegImmOpt = false;
     }
@@ -260,6 +245,7 @@ bool MOSDAGToDAGISel::SelectInlineAsmMemoryOperand(const SDValue &Op,
     if (CanHandleRegImmOpt) {
       SDValue Base, Disp;
 
+/*
       if (RI.getRegClass(Reg) != &MOS::PTRDISPREGSRegClass) {
         SDLoc dl(CopyFromRegOp);
 
@@ -275,6 +261,7 @@ bool MOSDAGToDAGISel::SelectInlineAsmMemoryOperand(const SDValue &Op,
       } else {
         Base = CopyFromRegOp;
       }
+      */
 
       if (ImmNode->getValueType(0) != MVT::i8) {
         Disp = CurDAG->getTargetConstant(ImmNode->getAPIntValue().getZExtValue(), dl, MVT::i8);
@@ -292,13 +279,14 @@ bool MOSDAGToDAGISel::SelectInlineAsmMemoryOperand(const SDValue &Op,
   // More generic case.
   // Create chain that puts Op into pointer register
   // and return that register.
-  unsigned VReg = RI.createVirtualRegister(&MOS::PTRDISPREGSRegClass);
+  /*  unsigned VReg = RI.createVirtualRegister(&MOS::PTRDISPREGSRegClass);
 
   SDValue CopyToReg = CurDAG->getCopyToReg(Op, dl, VReg, Op);
   SDValue CopyFromReg =
       CurDAG->getCopyFromReg(CopyToReg, dl, VReg, TL.getPointerTy(DL));
 
   OutOps.push_back(CopyFromReg);
+  */
 
   return false;
 }
@@ -385,15 +373,20 @@ template <> bool MOSDAGToDAGISel::select<ISD::LOAD>(SDNode *N) {
   } else {
     // Selecting an indexed load is not legal, fallback to a normal load.
     switch (VT.SimpleTy) {
+      /*
     case MVT::i8:
+    
       ResNode = CurDAG->getMachineNode(MOS::LPMRdZ, DL, MVT::i8, MVT::Other,
                                        Ptr, RegZ);
+                                       
       break;
     case MVT::i16:
+  
       ResNode = CurDAG->getMachineNode(MOS::LPMWRdZ, DL, MVT::i16,
                                        MVT::Other, Ptr, RegZ);
       ReplaceUses(SDValue(N, 1), SDValue(ResNode, 1));
       break;
+      */
     default:
       llvm_unreachable("Unsupported VT!");
     }

@@ -198,8 +198,10 @@ bool MOSExpandPseudo::isLogicImmOpRedundant(unsigned Op,
                                             unsigned ImmVal) const {
 
   // ANDI Rd, 0xff is redundant.
+  /*
   if (Op == MOS::ANDIRdK && ImmVal == 0xff)
     return true;
+    */
 
   // ORI Rd, 0x0 is redundant.
   if (Op == MOS::ORIRdK && ImmVal == 0x0)
@@ -358,11 +360,6 @@ bool MOSExpandPseudo::expand<MOS::SBCIWRdK>(Block &MBB, BlockIt MBBI) {
 template <>
 bool MOSExpandPseudo::expand<MOS::ANDWRdRr>(Block &MBB, BlockIt MBBI) {
   return expandLogic(MOS::ANDRdRr, MBB, MBBI);
-}
-
-template <>
-bool MOSExpandPseudo::expand<MOS::ANDIWRdK>(Block &MBB, BlockIt MBBI) {
-  return expandLogicImm(MOS::ANDIRdK, MBB, MBBI);
 }
 
 template <>
@@ -526,54 +523,6 @@ bool MOSExpandPseudo::expand<MOS::LDIWRdK>(Block &MBB, BlockIt MBBI) {
   default:
     llvm_unreachable("Unknown operand type!");
   }
-
-  MI.eraseFromParent();
-  return true;
-}
-
-template <>
-bool MOSExpandPseudo::expand<MOS::LPMWRdZ>(Block &MBB, BlockIt MBBI) {
-  MachineInstr &MI = *MBBI;
-  unsigned OpLo, OpHi, DstLoReg, DstHiReg;
-  unsigned DstReg = MI.getOperand(0).getReg();
-  unsigned TmpReg = 0; // 0 for no temporary register
-  unsigned SrcReg = MI.getOperand(1).getReg();
-  bool SrcIsKill = MI.getOperand(1).isKill();
-  OpLo = MOS::LPMRdZPi;
-  OpHi = MOS::LPMRdZ;
-  TRI->splitReg(DstReg, DstLoReg, DstHiReg);
-
-  // Use a temporary register if src and dst registers are the same.
-  if (DstReg == SrcReg)
-    TmpReg = scavengeGPR8(MI);
-
-  unsigned CurDstLoReg = (DstReg == SrcReg) ? TmpReg : DstLoReg;
-  unsigned CurDstHiReg = (DstReg == SrcReg) ? TmpReg : DstHiReg;
-
-  // Load low byte.
-  auto MIBLO = buildMI(MBB, MBBI, OpLo)
-                   .addReg(CurDstLoReg, RegState::Define)
-                   .addReg(SrcReg);
-
-  // Push low byte onto stack if necessary.
-  if (TmpReg)
-    buildMI(MBB, MBBI, MOS::PUSHRr).addReg(TmpReg);
-
-  // Load high byte.
-  auto MIBHI = buildMI(MBB, MBBI, OpHi)
-                   .addReg(CurDstHiReg, RegState::Define)
-                   .addReg(SrcReg, getKillRegState(SrcIsKill));
-
-  if (TmpReg) {
-    // Move the high byte into the final destination.
-    buildMI(MBB, MBBI, MOS::MOVRdRr).addReg(DstHiReg).addReg(TmpReg);
-
-    // Move the low byte from the scratch space into the final destination.
-    buildMI(MBB, MBBI, MOS::POPRd).addReg(DstLoReg);
-  }
-
-  MIBLO.setMemRefs(MI.memoperands());
-  MIBHI.setMemRefs(MI.memoperands());
 
   MI.eraseFromParent();
   return true;
@@ -952,7 +901,6 @@ bool MOSExpandPseudo::expandMI(Block &MBB, BlockIt MBBI) {
     EXPAND(MOS::SBCWRdRr);
     EXPAND(MOS::SBCIWRdK);
     EXPAND(MOS::ANDWRdRr);
-    EXPAND(MOS::ANDIWRdK);
     EXPAND(MOS::ORWRdRr);
     EXPAND(MOS::ORIWRdK);
     EXPAND(MOS::EORWRdRr);
