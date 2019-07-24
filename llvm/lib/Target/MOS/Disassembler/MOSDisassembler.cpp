@@ -68,11 +68,6 @@ static DecodeStatus DecodeLD8RegisterClass(MCInst &Inst, unsigned RegNo,
   return MCDisassembler::Success;
 }
 
-static DecodeStatus DecodePTRREGSRegisterClass(MCInst &Inst, unsigned RegNo,
-                                               uint64_t Address, const void *Decoder) {
-  return MCDisassembler::Success;
-}
-
 #include "MOSGenDisassemblerTables.inc"
 
 static DecodeStatus readInstruction16(ArrayRef<uint8_t> Bytes, uint64_t Address,

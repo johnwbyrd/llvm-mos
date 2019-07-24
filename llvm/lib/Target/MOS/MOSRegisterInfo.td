@@ -11,20 +11,77 @@
 //  Declarations that describe the MOS register file
 //===----------------------------------------------------------------------===//
 
+
+class RedHwMode: HwMode<"FeatureRed">;
+class YellowHwMode: HwMode<"FeatureYellow">;
+class GreenHwMode: HwMode<"FeatureGreen">;
+class SWEET16HwMode: HwMode<"FeatureSWEET16">;
+
+// Most real registers on 6502 are 8 bits.
+class RealRegInfo: RegInfo< 8, 8, 8>;
+
+// Only the program counter is 16 bits.
+class PCRegInfo: RegInfo< 16, 16, 16 >;
+
+
 // 8-bit General purpose register definition.
 class MOSReg<bits<16> num,
              string name,
              list<Register> subregs = [],
-             list<string> altNames = []>
+             list<string> altNames = []
+ >
   : RegisterWithSubRegs<name, subregs>
 {
   field bits<16> Num = num;
-
+  
   let HWEncoding = num;
   let Namespace = "MOS";
   let SubRegs = subregs;
   let AltNames = altNames;
+  bit isVirtual = 0;
 }
+
+let isVirtual = 1 in {
+  class MOSVirtReg<bits<16> num,
+             string name,
+             list<Register> subregs = [],
+             list<string> altNames = []> :
+             MOSReg< num, name, subregs, altNames >;
+}
+
+class MOSReg8Class< dag RegList, int priority = 32 >: 
+  RegisterClass< "MOS", [i8], 8, RegList >
+  {
+    let AllocationPriority = priority;
+  }
+
+class MOSReg16Class< dag RegList, int priority = 33 >: 
+  RegisterClass< "MOS", [i16], 16, RegList >
+  {
+    let AllocationPriority = priority;
+  }
+
+def A : MOSReg< 64, "A" >, DwarfRegNum<[64]>;
+def AClass : MOSReg8Class<(add A), 0>;
+
+def X : MOSReg< 65, "X" >, DwarfRegNum<[65]>;
+def XClass : MOSReg8Class<(add X), 1>;
+
+def Y : MOSReg< 66, "Y" >, DwarfRegNum<[66]>;
+def YClass : MOSReg8Class<(add Y), 2>;
+
+let 
+  CoveredBySubRegs = 1,
+  SubRegIndices = [SubRegIndex< 8 >, SubRegIndex< 8, 8 >]
+ in
+{
+
+  def AX : MOSReg< 67, "AX", [A, X]>, DwarfRegNum<[67]>;
+  def AY : MOSReg< 68, "AY", [A, Y]>, DwarfRegNum<[68]>;
+}
+
+def AXClass : MOSReg16Class<(add AX), 3>;
+def AYClass : MOSReg16Class<(add AY), 4>;
 
 // Subregister indices.
 let Namespace = "MOS" in
@@ -39,43 +96,43 @@ let Namespace = "MOS" in {
 
 
 //===----------------------------------------------------------------------===//
-//  8-bit general purpose registers
+//  Zero page, 8 bit virtual registers
 //===----------------------------------------------------------------------===//
 
-def R0  : MOSReg<0,  "r0">,  DwarfRegNum<[0]>;
-def R1  : MOSReg<1,  "r1">,  DwarfRegNum<[1]>;
-def R2  : MOSReg<2,  "r2">,  DwarfRegNum<[2]>;
-def R3  : MOSReg<3,  "r3">,  DwarfRegNum<[3]>;
-def R4  : MOSReg<4,  "r4">,  DwarfRegNum<[4]>;
-def R5  : MOSReg<5,  "r5">,  DwarfRegNum<[5]>;
-def R6  : MOSReg<6,  "r6">,  DwarfRegNum<[6]>;
-def R7  : MOSReg<7,  "r7">,  DwarfRegNum<[7]>;
-def R8  : MOSReg<8,  "r8">,  DwarfRegNum<[8]>;
-def R9  : MOSReg<9,  "r9">,  DwarfRegNum<[9]>;
-def R10 : MOSReg<10, "r10">, DwarfRegNum<[10]>;
-def R11 : MOSReg<11, "r11">, DwarfRegNum<[11]>;
-def R12 : MOSReg<12, "r12">, DwarfRegNum<[12]>;
-def R13 : MOSReg<13, "r13">, DwarfRegNum<[13]>;
-def R14 : MOSReg<14, "r14">, DwarfRegNum<[14]>;
-def R15 : MOSReg<15, "r15">, DwarfRegNum<[15]>;
-def R16 : MOSReg<16, "r16">, DwarfRegNum<[16]>;
-def R17 : MOSReg<17, "r17">, DwarfRegNum<[17]>;
-def R18 : MOSReg<18, "r18">, DwarfRegNum<[18]>;
-def R19 : MOSReg<19, "r19">, DwarfRegNum<[19]>;
-def R20 : MOSReg<20, "r20">, DwarfRegNum<[20]>;
-def R21 : MOSReg<21, "r21">, DwarfRegNum<[21]>;
-def R22 : MOSReg<22, "r22">, DwarfRegNum<[22]>;
-def R23 : MOSReg<23, "r23">, DwarfRegNum<[23]>;
-def R24 : MOSReg<24, "r24">, DwarfRegNum<[24]>;
-def R25 : MOSReg<25, "r25">, DwarfRegNum<[25]>;
-def R26 : MOSReg<26, "r26">, DwarfRegNum<[26]>;
-def R27 : MOSReg<27, "r27">, DwarfRegNum<[27]>;
-def R28 : MOSReg<28, "r28">, DwarfRegNum<[28]>;
-def R29 : MOSReg<29, "r29">, DwarfRegNum<[29]>;
-def R30 : MOSReg<30, "r30">, DwarfRegNum<[30]>;
-def R31 : MOSReg<31, "r31">, DwarfRegNum<[31]>;
-def SPL : MOSReg<32, "SPL">, DwarfRegNum<[32]>;
-def SPH : MOSReg<33, "SPH">, DwarfRegNum<[33]>;
+def R0  : MOSVirtReg<0,  "r0">,  DwarfRegNum<[0]>;
+def R1  : MOSVirtReg<1,  "r1">,  DwarfRegNum<[1]>;
+def R2  : MOSVirtReg<2,  "r2">,  DwarfRegNum<[2]>;
+def R3  : MOSVirtReg<3,  "r3">,  DwarfRegNum<[3]>;
+def R4  : MOSVirtReg<4,  "r4">,  DwarfRegNum<[4]>;
+def R5  : MOSVirtReg<5,  "r5">,  DwarfRegNum<[5]>;
+def R6  : MOSVirtReg<6,  "r6">,  DwarfRegNum<[6]>;
+def R7  : MOSVirtReg<7,  "r7">,  DwarfRegNum<[7]>;
+def R8  : MOSVirtReg<8,  "r8">,  DwarfRegNum<[8]>;
+def R9  : MOSVirtReg<9,  "r9">,  DwarfRegNum<[9]>;
+def R10 : MOSVirtReg<10, "r10">, DwarfRegNum<[10]>;
+def R11 : MOSVirtReg<11, "r11">, DwarfRegNum<[11]>;
+def R12 : MOSVirtReg<12, "r12">, DwarfRegNum<[12]>;
+def R13 : MOSVirtReg<13, "r13">, DwarfRegNum<[13]>;
+def R14 : MOSVirtReg<14, "r14">, DwarfRegNum<[14]>;
+def R15 : MOSVirtReg<15, "r15">, DwarfRegNum<[15]>;
+def R16 : MOSVirtReg<16, "r16">, DwarfRegNum<[16]>;
+def R17 : MOSVirtReg<17, "r17">, DwarfRegNum<[17]>;
+def R18 : MOSVirtReg<18, "r18">, DwarfRegNum<[18]>;
+def R19 : MOSVirtReg<19, "r19">, DwarfRegNum<[19]>;
+def R20 : MOSVirtReg<20, "r20">, DwarfRegNum<[20]>;
+def R21 : MOSVirtReg<21, "r21">, DwarfRegNum<[21]>;
+def R22 : MOSVirtReg<22, "r22">, DwarfRegNum<[22]>;
+def R23 : MOSVirtReg<23, "r23">, DwarfRegNum<[23]>;
+def R24 : MOSVirtReg<24, "r24">, DwarfRegNum<[24]>;
+def R25 : MOSVirtReg<25, "r25">, DwarfRegNum<[25]>;
+def R26 : MOSVirtReg<26, "r26">, DwarfRegNum<[26]>;
+def R27 : MOSVirtReg<27, "r27">, DwarfRegNum<[27]>;
+def R28 : MOSVirtReg<28, "r28">, DwarfRegNum<[28]>;
+def R29 : MOSVirtReg<29, "r29">, DwarfRegNum<[29]>;
+def R30 : MOSVirtReg<30, "r30">, DwarfRegNum<[30]>;
+def R31 : MOSVirtReg<31, "r31">, DwarfRegNum<[31]>;
+def SPL : MOSVirtReg<32, "SPL">, DwarfRegNum<[32]>;
+def SPH : MOSVirtReg<33, "SPH">, DwarfRegNum<[33]>;
 
 let SubRegIndices = [sub_lo, sub_hi],
 CoveredBySubRegs = 1 in
@@ -87,9 +144,9 @@ CoveredBySubRegs = 1 in
   // are printed as a `high:low` pair when a DREG is expected,
   // but printed using `X`, `Y`, `Z` when a pointer register is expected.
   let RegAltNameIndices = [ptr] in {
-      def R31R30 : MOSReg<30, "r31:r30", [R30, R31], ["Z"]>, DwarfRegNum<[30]>;
-      def R29R28 : MOSReg<28, "r29:r28", [R28, R29], ["Y"]>, DwarfRegNum<[28]>;
-      def R27R26 : MOSReg<26, "r27:r26", [R26, R27], ["X"]>, DwarfRegNum<[26]>;
+      def R31R30 : MOSReg<30, "r31:r30", [R30, R31], ["ZZ"]>, DwarfRegNum<[30]>;
+      def R29R28 : MOSReg<28, "r29:r28", [R28, R29], ["YY"]>, DwarfRegNum<[28]>;
+      def R27R26 : MOSReg<26, "r27:r26", [R26, R27], ["XX"]>, DwarfRegNum<[26]>;
   }
   def R25R24 : MOSReg<24, "r25:r24", [R24, R25]>, DwarfRegNum<[24]>;
   def R23R22 : MOSReg<22, "r23:r22", [R22, R23]>, DwarfRegNum<[22]>;
@@ -109,6 +166,7 @@ CoveredBySubRegs = 1 in
 //===----------------------------------------------------------------------===//
 // Register Classes
 //===----------------------------------------------------------------------===//
+
 
 // Main 8-bit register class.
 def GPR8 : RegisterClass<"MOS", [i8], 8,
@@ -157,27 +215,6 @@ def DREGS : RegisterClass<"MOS", [i16], 8,
     R9R8, R7R6, R5R4, R3R2, R1R0
   )>;
 
-// The 16-bit DREGS register class, excluding the Z pointer register.
-//
-// This is used by instructions which cause high pointer register
-// contention which leads to an assertion in the register allocator.
-//
-// There is no technical reason why instructions that use this class
-// cannot use Z; it's simply a workaround a regalloc bug.
-//
-// More information can be found in PR39553.
-def DREGS_WITHOUT_Z_WORKAROUND : RegisterClass<"MOS", [i16], 8,
-  (
-    // Return value and arguments.
-    add R25R24, R19R18, R21R20, R23R22,
-    // Scratch registers.
-    R27R26,
-    // Callee saved registers.
-    R29R28, R17R16, R15R14, R13R12, R11R10,
-    R9R8, R7R6, R5R4, R3R2, R1R0
-  )>;
-
-// 16-bit register class for immediate instructions.
 def DLDREGS : RegisterClass<"MOS", [i16], 8,
   (
     // Return value and arguments.
@@ -187,37 +224,6 @@ def DLDREGS : RegisterClass<"MOS", [i16], 8,
     // Callee saved registers.
     R29R28, R17R16
   )>;
-
-// 16-bit register class for the adiw/sbiw instructions.
-def IWREGS : RegisterClass<"MOS", [i16], 8,
-  (
-    // Return value and arguments.
-    add R25R24,
-    // Scratch registers.
-    R31R30, R27R26,
-    // Callee saved registers.
-    R29R28
-  )>;
-
-// 16-bit register class for the ld and st instructions.
-// AKA X,Y, and Z
-def PTRREGS : RegisterClass<"MOS", [i16], 8,
-  (
-    add R27R26, // X
-        R29R28, // Y
-        R31R30  // Z
-  ), ptr>;
-
-// 16-bit register class for the ldd and std instructions.
-// AKA Y and Z.
-def PTRDISPREGS : RegisterClass<"MOS", [i16], 8,
-  (
-    add R31R30, R29R28
-  ), ptr>;
-
-// We have a bunch of instructions with an explicit Z register argument. We
-// model this using a register class containing only the Z register.
-def ZREG : RegisterClass<"MOS", [i16], 8, (add R31R30)>;
 
 // Register class used for the stack read pseudo instruction.
 def GPRSP: RegisterClass<"MOS", [i16], 8, (add SP)>;
