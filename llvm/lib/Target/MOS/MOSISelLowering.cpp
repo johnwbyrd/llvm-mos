@@ -1001,6 +1001,7 @@ static void analyzeStandardArguments(TargetLowering::CallLoweringInfo *CLI,
   }
 }
 
+/*
 static void analyzeBuiltinArguments(TargetLowering::CallLoweringInfo &CLI,
                                     const Function *F, const DataLayout *TD,
                                     const SmallVectorImpl<ISD::OutputArg> *Outs,
@@ -1018,6 +1019,7 @@ static void analyzeBuiltinArguments(TargetLowering::CallLoweringInfo &CLI,
                              IsCall, IsVarArg);
   }
 }
+*/
 
 static void analyzeArguments(TargetLowering::CallLoweringInfo *CLI,
                              const Function *F, const DataLayout *TD,
@@ -1276,7 +1278,9 @@ SDValue MOSTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   }
 
   // Add a register mask operand representing the call-preserved registers.
+  /*
   const MOSTargetMachine &TM = (const MOSTargetMachine &)getTargetMachine();
+  */
   const TargetRegisterInfo *TRI = Subtarget.getRegisterInfo();
   const uint32_t *Mask =
       TRI->getCallPreservedMask(DAG.getMachineFunction(), CallConv);
@@ -1320,10 +1324,10 @@ SDValue MOSTargetLowering::LowerCallResult(
 
 CCAssignFn *MOSTargetLowering::CCAssignFnForReturn(CallingConv::ID CC) const {
   switch (CC) {
-    /*
-    case CallingConv::MOS_BUILTIN:
+    
+  case 0:
       return RetCC_MOS_BUILTIN;
-    */
+  
   default:
     return RetCC_MOS;
   }
@@ -1418,7 +1422,9 @@ MachineBasicBlock *MOSTargetLowering::insertShift(MachineInstr &MI,
   bool HasRepeatedOperand = false;
   MachineFunction *F = BB->getParent();
   MachineRegisterInfo &RI = F->getRegInfo();
+  /*
   const MOSTargetMachine &TM = (const MOSTargetMachine &)getTargetMachine();
+  */
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   DebugLoc dl = MI.getDebugLoc();
 
@@ -1559,7 +1565,9 @@ static bool isCopyMulResult(MachineBasicBlock::iterator const &I) {
 // it, but it works for now.
 MachineBasicBlock *MOSTargetLowering::insertMul(MachineInstr &MI,
                                                 MachineBasicBlock *BB) const {
+  /*
   const MOSTargetMachine &TM = (const MOSTargetMachine &)getTargetMachine();
+  */
   const TargetInstrInfo &TII = *Subtarget.getInstrInfo();
   MachineBasicBlock::iterator I(MI);
   ++I; // in any case insert *after* the mul instruction
@@ -1832,14 +1840,10 @@ MOSTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
     switch (Constraint[0]) {
     case 'a': // Simple upper registers r16..r23.
       return std::make_pair(0U, &MOS::LD8loRegClass);
-    case 'b': // Base pointer registers: y, z.
-      return std::make_pair(0U, &MOS::PTRDISPREGSRegClass);
     case 'd': // Upper registers r16..r31.
       return std::make_pair(0U, &MOS::LD8RegClass);
     case 'l': // Lower registers r0..r15.
       return std::make_pair(0U, &MOS::GPR8loRegClass);
-    case 'e': // Pointer register pairs: x, y, z.
-      return std::make_pair(0U, &MOS::PTRREGSRegClass);
     case 'q': // Stack pointer register: SPH:SPL.
       return std::make_pair(0U, &MOS::GPRSPRegClass);
     case 'r': // Any register: r0..r31.
@@ -1850,17 +1854,6 @@ MOSTargetLowering::getRegForInlineAsmConstraint(const TargetRegisterInfo *TRI,
       return std::make_pair(0U, &MOS::DREGSRegClass);
     case 't': // Temporary register: r0.
       return std::make_pair(unsigned(MOS::R0), &MOS::GPR8RegClass);
-    case 'w': // Special upper register pairs: r24, r26, r28, r30.
-      return std::make_pair(0U, &MOS::IWREGSRegClass);
-    case 'x': // Pointer register pair X: r27:r26.
-    case 'X':
-      return std::make_pair(unsigned(MOS::R27R26), &MOS::PTRREGSRegClass);
-    case 'y': // Pointer register pair Y: r29:r28.
-    case 'Y':
-      return std::make_pair(unsigned(MOS::R29R28), &MOS::PTRREGSRegClass);
-    case 'z': // Pointer register pair Z: r31:r30.
-    case 'Z':
-      return std::make_pair(unsigned(MOS::R31R30), &MOS::PTRREGSRegClass);
     default:
       break;
     }

@@ -57,6 +57,7 @@ public:
   bool hasGreenInsns() const { return m_hasGreenInsns; }
   bool hasYellowInsns() const { return m_hasYellowInsns; }
   bool hasRedInsns() const { return m_hasRedInsns; }
+  bool hasSweet16Insn() const {return m_hasSweet16Insns; }
 
   bool hasTinyEncoding() const { return m_hasTinyEncoding; }
 
@@ -81,6 +82,8 @@ private:
   bool m_hasGreenInsns;
   bool m_hasYellowInsns;
   bool m_hasRedInsns;
+
+  bool m_hasSweet16Insns;
 
   /// The ELF e_flags architecture.
   unsigned ELFArch;

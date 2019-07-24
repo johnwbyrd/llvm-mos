@@ -140,6 +140,7 @@ void MOSInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
       MFI.getObjectAlignment(FrameIndex));
 
   unsigned Opcode = 0;
+  /*
   if (TRI->isTypeLegalForClass(*RC, MVT::i8)) {
     Opcode = MOS::LDDRdPtrQ;
   } else if (TRI->isTypeLegalForClass(*RC, MVT::i16)) {
@@ -149,6 +150,7 @@ void MOSInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
   } else {
     llvm_unreachable("Cannot load this register from a stack slot!");
   }
+  */
 
   BuildMI(MBB, MI, DL, get(Opcode), DestReg)
       .addFrameIndex(FrameIndex)
