@@ -41,25 +41,6 @@ void MOSInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
   // of the form "ld reg, X+".
   // TODO: We should be able to rewrite this using TableGen data.
   switch (Opcode) {
-  case MOS::LDRdPtr:
-    O << "\tld\t";
-    printOperand(MI, 0, O);
-    O << ", ";
-
-    printOperand(MI, 1, O);
-
-    break;
-  case MOS::STPtrPiRr:
-    O << "\tst\t";
-
-    printOperand(MI, 1, O);
-
-    if (Opcode == MOS::STPtrPiRr)
-      O << '+';
-
-    O << ", ";
-    printOperand(MI, 2, O);
-    break;
   default:
     if (!printAliasInstr(MI, O))
       printInstruction(MI, O);
@@ -73,10 +54,12 @@ const char *MOSInstPrinter::getPrettyRegisterName(unsigned RegNum,
                                                   MCRegisterInfo const &MRI) {
   // GCC prints register pairs by just printing the lower register
   // If the register contains a subregister, print it instead
+  /*
   if (MRI.getNumSubRegIndices() > 0) {
     unsigned RegLoNum = MRI.getSubReg(RegNum, MOS::sub_lo);
     RegNum = (RegLoNum != MOS::NoRegister) ? RegLoNum : RegNum;
   }
+  */
 
   return getRegisterName(RegNum);
 }
@@ -84,12 +67,10 @@ const char *MOSInstPrinter::getPrettyRegisterName(unsigned RegNum,
 void MOSInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
                                   raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);
-  const MCOperandInfo &MOI = this->MII.get(MI->getOpcode()).OpInfo[OpNo];
+  /* const MCOperandInfo &MOI = this->MII.get(MI->getOpcode()).OpInfo[OpNo]; */
 
   if (Op.isReg()) {
-    bool isPtrReg = (MOI.RegClass == MOS::PTRREGSRegClassID) ||
-                    (MOI.RegClass == MOS::PTRDISPREGSRegClassID) ||
-                    (MOI.RegClass == MOS::ZREGRegClassID);
+    bool isPtrReg = false;
 
     if (isPtrReg) {
       O << getRegisterName(Op.getReg(), MOS::ptr);

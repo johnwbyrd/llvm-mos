@@ -71,8 +71,6 @@ MOSMCCodeEmitter::loadStorePostEncoder(const MCInst &MI, unsigned EncodedValue,
   assert(MI.getOperand(0).isReg() && MI.getOperand(1).isReg() &&
          "the load/store operands must be registers");
 
-  unsigned Opcode = MI.getOpcode();
-
   // check whether either of the registers are the X pointer register.
   bool IsRegX = MI.getOperand(0).getReg() == MOS::R27R26 ||
                   MI.getOperand(1).getReg() == MOS::R27R26;

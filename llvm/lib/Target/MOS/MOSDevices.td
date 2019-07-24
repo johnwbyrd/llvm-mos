@@ -25,6 +25,9 @@ def FeatureYellow         : SubtargetFeature<"yellow", "m_hasYellowInsns", "true
 def FeatureRed            : SubtargetFeature<"red", "m_hasRedInsns", "true",
                             "The device supports 65816 additional instructions">;
 
+def FeatureSWEET16        : SubtargetFeature<"sweet16", "m_hasSweet16", "true",
+                            "The device supports SWEET16 instructions">;
+
 class ELFArch<string name>  : SubtargetFeature<"", "ELFArch",
                                     !strconcat("ELF::",name), "">;
 
@@ -58,6 +61,7 @@ def ELFArchXMEGA7  : ELFArch<"EF_MOS_ARCH_XMEGA7">;
 def FamilyMOS6502           : Family<"mos6502", [FeatureGreen]>;
 def FamilyMOS65C02          : Family<"mos65C02", [FeatureGreen, FeatureYellow]>;
 def FamilyMOS65816          : Family<"mos65816", [FeatureGreen, FeatureYellow, FeatureRed]>;
+def FamilySWEET16_6502      : Family<"mos6502", [FeatureGreen, FeatureSWEET16]>;
 
 
 //===---------------------------------------------------------------------===//

@@ -140,17 +140,6 @@ def MemriAsmOperand : AsmOperandClass {
   let ParserMethod = "parseMemriOperand";
 }
 
-/// Address operand for `reg+imm` used by STD and LDD.
-def memri : Operand<iPTR>
-{
-  let MIOperandInfo = (ops PTRDISPREGS, i16imm);
-
-  let PrintMethod = "printMemri";
-  let EncoderMethod = "encodeMemri";
-
-  let ParserMatchClass = MemriAsmOperand;
-}
-
 // Address operand for `SP+imm` used by STD{W}SPQRr
 def memspi : Operand<iPTR>
 {
@@ -225,27 +214,6 @@ def PtrRegAsmOperand : AsmOperandClass
    let Name = "Reg";
 }
 
-// A special operand type for the LD/ST instructions.
-// It converts the pointer register number into a two-bit field used in the
-// instruction.
-def LDSTPtrReg : Operand<i16>
-{
-    let MIOperandInfo = (ops PTRREGS);
-    let EncoderMethod = "encodeLDSTPtrReg";
-
-    let ParserMatchClass = PtrRegAsmOperand;
-}
-
-// A special operand type for the LDD/STD instructions.
-// It behaves identically to the LD/ST version, except restricts
-// the pointer registers to Y and Z.
-def LDDSTDPtrReg : Operand<i16>
-{
-    let MIOperandInfo = (ops PTRDISPREGS);
-    let EncoderMethod = "encodeLDSTPtrReg";
-
-    let ParserMatchClass = PtrRegAsmOperand;
-}
 
 //===----------------------------------------------------------------------===//
 // MOS predicates for subtarget features
@@ -306,10 +274,7 @@ Uses = [SP] in
 //===----------------------------------------------------------------------===//
 // Addition
 //===----------------------------------------------------------------------===//
-let isCommutable = 1,
-Constraints = "$src = $rd",
-Defs = [SREG] in
-{
+
   // ADD Rd, Rr
   // Adds two 8-bit registers.
   def ADDRdRr : FRdRr<0b0000,
@@ -357,22 +322,9 @@ Defs = [SREG] in
                         [(set i16:$rd, (adde i16:$src, i16:$rr)),
                          (implicit SREG)]>;
 
-  // AIDW Rd, k
-  // Adds an immediate 6-bit value K to Rd, placing the result in Rd.
-  def ADIWRdK : FWRdK<0b0,
-                      (outs IWREGS:$rd),
-                      (ins IWREGS:$src, imm_arith6:$k),
-                      "adiw\t$rd, $k",
-                      [(set i16:$rd, (add i16:$src, uimm6:$k)),
-                       (implicit SREG)]>;
-}
-
 //===----------------------------------------------------------------------===//
 // Subtraction
 //===----------------------------------------------------------------------===//
-let Constraints = "$src = $rd",
-Defs = [SREG] in
-{
   // SUB Rd, Rr
   // Subtracts the 8-bit value of Rr from Rd and places the value in Rd.
   def SUBRdRr : FRdRr<0b0001,
@@ -413,13 +365,6 @@ Defs = [SREG] in
                         [(set i16:$rd, (sub i16:$src, imm:$rr)),
                          (implicit SREG)]>;
 
-  def SBIWRdK : FWRdK<0b1,
-                      (outs IWREGS:$rd),
-                      (ins IWREGS:$src, imm_arith6:$k),
-                      "sbiw\t$rd, $k",
-                      [(set i16:$rd, (sub i16:$src, uimm6:$k)),
-                       (implicit SREG)]>;
-
   // Subtract with carry operations which must read the carry flag in SREG.
   let Uses = [SREG] in
   {
@@ -458,7 +403,7 @@ Defs = [SREG] in
                           [(set i16:$rd, (sube i16:$src, imm:$rr)),
                            (implicit SREG)]>;
   }
-}
+
 
 //===----------------------------------------------------------------------===//
 // Increment and Decrement
@@ -604,12 +549,14 @@ Defs = [SREG] in
                            (implicit SREG)]>;
   }
 
+/*
   def ANDIRdK : FRdK<0b0111,
                      (outs LD8:$rd),
                      (ins LD8:$src, imm_ldi8:$k),
                      "andi\t$rd, $k",
                      [(set i8:$rd, (and i8:$src, imm:$k)),
                       (implicit SREG)]>;
+                      */
 
   // ANDI Rd+1:Rd, K+1:K
   //
@@ -1048,38 +995,6 @@ isReMaterializable = 1 in
 
 }
 
-// Indirect loads.
-let canFoldAsLoad = 1,
-isReMaterializable = 1 in
-{
-  def LDRdPtr : FSTLD<0,
-                      0b00,
-                      (outs GPR8:$reg),
-                      (ins LDSTPtrReg:$ptrreg),
-                      "ld\t$reg, $ptrreg",
-                      [(set GPR8:$reg, (load i16:$ptrreg))]>;
-
-  // LDW Rd+1:Rd, P
-  //
-  // Expands to:
-  // ld Rd,   P+
-  // ld Rd+1, P
-  let Constraints = "@earlyclobber $reg" in
-  def LDWRdPtr : Pseudo<(outs DREGS:$reg),
-                        (ins PTRREGS:$ptrreg),
-                        "ldw\t$reg, $ptrreg",
-                        [(set i16:$reg, (load i16:$ptrreg))]>;
-}
-
-
-// Load indirect with displacement operations.
-  let Constraints = "@earlyclobber $reg" in
-  def LDDRdPtrQ : FSTDLDD<0,
-                          (outs GPR8:$reg),
-                          (ins memri:$memri),
-                          "ldd\t$reg, $memri",
-                          [(set i8:$reg, (load addr:$memri))]>;
-
   
 class AtomicLoad<PatFrag Op, RegisterClass DRC,
                  RegisterClass PTRRC> :
@@ -1097,27 +1012,6 @@ class AtomicLoadOp<PatFrag Op, RegisterClass DRC,
          "atomic_op",
          [(set DRC:$rd, (Op i16:$rr, DRC:$operand))]>;
 
-def AtomicLoad8   : AtomicLoad<atomic_load_8, GPR8, PTRREGS>;
-def AtomicLoad16  : AtomicLoad<atomic_load_16, DREGS, PTRDISPREGS>;
-
-def AtomicStore8  : AtomicStore<atomic_store_8, GPR8, PTRREGS>;
-def AtomicStore16 : AtomicStore<atomic_store_16, DREGS, PTRDISPREGS>;
-
-class AtomicLoadOp8<PatFrag Op> : AtomicLoadOp<Op, GPR8, PTRREGS>;
-class AtomicLoadOp16<PatFrag Op> : AtomicLoadOp<Op, DREGS, PTRDISPREGS>;
-
-def AtomicLoadAdd8  : AtomicLoadOp8<atomic_load_add_8>;
-def AtomicLoadAdd16 : AtomicLoadOp16<atomic_load_add_16>;
-def AtomicLoadSub8  : AtomicLoadOp8<atomic_load_sub_8>;
-def AtomicLoadSub16 : AtomicLoadOp16<atomic_load_sub_16>;
-def AtomicLoadAnd8  : AtomicLoadOp8<atomic_load_and_8>;
-def AtomicLoadAnd16 : AtomicLoadOp16<atomic_load_and_16>;
-def AtomicLoadOr8   : AtomicLoadOp8<atomic_load_or_8>;
-def AtomicLoadOr16  : AtomicLoadOp16<atomic_load_or_16>;
-def AtomicLoadXor8  : AtomicLoadOp8<atomic_load_xor_8>;
-def AtomicLoadXor16 : AtomicLoadOp16<atomic_load_xor_16>;
-def AtomicFence     : Pseudo<(outs), (ins), "atomic_fence",
-                             [(atomic_fence imm, imm)]>;
 
 // Indirect store from register to data space.
 def STSKRr : F32DM<0b1,
@@ -1136,19 +1030,6 @@ def STSWKRr : Pseudo<(outs),
                      "stsw\t$dst, $src",
                      [(store i16:$src, imm:$dst)]>;
 
-// Indirect stores (with postincrement or predecrement).
-
-  // ST P+, Rr
-  // Stores the value of Rr into the location addressed by pointer P.
-  // Post increments P.
-  def STPtrPiRr : FSTLD<1,
-                        0b01,
-                        (outs LDSTPtrReg:$base_wb),
-                        (ins LDSTPtrReg:$ptrreg, GPR8:$reg, i8imm:$offs),
-                        "st\t$ptrreg+, $reg",
-                        [(set i16:$base_wb,
-                         (post_store GPR8:$reg, i16:$ptrreg, imm:$offs))]>;
-
 // Load program memory operations.
 let canFoldAsLoad = 1,
 isReMaterializable = 1,
@@ -1163,30 +1044,7 @@ hasSideEffects = 0 in
                 "lpm",
                 []>;
 
-  def LPMRdZ : FLPMX<0,
-                     0,
-                     (outs GPR8:$dst),
-                     (ins ZREG:$z),
-                     "lpm\t$dst, $z",
-                     []>;
-
-  // Load program memory, while postincrementing the Z register.
-  let Defs = [R31R30] in
-  {
-    def LPMRdZPi : FLPMX<0,
-                         1,
-                         (outs GPR8:$dst),
-                         (ins ZREG:$z),
-                         "lpm\t$dst, $z+",
-                         []>;
-
-    def LPMWRdZ : Pseudo<(outs DREGS:$dst),
-                         (ins ZREG:$z),
-                         "lpmw\t$dst, $z",
-                         []>;
-
-  }
-}
+ }
 
 // Extended load program memory operations.
 let mayLoad = 1,
@@ -1354,13 +1212,6 @@ Defs = [SREG] in
 // Clears all bits in a register.
 def CLR : InstAlias<"clr\t$rd", (EORRdRr GPR8:$rd, GPR8:$rd)>;
 
-// LSL Rd
-// Alias for ADD Rd, Rd
-// --------------
-// Logical shift left one bit.
-def LSL : InstAlias<"lsl\t$rd", (ADDRdRr GPR8:$rd, GPR8:$rd)>;
-
-def ROL : InstAlias<"rol\t$rd", (ADCRdRr GPR8:$rd, GPR8:$rd)>;
 
 // SER Rd
 // Alias for LDI Rd, 0xff
@@ -1634,8 +1485,6 @@ def : Pat<(subc i16:$src, imm:$src2),
 
 // These patterns convert add (x, -imm) to sub (x, imm) since we dont have
 // any add with imm instructions. Also take care of the adiw/sbiw instructions.
-def : Pat<(add i16:$src1, imm0_63_neg:$src2),
-          (SBIWRdK i16:$src1, (imm0_63_neg:$src2))>;
 def : Pat<(add i16:$src1, imm:$src2),
           (SUBIWRdK i16:$src1, (imm16_neg_XFORM imm:$src2))>;
 def : Pat<(addc i16:$src1, imm:$src2),
