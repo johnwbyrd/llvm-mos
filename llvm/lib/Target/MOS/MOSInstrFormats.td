@@ -24,6 +24,15 @@ class MOSInst<dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
   field bits<32> SoftFail = 0;
 }
 
+/// An 8-bit MOS instruction.
+class MOSInst8<dag outs, dag ins, string asmstr, list<dag> pattern>
+  : MOSInst<outs, ins, asmstr, pattern>
+{
+  field bits<8> Inst;
+
+  let Size = 1;
+}
+
 /// A 16-bit MOS instruction.
 class MOSInst16<dag outs, dag ins, string asmstr, list<dag> pattern>
   : MOSInst<outs, ins, asmstr, pattern>
@@ -31,6 +40,15 @@ class MOSInst16<dag outs, dag ins, string asmstr, list<dag> pattern>
   field bits<16> Inst;
 
   let Size = 2;
+}
+
+/// a 24-bit MOS instruction.
+class MOSInst24<dag outs, dag ins, string asmstr, list<dag> pattern>
+  : MOSInst<outs, ins, asmstr, pattern>
+{
+  field bits<24> Inst;
+
+  let Size = 3;
 }
 
 /// a 32-bit MOS instruction.
@@ -58,6 +76,21 @@ class Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>
   let isPseudo = 1;
   let isCodeGenOnly = 1;
 }
+
+// After https://www.masswerk.at/6502/6502_instruction_set.html
+
+class OpcodeFormat< 
+  bits<3> a, bits<3> b, bits< 2 > c, 
+  dag outs, dag ins,
+  string asmstr, list< dag > pattern
+  >:
+  MOSInst8< outs, ins, asmstr, pattern>
+{
+  let Inst{7-5} = a;
+  let Inst{4-2} = b;
+  let Inst{1-0} = c;
+}
+
 
 //===----------------------------------------------------------------------===//
 // Register / register instruction: <|opcode|ffrd|dddd|rrrr|>

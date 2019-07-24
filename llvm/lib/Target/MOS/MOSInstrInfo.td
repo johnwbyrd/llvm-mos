@@ -640,6 +640,15 @@ let isBarrier = 1,
 isBranch = 1,
 isTerminator = 1 in
 {
+  def BRK : MOSInst8<
+    (outs),
+    (ins),
+    "brk",
+    []>
+    {
+      let Inst = 0;
+    }
+
   def RJMPk : FBRk<0,
                    (outs),
                    (ins brtarget_13:$target),

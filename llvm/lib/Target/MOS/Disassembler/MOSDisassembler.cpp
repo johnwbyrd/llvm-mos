@@ -70,6 +70,19 @@ static DecodeStatus DecodeLD8RegisterClass(MCInst &Inst, unsigned RegNo,
 
 #include "MOSGenDisassemblerTables.inc"
 
+static DecodeStatus readInstruction8(ArrayRef<uint8_t> Bytes, uint64_t Address,
+                                      uint64_t &Size, uint32_t &Insn) {
+  if (Bytes.size() < 1) {
+    Size = 0;
+    return MCDisassembler::Fail;
+  }
+
+  Size = 1;
+  Insn = (Bytes[0] << 0);
+
+  return MCDisassembler::Success;
+}
+
 static DecodeStatus readInstruction16(ArrayRef<uint8_t> Bytes, uint64_t Address,
                                       uint64_t &Size, uint32_t &Insn) {
   if (Bytes.size() < 2) {
@@ -100,9 +113,10 @@ static DecodeStatus readInstruction32(ArrayRef<uint8_t> Bytes, uint64_t Address,
 static const uint8_t *getDecoderTable(uint64_t Size) {
 
   switch (Size) {
+    case 1: return DecoderTable8;
     case 2: return DecoderTable16;
     case 4: return DecoderTable32;
-    default: llvm_unreachable("instructions must be 16 or 32-bits");
+    default: llvm_unreachable("instructions must be 8, 16, 24 or 32-bits");
   }
 }
 
@@ -114,6 +128,21 @@ DecodeStatus MOSDisassembler::getInstruction(MCInst &Instr, uint64_t &Size,
   uint32_t Insn;
 
   DecodeStatus Result;
+
+
+  // Try decode an 8-bit instruction.
+  {
+    Result = readInstruction8(Bytes, Address, Size, Insn);
+
+    if (Result == MCDisassembler::Fail) return MCDisassembler::Fail;
+
+    // Try to auto-decode a 8-bit instruction.
+    Result = decodeInstruction(getDecoderTable(Size), Instr,
+                               Insn, Address, this, STI);
+
+    if (Result != MCDisassembler::Fail)
+      return Result;
+  }
 
   // Try decode a 16-bit instruction.
   {
