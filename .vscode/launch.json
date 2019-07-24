@@ -5,6 +5,18 @@
     "version": "0.2.0",
     "configurations": [   
         {
+            "name": "Debug inst-break.s",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
+            "args": ["--triple", "mos", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-break.s"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/cmake/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },
+        {
             "name": "Debug llvm-objdump.exe",
             "type": "cppvsdbg",
             "request": "launch",
