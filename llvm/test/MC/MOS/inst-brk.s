@@ -3,4 +3,4 @@
 foo:
   brk
 
-; CHECK: brk              ; encoding: [00]
+; CHECK: brk ; encoding: [0x00, 0x00]

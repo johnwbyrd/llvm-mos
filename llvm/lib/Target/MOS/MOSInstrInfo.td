@@ -640,14 +640,11 @@ let isBarrier = 1,
 isBranch = 1,
 isTerminator = 1 in
 {
-  def BRK : MOSInst8<
-    (outs),
-    (ins),
-    "brk",
-    []>
-    {
-      let Inst = 0;
-    }
+def BRK : F16<0b0000000000000000,
+                (outs),
+                (ins),
+                "brk",
+                []>;
 
   def RJMPk : FBRk<0,
                    (outs),
@@ -1292,7 +1289,7 @@ def BREAK : F16<0b1001010110011000,
 // No-operation instruction
 // ---------
 // <|0000|0000|0000|0000>
-def NOP : F16<0b0000000000000000,
+def NOP : F16<0b1000000000000000,
               (outs),
               (ins),
               "nop",

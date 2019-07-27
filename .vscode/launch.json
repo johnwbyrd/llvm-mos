@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
-            "args": ["--triple", "mos", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-break.s"],
+            "args": ["--triple", "mos", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-brk.s"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/cmake/bin",
             "environment": [],
