@@ -113,7 +113,7 @@ static DecodeStatus readInstruction32(ArrayRef<uint8_t> Bytes, uint64_t Address,
 static const uint8_t *getDecoderTable(uint64_t Size) {
 
   switch (Size) {
-    case 1: return DecoderTable8;
+   // case 1: return DecoderTable8;
     case 2: return DecoderTable16;
     case 4: return DecoderTable32;
     default: llvm_unreachable("instructions must be 8, 16, 24 or 32-bits");
