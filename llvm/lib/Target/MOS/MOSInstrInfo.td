@@ -640,7 +640,7 @@ let isBarrier = 1,
 isBranch = 1,
 isTerminator = 1 in
 {
-def BRK : F16<0b0000000000000000,
+def BRK : F8<0b00000000,
                 (outs),
                 (ins),
                 "brk",

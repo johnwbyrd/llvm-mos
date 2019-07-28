@@ -267,6 +267,14 @@ unsigned MOSMCCodeEmitter::getMachineOpValue(const MCInst &MI,
 void MOSMCCodeEmitter::emitInstruction(uint64_t Val, unsigned Size,
                                        const MCSubtargetInfo &STI,
                                        raw_ostream &OS) const {
+
+  while (Size--)
+  {
+    uint8_t byteOut = Val & 0xff;
+    OS << byteOut;
+    Val = Val >> 8;
+  }
+  /*
   const uint16_t *Words = reinterpret_cast<uint16_t const *>(&Val);
   size_t WordCount = Size / 2;
 
@@ -276,6 +284,7 @@ void MOSMCCodeEmitter::emitInstruction(uint64_t Val, unsigned Size,
     OS << (uint8_t) ((Word & 0x00ff) >> 0);
     OS << (uint8_t) ((Word & 0xff00) >> 8);
   }
+  */
 }
 
 void MOSMCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,

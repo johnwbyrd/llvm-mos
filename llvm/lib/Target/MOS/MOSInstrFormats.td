@@ -475,6 +475,12 @@ class FBRsk<bit f, bits<3> s, dag outs, dag ins, string asmstr, list<dag> patter
 // Special, opcode only instructions: <|opcode|>
 //===----------------------------------------------------------------------===//
 
+class F8<bits<8> opcode, dag outs, dag ins, string asmstr, list<dag> pattern>
+  : MOSInst8<outs, ins, asmstr, pattern>
+{
+  let Inst = opcode;
+}
+
 class F16<bits<16> opcode, dag outs, dag ins, string asmstr, list<dag> pattern>
   : MOSInst16<outs, ins, asmstr, pattern>
 {
