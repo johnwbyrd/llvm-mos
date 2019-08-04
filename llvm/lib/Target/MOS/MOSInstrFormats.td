@@ -10,6 +10,10 @@
 // MOS Instruction Format Definitions.
 //
 //===----------------------------------------------------------------------===//
+
+// This tablegen implementation closely follows Neil Parker's decoding at 
+// http://nparker.llx.com/a2/opcodes.html .
+
 // A generic MOS instruction.
 class MOSInst<dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
 {
@@ -19,6 +23,8 @@ class MOSInst<dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
   dag InOperandList = ins;
   let AsmString = asmstr;
   let Pattern = pattern;
+
+  string AsmOperandString;
 
   field bits<32> SoftFail = 0;
 }
@@ -31,7 +37,7 @@ class MOSOp
 }
 
 // MOS Opcode Literal
-// Specify the opcode exactly as a bit field
+// Specify the opcode exactly as a bit field.
 class MOSOpL< bits<8> op > :
   MOSOp
 {
@@ -73,6 +79,7 @@ class MOSInst24<dag outs, dag ins, string asmstr, list<dag> pattern>
   let Size = 3;
 }
 
+// This should not exist and it should be removed.
 class MOSInst32<dag outs, dag ins, string asmstr, list<dag> pattern>
   : MOSInst<outs, ins, asmstr, pattern>
 {
@@ -80,27 +87,31 @@ class MOSInst32<dag outs, dag ins, string asmstr, list<dag> pattern>
   let Size = 4;
 }
 
-
+// An 8-bit opcode.  Operands, if any, are implied.
 class MOSInstOp8< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp opcode >
   : MOSInst8< outs, ins, asmstr, pattern >
 {
   let Inst{0-7} = opcode.Op;
 }
 
+// A parameter to a 16-bit or higher instruction.
 class MOSParam;
 
+// An 8-bit parameter to a 16-bit instruction.
 class MOSParam8< bits<8> param > : MOSParam
 {
   field bits<8> Param;
   let Param = param;
 }
 
+// A 16-bit parameter to a 24-bit instruction.
 class MOSParam16< bits<16> param > : MOSParam
 {
   field bits<16> Param;
   let Param = param;
 }
 
+// A 16-bit instruction, broken into 8-bit opcode plus 8-bit operand.
 class MOSInstOp16< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp opcode, MOSParam8 param >
   : MOSInst16< outs, ins, asmstr, pattern >
 {
@@ -108,12 +119,56 @@ class MOSInstOp16< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp op
   let Inst{8-15} = param.Param;
 }
 
+// A 24-bit instruction, broken into 8-bit opcode plus 16-bit operand.
 class MOSInstOp24< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp opcode, MOSParam16 param >
   : MOSInst24< outs, ins, asmstr, pattern >
 {
   let Inst{0-7} = opcode.Op;
   let Inst{8-23} = param.Param;
 }
+
+// Instructions with cc = 01 are the most regular, and are therefore considered first. 
+
+class MOSOp1< bits<3> aaa, bits<3> bbb > :
+  MOSOpA< aaa, bbb, 0b01 >;
+// (zero page, X) addressing
+class MOSZpXInd1< dag outs, dag ins, string asmstr, list<dag> pattern,
+        bits<3> aaa, MOSParam8 param > :
+  MOSInstOp16< outs, ins, asmstr, pattern, MOSOp1< aaa, 0b000 >, param >
+  {
+    let AsmOperandString = "($rd, x)";
+  }
+
+// Zero page addressing
+class MOSZp1< dag outs, dag ins, string asmstr, list<dag> pattern,
+        bits<3> aaa, MOSParam8 param > :
+  MOSInstOp16< outs, ins, asmstr, pattern, MOSOp1< aaa, 0b001>, param >
+  {
+    let AsmOperandString = "$rd";
+  }
+
+// Immediate mode addressing
+class MOSImm1< dag outs, dag ins, string asmstr, list<dag> pattern,
+        bits<3> aaa, MOSParam8 param > :
+  MOSInstOp16< outs, ins, asmstr, pattern, MOSOp1< aaa, 0b010 >, param >
+  {
+    let AsmOperandString = "#Imm";
+  }
+
+// Absolute addressing
+class MOSAbs1< dag outs, dag ins, string asmstr, list<dag> pattern,
+        bits<3> aaa, MOSParam16 param > :
+  MOSInstOp24< outs, ins, asmstr, pattern, MOSOp1< aaa, 0b011 >, param >;
+
+// (Zero page), Y addressing
+class MOSZpIndY1< dag outs, dag ins, string asmstr, list<dag> pattern,
+        bits<3> aaa, MOSParam8 param > :
+  MOSInstOp16< outs, ins, asmstr, pattern, MOSOp1< aaa, 0b100 >, param >;
+
+// Zero page, X addressing
+class MOSZpX1< dag outs, dag ins, string asmstr, list<dag> pattern,
+        bits<3> aaa, MOSParam8 param > :
+  MOSInstOp16< outs, ins, asmstr, pattern, MOSOp1< aaa, 0b101 >, param >;
 
 // A class for pseudo instructions.
 // Psuedo instructions are not real MOS instructions. The DAG stores
@@ -124,7 +179,7 @@ class MOSInstOp24< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp op
 // is defined as a pseudo instruction. In MOSExpandPseudoInsts.cpp,
 // the instruction is then replaced by two add instructions - one for each byte.
 class Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>
-  : MOSInst16<outs, ins, asmstr, pattern>
+  : MOSInst32<outs, ins, asmstr, pattern>
 {
   let Pattern = pattern;
 
