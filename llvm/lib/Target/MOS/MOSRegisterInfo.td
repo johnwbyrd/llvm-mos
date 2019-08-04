@@ -40,13 +40,14 @@ class MOSReg<bits<16> num,
   let AltNames = altNames;
   bit isVirtual = 0;
 }
-
-let isVirtual = 1 in {
-  class MOSVirtReg<bits<16> num,
+ 
+class MOSVirtReg<bits<16> num,
              string name,
              list<Register> subregs = [],
              list<string> altNames = []> :
-             MOSReg< num, name, subregs, altNames >;
+             MOSReg< num, name, subregs, altNames >
+{
+  let isVirtual = 1;
 }
 
 class MOSReg8Class< dag RegList, int priority = 32 >: 
@@ -102,38 +103,11 @@ let Namespace = "MOS" in {
 //  Zero page, 8 bit virtual registers
 //===----------------------------------------------------------------------===//
 
-def R0  : MOSVirtReg<0,  "r0">,  DwarfRegNum<[0]>;
-def R1  : MOSVirtReg<1,  "r1">,  DwarfRegNum<[1]>;
-def R2  : MOSVirtReg<2,  "r2">,  DwarfRegNum<[2]>;
-def R3  : MOSVirtReg<3,  "r3">,  DwarfRegNum<[3]>;
-def R4  : MOSVirtReg<4,  "r4">,  DwarfRegNum<[4]>;
-def R5  : MOSVirtReg<5,  "r5">,  DwarfRegNum<[5]>;
-def R6  : MOSVirtReg<6,  "r6">,  DwarfRegNum<[6]>;
-def R7  : MOSVirtReg<7,  "r7">,  DwarfRegNum<[7]>;
-def R8  : MOSVirtReg<8,  "r8">,  DwarfRegNum<[8]>;
-def R9  : MOSVirtReg<9,  "r9">,  DwarfRegNum<[9]>;
-def R10 : MOSVirtReg<10, "r10">, DwarfRegNum<[10]>;
-def R11 : MOSVirtReg<11, "r11">, DwarfRegNum<[11]>;
-def R12 : MOSVirtReg<12, "r12">, DwarfRegNum<[12]>;
-def R13 : MOSVirtReg<13, "r13">, DwarfRegNum<[13]>;
-def R14 : MOSVirtReg<14, "r14">, DwarfRegNum<[14]>;
-def R15 : MOSVirtReg<15, "r15">, DwarfRegNum<[15]>;
-def R16 : MOSVirtReg<16, "r16">, DwarfRegNum<[16]>;
-def R17 : MOSVirtReg<17, "r17">, DwarfRegNum<[17]>;
-def R18 : MOSVirtReg<18, "r18">, DwarfRegNum<[18]>;
-def R19 : MOSVirtReg<19, "r19">, DwarfRegNum<[19]>;
-def R20 : MOSVirtReg<20, "r20">, DwarfRegNum<[20]>;
-def R21 : MOSVirtReg<21, "r21">, DwarfRegNum<[21]>;
-def R22 : MOSVirtReg<22, "r22">, DwarfRegNum<[22]>;
-def R23 : MOSVirtReg<23, "r23">, DwarfRegNum<[23]>;
-def R24 : MOSVirtReg<24, "r24">, DwarfRegNum<[24]>;
-def R25 : MOSVirtReg<25, "r25">, DwarfRegNum<[25]>;
-def R26 : MOSVirtReg<26, "r26">, DwarfRegNum<[26]>;
-def R27 : MOSVirtReg<27, "r27">, DwarfRegNum<[27]>;
-def R28 : MOSVirtReg<28, "r28">, DwarfRegNum<[28]>;
-def R29 : MOSVirtReg<29, "r29">, DwarfRegNum<[29]>;
-def R30 : MOSVirtReg<30, "r30">, DwarfRegNum<[30]>;
-def R31 : MOSVirtReg<31, "r31">, DwarfRegNum<[31]>;
+foreach i = 0-31 in 
+{
+  def R#i : MOSVirtReg< i, "r"#i>, DwarfRegNum<[i]>;
+}
+
 def SPL : MOSVirtReg<32, "SPL">, DwarfRegNum<[32]>;
 def SPH : MOSVirtReg<33, "SPH">, DwarfRegNum<[33]>;
 
