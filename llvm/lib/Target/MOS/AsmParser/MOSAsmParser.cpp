@@ -7,11 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MOS.h"
-#include "MOSRegisterInfo.h"
 #include "MCTargetDesc/MOSMCELFStreamer.h"
 #include "MCTargetDesc/MOSMCExpr.h"
 #include "MCTargetDesc/MOSMCTargetDesc.h"
+#include "MOS.h"
+#include "MOSRegisterInfo.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -305,11 +305,16 @@ bool MOSAsmParser::MatchAndEmitInstruction(SMLoc Loc, unsigned &Opcode,
       MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm);
 
   switch (MatchResult) {
-  case Match_Success:        return emit(Inst, Loc, Out);
-  case Match_MissingFeature: return missingFeature(Loc, ErrorInfo);
-  case Match_InvalidOperand: return invalidOperand(Loc, Operands, ErrorInfo);
-  case Match_MnemonicFail:   return Error(Loc, "invalid instruction");
-  default:                   return true;
+  case Match_Success:
+    return emit(Inst, Loc, Out);
+  case Match_MissingFeature:
+    return missingFeature(Loc, ErrorInfo);
+  case Match_InvalidOperand:
+    return invalidOperand(Loc, Operands, ErrorInfo);
+  case Match_MnemonicFail:
+    return Error(Loc, "invalid instruction");
+  default:
+    return true;
   }
 }
 
@@ -417,8 +422,7 @@ bool MOSAsmParser::tryParseRelocExpression(OperandVector &Operands) {
          tokens[1].getKind() == AsmToken::Minus)) {
 
       AsmToken::TokenKind CurTok = Parser.getLexer().getKind();
-      if (CurTok == AsmToken::Minus ||
-          tokens[1].getKind() == AsmToken::Minus) {
+      if (CurTok == AsmToken::Minus || tokens[1].getKind() == AsmToken::Minus) {
         isNegated = true;
       } else {
         assert(CurTok == AsmToken::Plus);
@@ -475,8 +479,8 @@ bool MOSAsmParser::tryParseRelocExpression(OperandVector &Operands) {
   assert(Parser.getTok().getKind() == AsmToken::RParen);
   Parser.Lex(); // Eat closing parenthesis
 
-  MCExpr const *Expression = MOSMCExpr::create(ModifierKind, InnerExpression,
-                                               isNegated, getContext());
+  MCExpr const *Expression =
+      MOSMCExpr::create(ModifierKind, InnerExpression, isNegated, getContext());
 
   SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
   Operands.push_back(MOSOperand::CreateImm(Expression, S, E));
@@ -529,8 +533,7 @@ bool MOSAsmParser::parseOperand(OperandVector &Operands) {
   return true;
 }
 
-OperandMatchResultTy
-MOSAsmParser::parseMemriOperand(OperandVector &Operands) {
+OperandMatchResultTy MOSAsmParser::parseMemriOperand(OperandVector &Operands) {
   LLVM_DEBUG(dbgs() << "parseMemriOperand()\n");
 
   SMLoc E, S;
@@ -585,24 +588,25 @@ bool MOSAsmParser::ParseInstruction(ParseInstructionInfo &Info,
 
   bool first = true;
   while (getLexer().isNot(AsmToken::EndOfStatement)) {
-    if (!first) eatComma();
+    if (!first)
+      eatComma();
 
     first = false;
-/*
-    auto MatchResult = MatchOperandParserImpl(Operands, Mnemonic);
+    /*
+        auto MatchResult = MatchOperandParserImpl(Operands, Mnemonic);
 
-    if (MatchResult == MatchOperand_Success) {
-      continue;
-    }
+        if (MatchResult == MatchOperand_Success) {
+          continue;
+        }
 
-    if (MatchResult == MatchOperand_ParseFail) {
-      SMLoc Loc = getLexer().getLoc();
-      Parser.eatToEndOfStatement();
+        if (MatchResult == MatchOperand_ParseFail) {
+          SMLoc Loc = getLexer().getLoc();
+          Parser.eatToEndOfStatement();
 
-      return Error(Loc, "failed to parse register and immediate pair");
-    }
+          return Error(Loc, "failed to parse register and immediate pair");
+        }
 
-*/
+    */
     if (parseOperand(Operands)) {
       SMLoc Loc = getLexer().getLoc();
       Parser.eatToEndOfStatement();
@@ -636,7 +640,7 @@ bool MOSAsmParser::parseLiteralValues(unsigned SizeInBytes, SMLoc L) {
       Tokens[1].getKind() == AsmToken::Identifier) {
     MCSymbol *Symbol = getContext().getOrCreateSymbol(".text");
     MOSStreamer.EmitValueForModiferKind(Symbol, SizeInBytes, L,
-            MOSMCExpr::VK_MOS_None);
+                                        MOSMCExpr::VK_MOS_None);
     return false;
   }
 

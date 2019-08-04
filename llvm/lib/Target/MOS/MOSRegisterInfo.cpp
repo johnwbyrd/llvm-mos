@@ -201,7 +201,7 @@ void MOSRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   // to materialize a valid load/store with displacement.
   //:TODO: consider using only one adiw/sbiw chain for more than one frame index
   if (Offset > 62) {
-    int AddOffset = Offset - 63 + 1;
+    // int AddOffset = Offset - 63 + 1;
 
 
     // It is possible that the spiller places this frame instruction in between
