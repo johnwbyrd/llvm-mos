@@ -10,7 +10,6 @@
 // MOS Instruction Format Definitions.
 //
 //===----------------------------------------------------------------------===//
-
 // A generic MOS instruction.
 class MOSInst<dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
 {
@@ -24,12 +23,37 @@ class MOSInst<dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
   field bits<32> SoftFail = 0;
 }
 
+// MOS Opcode
+// All 65xx instructions are 8 bits long.
+class MOSOp
+{
+  field bits<8> Op;
+}
+
+// MOS Opcode Literal
+// Specify the opcode exactly as a bit field
+class MOSOpL< bits<8> op > :
+  MOSOp
+{
+  let Op = op;
+}
+
+// MOS Opcode Addressing Mode
+// MOS opcodes often, but not always, fall into a pattern of aaabbbcc, where aaa and cc
+// constitute the opcode and bbb constitutes the addressing mode.
+class MOSOpA< bits<3> aaa, bits<3> bbb, bits<2> cc > :
+  MOSOp
+{
+  let Op{0-2} = aaa;
+  let Op{3-5} = bbb;
+  let Op{6-7} = cc;
+}
+
 /// An 8-bit MOS instruction.
 class MOSInst8<dag outs, dag ins, string asmstr, list<dag> pattern>
   : MOSInst<outs, ins, asmstr, pattern>
 {
   field bits<8> Inst;
-
   let Size = 1;
 }
 
@@ -38,7 +62,6 @@ class MOSInst16<dag outs, dag ins, string asmstr, list<dag> pattern>
   : MOSInst<outs, ins, asmstr, pattern>
 {
   field bits<16> Inst;
-
   let Size = 2;
 }
 
@@ -47,17 +70,49 @@ class MOSInst24<dag outs, dag ins, string asmstr, list<dag> pattern>
   : MOSInst<outs, ins, asmstr, pattern>
 {
   field bits<24> Inst;
-
   let Size = 3;
 }
 
-/// a 32-bit MOS instruction.
 class MOSInst32<dag outs, dag ins, string asmstr, list<dag> pattern>
   : MOSInst<outs, ins, asmstr, pattern>
 {
   field bits<32> Inst;
-
   let Size = 4;
+}
+
+
+class MOSInstOp8< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp opcode >
+  : MOSInst8< outs, ins, asmstr, pattern >
+{
+  let Inst{0-7} = opcode.Op;
+}
+
+class MOSParam;
+
+class MOSParam8< bits<8> param > : MOSParam
+{
+  field bits<8> Param;
+  let Param = param;
+}
+
+class MOSParam16< bits<16> param > : MOSParam
+{
+  field bits<16> Param;
+  let Param = param;
+}
+
+class MOSInstOp16< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp opcode, MOSParam8 param >
+  : MOSInst16< outs, ins, asmstr, pattern >
+{
+  let Inst{0-7} = opcode.Op;
+  let Inst{8-15} = param.Param;
+}
+
+class MOSInstOp24< dag outs, dag ins, string asmstr, list<dag> pattern, MOSOp opcode, MOSParam16 param >
+  : MOSInst24< outs, ins, asmstr, pattern >
+{
+  let Inst{0-7} = opcode.Op;
+  let Inst{8-23} = param.Param;
 }
 
 // A class for pseudo instructions.
@@ -79,17 +134,7 @@ class Pseudo<dag outs, dag ins, string asmstr, list<dag> pattern>
 
 // After https://www.masswerk.at/6502/6502_instruction_set.html
 
-class OpcodeFormat< 
-  bits<3> a, bits<3> b, bits< 2 > c, 
-  dag outs, dag ins,
-  string asmstr, list< dag > pattern
-  >:
-  MOSInst8< outs, ins, asmstr, pattern>
-{
-  let Inst{7-5} = a;
-  let Inst{4-2} = b;
-  let Inst{1-0} = c;
-}
+
 
 
 //===----------------------------------------------------------------------===//

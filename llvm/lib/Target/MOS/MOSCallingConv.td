@@ -44,11 +44,13 @@ def ArgCC_MOS_Vararg : CallingConv
 
 // Special argument calling convention for
 // division runtime functions.
+/*
 def ArgCC_MOS_BUILTIN_DIV : CallingConv
 <[
   CCIfType<[i8], CCAssignToReg<[R24,R22]>>,
   CCIfType<[i16], CCAssignToReg<[R25R24, R23R22]>>
 ]>;
+*/
 
 //===----------------------------------------------------------------------===//
 // Callee-saved register lists.

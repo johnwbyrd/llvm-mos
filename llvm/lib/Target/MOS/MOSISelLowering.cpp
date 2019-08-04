@@ -907,6 +907,7 @@ static void parseExternFuncCallArgs(const SmallVectorImpl<ISD::OutputArg> &In,
   }
 }
 
+/*
 static StringRef getFunctionName(TargetLowering::CallLoweringInfo &CLI) {
   SDValue Callee = CLI.Callee;
 
@@ -920,6 +921,7 @@ static StringRef getFunctionName(TargetLowering::CallLoweringInfo &CLI) {
 
   llvm_unreachable("don't know how to get the name for this callee");
 }
+*/
 
 /// Analyze incoming and outgoing function arguments. We need custom C++ code
 /// to handle special constraints in the ABI like reversing the order of the
