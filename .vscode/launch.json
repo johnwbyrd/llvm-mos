@@ -4,12 +4,13 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [   
+        
         {
-            "name": "Debug inst-brk.s",
+            "name": "Debug inst-ora.s",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
-            "args": ["--triple", "mos", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-brk.s"],
+            "args": ["--triple", "mos", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-ora.s"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/cmake/bin",
             "environment": [],
