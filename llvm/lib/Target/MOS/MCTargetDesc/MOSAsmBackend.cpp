@@ -28,3 +28,10 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
+namespace llvm {
+MCAsmBackend *createMOSAsmBackend(const Target &T, const MCSubtargetInfo &STI,
+                                  const MCRegisterInfo &MRI,
+                                  const llvm::MCTargetOptions &TO) {
+  return new MOSAsmBackend(STI.getTargetTriple().getOS());
+}
+}; // namespace LLVM

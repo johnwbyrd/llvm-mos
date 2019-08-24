@@ -97,7 +97,10 @@ private:
                              const MCSubtargetInfo &STI) const;
 
   void emitInstruction(uint64_t Val, unsigned Size, const MCSubtargetInfo &STI,
-                       raw_ostream &OS) const;
+                       raw_ostream &OS) const 
+                       {
+                         //todo
+                       }
 
   void encodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,

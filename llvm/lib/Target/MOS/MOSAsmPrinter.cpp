@@ -41,20 +41,11 @@ public:
       : AsmPrinter(TM, std::move(Streamer)), MRI(*TM.getMCRegisterInfo()) {}
 
   StringRef getPassName() const override { return "MOS Assembly Printer"; }
-  void EmitInstruction(const MachineInstr *MI) override;
+  void EmitInstruction(const MachineInstr *MI) override {};
 
 private:
   const MCRegisterInfo &MRI;
 };
-
-void MOSAsmPrinter::EmitInstruction(const MachineInstr *MI) {
-  MOSMCInstLower MCInstLowering(OutContext, *this);
-
-  MCInst I;
-  MCInstLowering.lowerInstruction(*MI, I);
-  EmitToStreamer(*OutStreamer, I);
-}
-
 } // end of namespace llvm
 
 extern "C" void LLVMInitializeMOSAsmPrinter() {
