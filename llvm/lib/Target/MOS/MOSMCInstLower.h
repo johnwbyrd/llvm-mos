@@ -26,11 +26,10 @@ class MCSymbol;
 class MOSMCInstLower {
 public:
   MOSMCInstLower(MCContext &Ctx, AsmPrinter &Printer)
-      : Ctx(Ctx), Printer(Printer) {}
-
-  /// Lowers a `MachineInstr` into a `MCInst`.
-  void lowerInstruction(const MachineInstr &MI, MCInst &OutMI) const;
-  MCOperand lowerSymbolOperand(const MachineOperand &MO, MCSymbol *Sym) const;
+      : Ctx(Ctx), Printer(Printer) {
+        Ctx;
+        Printer;
+      }
 
 private:
   MCContext &Ctx;

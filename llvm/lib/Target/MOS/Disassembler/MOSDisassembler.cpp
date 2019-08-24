@@ -29,7 +29,7 @@ using namespace llvm;
 
 typedef MCDisassembler::DecodeStatus DecodeStatus;
 
-namespace {
+namespace llvm {
 
 /// A disassembler class for MOS.
 class MOSDisassembler : public MCDisassembler {
@@ -41,7 +41,11 @@ public:
   DecodeStatus getInstruction(MCInst &Instr, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t Address,
                               raw_ostream &VStream,
-                              raw_ostream &CStream) const override;
+                              raw_ostream &CStream) const override
+                              {
+                                //todo
+                                return DecodeStatus::Fail;
+                              }
 };
 }
 

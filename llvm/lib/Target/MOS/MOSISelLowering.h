@@ -40,8 +40,6 @@ class MOSTargetLowering : public TargetLowering {
 public:
   explicit MOSTargetLowering(const MOSTargetMachine &TM,
                              const MOSSubtarget &STI);
-}
-
 protected:
   const MOSSubtarget &Subtarget;
 };

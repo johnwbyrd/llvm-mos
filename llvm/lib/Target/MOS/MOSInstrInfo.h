@@ -43,20 +43,11 @@ enum CondCodes {
 
 } // end of namespace MOSCC
 
-namespace MOSII {
+namespace MOS {
 
 /// Specifies a target operand flag.
 enum TOF {
   MO_NO_FLAG,
-
-  /// On a symbol operand, this represents the lo part.
-  MO_LO = (1 << 1),
-
-  /// On a symbol operand, this represents the hi part.
-  MO_HI = (1 << 2),
-
-  /// On a symbol operand, this represents it has to be negated.
-  MO_NEG = (1 << 3)
 };
 
 } // end of namespace MOSII

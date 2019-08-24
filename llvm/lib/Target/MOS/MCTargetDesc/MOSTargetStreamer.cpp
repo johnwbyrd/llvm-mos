@@ -23,7 +23,7 @@ MOSTargetAsmStreamer::MOSTargetAsmStreamer(MCStreamer &S)
     : MOSTargetStreamer(S) {}
 
 void MOSTargetStreamer::finish() {
-#ifdef LLVM_MOS_USE_AVR_SYMBOLS_ON_MC
+#ifdef LLVM_MOS_USE_MOS_SYMBOLS_ON_MC
   MCStreamer &OS = getStreamer();
   MCContext &Context = OS.getContext();
 
