@@ -30,13 +30,6 @@ struct MCFixupKindInfo;
 
 class MOSObjectTargetWriter : public MCObjectTargetWriter
 {
-public:
-  MOSObjectTargetWriter() = default;
-  virtual ~MOSObjectTargetWriter() = default;
-  virtual Triple::ObjectFormatType getFormat() const
-  {
-    return Triple::ObjectFormatType::ELF;
-  }
 };
 
 /// Utilities for manipulating generated MOS machine code.
@@ -45,11 +38,6 @@ public:
   MOSAsmBackend(Triple::OSType OSType)
       : llvm::MCAsmBackend(support::little), OSType(OSType) {}
 
-  virtual std::unique_ptr<MCObjectTargetWriter>
-  createObjectTargetWriter() const override {
-    return std::make_unique<MOSObjectTargetWriter>();
-  }
-  virtual unsigned getNumFixupKinds() const override { return 0; }
   /// Apply the \p Value for given \p Fixup into the provided data fragment, at
   /// the offset specified by the fixup and following the fixup kind as
   /// appropriate. Errors (such as an out of range fixup value) should be
@@ -59,33 +47,23 @@ public:
   virtual void applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
                           const MCValue &Target, MutableArrayRef<char> Data,
                           uint64_t Value, bool IsResolved,
-                          const MCSubtargetInfo *STI) const override {
-    // todo
-  }
+                          const MCSubtargetInfo *STI) const override;
 
+  virtual std::unique_ptr<MCObjectTargetWriter>
+  createObjectTargetWriter() const override;
+  /// Simple predicate for targets where !Resolved implies requiring relaxation
+  virtual bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
+                                    const MCRelaxableFragment *DF,
+                                    const MCAsmLayout &Layout) const override;
+  virtual unsigned getNumFixupKinds() const override;
   /// Check whether the given instruction may need relaxation.
   ///
   /// \param Inst - The instruction to test.
   /// \param STI - The MCSubtargetInfo in effect when the instruction was
   /// encoded.
   virtual bool mayNeedRelaxation(const MCInst &Inst,
-                                 const MCSubtargetInfo &STI) const override {
-    return false;
-  }
+                                 const MCSubtargetInfo &STI) const override;
 
-  /// Simple predicate for targets where !Resolved implies requiring relaxation
-  virtual bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
-                                    const MCRelaxableFragment *DF,
-                                    const MCAsmLayout &Layout) const override {
-    return true;
-  }
-  /// Write an (optimal) nop sequence of Count bytes to the given output. If the
-  /// target cannot generate such a sequence, it should return an error.
-  ///
-  /// \return - True on success.
-  virtual bool writeNopData(raw_ostream &OS, uint64_t Count) const override {
-    return false;
-  }
     /// Relax the instruction in the given fragment to the next wider instruction.
   ///
   /// \param Inst The instruction to relax, which may be the same as the
@@ -93,11 +71,14 @@ public:
   /// \param STI the subtarget information for the associated instruction.
   /// \param [out] Res On return, the relaxed instruction.
   virtual void relaxInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
-                                MCInst &Res) const override
-                                {
-                                  //todo
-                                }
+                                MCInst &Res) const override;
 
+
+  /// Write an (optimal) nop sequence of Count bytes to the given output. If the
+  /// target cannot generate such a sequence, it should return an error.
+  ///
+  /// \return - True on success.
+  virtual bool writeNopData(raw_ostream &OS, uint64_t Count) const override;
 
 private:
   Triple::OSType OSType;

@@ -42,6 +42,26 @@ MOSSubtarget::MOSSubtarget(const Triple &TT, const std::string &CPU,
   ParseSubtargetFeatures(CPU, FS);
 }
 
+const llvm::TargetFrameLowering *MOSSubtarget::getFrameLowering() const {
+  return &FrameLowering;
+}
+
+const llvm::MOSInstrInfo *MOSSubtarget::getInstrInfo() const {
+  return &InstrInfo;
+}
+
+const llvm::MOSRegisterInfo *MOSSubtarget::getRegisterInfo() const {
+  return &InstrInfo.getRegisterInfo();
+}
+
+const llvm::MOSSelectionDAGInfo *MOSSubtarget::getSelectionDAGInfo() const {
+  return &TSInfo;
+}
+
+const llvm::MOSTargetLowering *MOSSubtarget::getTargetLowering() const {
+  return &TLInfo;
+}
+
 MOSSubtarget &
 MOSSubtarget::initializeSubtargetDependencies(StringRef CPU, StringRef FS,
                                               const TargetMachine &TM) {
