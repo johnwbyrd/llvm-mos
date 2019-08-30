@@ -30,6 +30,10 @@ struct MCFixupKindInfo;
 
 class MOSObjectTargetWriter : public MCObjectTargetWriter
 {
+  virtual Triple::ObjectFormatType getFormat() const override
+  {
+    return Triple::ObjectFormatType::ELF;
+  }
 };
 
 /// Utilities for manipulating generated MOS machine code.
