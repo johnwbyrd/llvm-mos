@@ -67,7 +67,7 @@ MOSRegisterInfo::getPointerRegClass(const MachineFunction &MF,
 
 llvm::BitVector
 MOSRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
-  return tempBV;
+  return BitVector(1);
 }
 
 bool MOSRegisterInfo::trackLivenessAfterRegAlloc(

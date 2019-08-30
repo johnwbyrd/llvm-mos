@@ -67,7 +67,7 @@ public:
                    bool KillSrc) const override {}
   MachineBasicBlock *getBranchDestBlock(const MachineInstr &MI) const override {return nullptr;}
 
-  const MCInstrDesc &getBrCond(MOSCC::CondCodes CC) const { return MCInstrDesc(); }
+  const MCInstrDesc &getBrCond(MOSCC::CondCodes CC) const { return ID; }
   const MOSRegisterInfo &getRegisterInfo() const { return RI; }
   MOSCC::CondCodes getCondFromBranchOpc(unsigned Opc) const {return MOSCC::CondCodes::COND_INVALID;};
   MOSCC::CondCodes getOppositeCondition(MOSCC::CondCodes CC) const {return MOSCC::CondCodes::COND_INVALID;}
@@ -106,6 +106,7 @@ public:
                            const TargetRegisterInfo *TRI) const override {}
 private:
   const MOSRegisterInfo RI;
+  const MCInstrDesc ID;
 };
 
 } // end namespace llvm

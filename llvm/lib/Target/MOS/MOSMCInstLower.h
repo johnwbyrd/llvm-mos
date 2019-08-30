@@ -27,8 +27,6 @@ class MOSMCInstLower {
 public:
   MOSMCInstLower(MCContext &Ctx, AsmPrinter &Printer)
       : Ctx(Ctx), Printer(Printer) {
-        Ctx;
-        Printer;
       }
 
 private:
