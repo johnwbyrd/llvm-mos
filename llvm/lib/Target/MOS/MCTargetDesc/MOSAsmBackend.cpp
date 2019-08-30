@@ -34,4 +34,41 @@ MCAsmBackend *createMOSAsmBackend(const Target &T, const MCSubtargetInfo &STI,
                                   const llvm::MCTargetOptions &TO) {
   return new MOSAsmBackend(STI.getTargetTriple().getOS());
 }
+
+void MOSAsmBackend::relaxInstruction(const MCInst &Inst,
+                                     const MCSubtargetInfo &STI,
+                                     MCInst &Res) const {
+  // todo
+}
+
+bool MOSAsmBackend::writeNopData(raw_ostream &OS, uint64_t Count) const {
+  return false;
+}
+
+bool MOSAsmBackend::mayNeedRelaxation(const MCInst &Inst,
+                                      const MCSubtargetInfo &STI) const {
+  return false;
+}
+
+unsigned MOSAsmBackend::getNumFixupKinds() const { return 0; }
+
+void MOSAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
+                               const MCValue &Target,
+                               MutableArrayRef<char> Data, uint64_t Value,
+                               bool IsResolved,
+                               const MCSubtargetInfo *STI) const {
+  // todo
+}
+
+bool MOSAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
+                                         const MCRelaxableFragment *DF,
+                                         const MCAsmLayout &Layout) const {
+  return true;
+}
+
+std::unique_ptr<llvm::MCObjectTargetWriter>
+MOSAsmBackend::createObjectTargetWriter() const {
+  return std::make_unique<MOSObjectTargetWriter>();
+}
+
 }; // namespace LLVM

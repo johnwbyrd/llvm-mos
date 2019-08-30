@@ -56,10 +56,6 @@ private:
   /// The IO address of the status register.
   const unsigned SREG_ADDR = 0x3f;
 
-  bool expandMBB(Block &MBB);
-  bool expandMI(Block &MBB, BlockIt MBBI);
-  template <unsigned OP> bool expand(Block &MBB, BlockIt MBBI);
-
   MachineInstrBuilder buildMI(Block &MBB, BlockIt MBBI, unsigned Opcode) {
     return BuildMI(MBB, MBBI, MBBI->getDebugLoc(), TII->get(Opcode));
   }
@@ -69,13 +65,17 @@ private:
     return BuildMI(MBB, MBBI, MBBI->getDebugLoc(), TII->get(Opcode), DstReg);
   }
 
+  template <unsigned OP> bool expand(Block &MBB, BlockIt MBBI);
+
+  bool expandArith(unsigned OpLo, unsigned OpHi, Block &MBB, BlockIt MBBI);
+  bool expandMBB(Block &MBB);
+  bool expandMI(Block &MBB, BlockIt MBBI);
+  bool expandLogic(unsigned Op, Block &MBB, BlockIt MBBI);
+  bool expandLogicImm(unsigned Op, Block &MBB, BlockIt MBBI);
   MachineRegisterInfo &getRegInfo(Block &MBB) {
     return MBB.getParent()->getRegInfo();
   }
 
-  bool expandArith(unsigned OpLo, unsigned OpHi, Block &MBB, BlockIt MBBI);
-  bool expandLogic(unsigned Op, Block &MBB, BlockIt MBBI);
-  bool expandLogicImm(unsigned Op, Block &MBB, BlockIt MBBI);
   bool isLogicImmOpRedundant(unsigned Op, unsigned ImmVal) const;
 
   /// Scavenges a free GPR8 register for use.

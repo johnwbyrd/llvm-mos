@@ -55,44 +55,93 @@ public:
 
     setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
   }
-
-  MCAsmParser &getParser() const { return Parser; }
   MCAsmLexer &getLexer() const { return Parser.getLexer(); }
+  MCAsmParser &getParser() const { return Parser; }
+  /// MatchAndEmitInstruction - Recognize a series of operands of a parsed
+  /// instruction as an actual MCInst and emit it to the specified MCStreamer.
+  /// This returns false on success and returns true on failure to match.
+  ///
+  /// On failure, the target parser is responsible for emitting a diagnostic
+  /// explaining the match failure.
+  virtual bool MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
+                                       OperandVector &Operands, MCStreamer &Out,
+                                       uint64_t &ErrorInfo,
+                                       bool MatchingInlineAsm) override {
+    // todo
+    return true;
+  }
+
+  /// ParseDirective - Parse a target specific assembler directive
+  ///
+  /// The parser is positioned following the directive name.  The target
+  /// specific directive parser should parse the entire directive doing or
+  /// recording any target specific work, or return true and do nothing if the
+  /// directive is not target specific. If the directive is specific for
+  /// the target, the entire line is parsed up to and including the
+  /// end-of-statement token and false is returned.
+  ///
+  /// \param DirectiveID - the identifier token of the directive.
+  virtual bool ParseDirective(AsmToken DirectiveID) override {
+    // todo
+    return true;
+  }
+
+  virtual bool ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
+                                SMLoc NameLoc,
+                                OperandVector &Operands) override {
+    // todo
+    return true;
+  }
+
+  virtual bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc,
+                             SMLoc &EndLoc) override {
+    // todo
+    return true;
+  }
+
 };
 
 /// An parsed MOS assembly operand.
 class MOSOperand : public MCParsedAsmOperand {
+public:
   typedef MCParsedAsmOperand Base;
-  /// isToken - Is this a token operand?
-  virtual bool isToken() const { return false; }
-  /// isImm - Is this an immediate operand?
-  virtual bool isImm() const { return false; }
-  /// isReg - Is this a register operand?
-  virtual bool isReg() const { return false; }
-  virtual unsigned getReg() const { return 0; }
-
-  /// isMem - Is this a memory operand?
-  virtual bool isMem() const { return false; }
+  void addRegOperands(MCInst &Inst, unsigned N) const {
+    Inst.addOperand(MCOperand::createReg(getReg()));
+  }
 
   /// getStartLoc - Get the location of the first token of this operand.
   virtual SMLoc getStartLoc() const { return SMLoc(); }
   /// getEndLoc - Get the location of the last token of this operand.
   virtual SMLoc getEndLoc() const { return SMLoc(); }
 
+  StringRef getToken() const { return Tok; }
+
+  virtual unsigned getReg() const { return 0; }
+
+  /// isImm - Is this an immediate operand?
+  virtual bool isImm() const { return false; }
+  /// isReg - Is this a register operand?
+  virtual bool isReg() const { return false; }
+  /// isMem - Is this a memory operand?
+  virtual bool isMem() const { return false; }
+
+  /// isToken - Is this a token operand?
+  virtual bool isToken() const { return false; }
   /// print - Print a debug representation of the operand to the given stream.
   virtual void print(raw_ostream &OS) const {
     // todo
   }
+
+protected:
+  StringRef Tok;
 };
 
-extern "C" void LLVMInitializeAVRAsmParser() {
+extern "C" void LLVMInitializeMOSAsmParser() {
   RegisterMCAsmParser<MOSAsmParser> X(getTheMOSTarget());
 }
 
 #define GET_REGISTER_MATCHER
 #define GET_MATCHER_IMPLEMENTATION
 #include "MOSGenAsmMatcher.inc"
-
-
 
 } // namespace llvm

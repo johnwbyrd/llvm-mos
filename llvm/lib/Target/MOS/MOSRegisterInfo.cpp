@@ -32,4 +32,47 @@ namespace llvm {
 
 MOSRegisterInfo::MOSRegisterInfo() : MOSGenRegisterInfo(0) {}
 
+void MOSRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
+                                          int SPAdj, unsigned FIOperandNum,
+                                          RegScavenger *RS /*= NULL*/) const {
+  // todo
+}
+
+const uint16_t *
+MOSRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF /*= 0*/) const {
+  return nullptr;
+}
+
+const uint32_t *
+MOSRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
+                                      CallingConv::ID CC) const {
+  return nullptr;
+}
+
+unsigned MOSRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
+  return 0;
+}
+
+const llvm::TargetRegisterClass *
+MOSRegisterInfo::getLargestLegalSuperClass(const TargetRegisterClass *RC,
+                                           const MachineFunction &MF) const {
+  return nullptr;
+}
+
+const llvm::TargetRegisterClass *
+MOSRegisterInfo::getPointerRegClass(const MachineFunction &MF,
+                                    unsigned Kind /*= 0*/) const {
+  return nullptr;
+}
+
+llvm::BitVector
+MOSRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
+  return tempBV;
+}
+
+bool MOSRegisterInfo::trackLivenessAfterRegAlloc(
+    const MachineFunction &) const {
+  return true;
+}
+
 } // end of namespace llvm
