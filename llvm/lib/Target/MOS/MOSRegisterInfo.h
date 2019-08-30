@@ -55,8 +55,7 @@ public:
   bool trackLivenessAfterRegAlloc(const MachineFunction &) const override;
 
 protected:
-  BitVector tempBV;
-
+  
 };
 
 } // end namespace llvm

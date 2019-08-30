@@ -37,7 +37,7 @@
 namespace llvm {
 
 MOSInstrInfo::MOSInstrInfo()
-    : MOSGenInstrInfo(0, 0), RI() {}
+    : MOSGenInstrInfo(0, 0), RI(), ID() {}
 
 
 } // end of namespace llvm
