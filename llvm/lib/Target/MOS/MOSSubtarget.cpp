@@ -16,9 +16,9 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Support/TargetRegistry.h"
 
+#include "MCTargetDesc/MOSMCTargetDesc.h"
 #include "MOS.h"
 #include "MOSTargetMachine.h"
-#include "MCTargetDesc/MOSMCTargetDesc.h"
 
 #define DEBUG_TYPE "mos-subtarget"
 
@@ -34,10 +34,9 @@ MOSSubtarget::MOSSubtarget(const Triple &TT, const std::string &CPU,
       TLInfo(TM, initializeSubtargetDependencies(CPU, FS, TM)), TSInfo(),
 
       // Subtarget features
-      m_hasTinyEncoding(false),
-      m_hasGreenInsns(true), m_hasYellowInsns(false), m_hasRedInsns(false),
-      m_hasSweet16Insns(false),
-      ELFArch(false), m_FeatureSetDummy(false) {
+      m_hasTinyEncoding(false), m_has6502Insns(false), m_has6502XInsns(false),
+      m_has65C02Insns(false), m_hasSweet16Insns(false), ELFArch(false),
+      m_FeatureSetDummy(false) {
   // Parse features string.
   ParseSubtargetFeatures(CPU, FS);
 }

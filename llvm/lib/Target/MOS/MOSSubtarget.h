@@ -55,13 +55,8 @@ public:
   const MOSTargetLowering *getTargetLowering() const override;
   // Subtarget feature getters.
   // See MOS.td for details.
-  bool hasGreenInsns() const { return m_hasGreenInsns; }
-  bool hasRedInsns() const { return m_hasRedInsns; }
   bool hasTinyEncoding() const { return m_hasTinyEncoding; }
 
-  bool hasSweet16Insn() const { return m_hasSweet16Insns; }
-
-  bool hasYellowInsns() const { return m_hasYellowInsns; }
   MOSSubtarget &initializeSubtargetDependencies(StringRef CPU, StringRef FS,
                                                 const TargetMachine &TM);
 
@@ -79,10 +74,9 @@ private:
   // See MOS.td for details.
   bool m_hasTinyEncoding;
 
-  bool m_hasGreenInsns;
-  bool m_hasYellowInsns;
-  bool m_hasRedInsns;
-
+  bool m_has6502Insns;
+  bool m_has6502XInsns;
+  bool m_has65C02Insns;
   bool m_hasSweet16Insns;
 
   /// The ELF e_flags architecture.

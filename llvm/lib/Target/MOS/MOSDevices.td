@@ -2,8 +2,35 @@
 // MOS Device Definitions
 //===---------------------------------------------------------------------===//
 
+/*
+all valid 6502 mnemonics when in 6502 mode (the default or after the .P02 command was given).
+all valid 6502 mnemonics plus a set of illegal instructions when in 6502X mode.
+all valid 65SC02 mnemonics when in 65SC02 mode (after the .PSC02 command was given).
+all valid 65C02 mnemonics when in 65C02 mode (after the .PC02 command was given).
+all valid 65618 mnemonics when in 65816 mode (after the .P816 command was given).
+all valid SunPlus mnemonics when in SunPlus mode (after the .SUNPLUS command was given).
+SWEET16
+*/
+
+def Feature6502
+    : SubtargetFeature<"mos-6502-insns", "m_has6502Insns", "true",
+                       "The original documented 6502 instruction set">;
+
+def Feature6502X
+    : SubtargetFeature<"mos-6502x-insns", "m_has6502XInsns", "false",
+                       "The 'illegal' opcodes present on some early variants of "
+                       "the original 6502 processor">;
+def Feature65C02
+    : SubtargetFeature<"mos-65c02-insns", "m_has65C02Insns", "false",
+                       "The new and modified instructions present on the 65c02 "
+                       "and variants">;
+
+def FeatureSWEET16
+    : SubtargetFeature<"mos-sweet16-insns", "m_hasSweet16Insns", "false",
+                        "The SWEET16 instruction set">;
+
 // A feature set aggregates features, grouping them. We don't want to create a
-// new member in MOSSubtarget (to store a value) for each set because we do not
+// new member in AVRSubtarget (to store a value) for each set because we do not
 // care if the set is supported, only the subfeatures inside the set. We fix
 // this by simply setting the same dummy member for all feature sets, which is
 // then ignored.
@@ -11,36 +38,39 @@ class FeatureSet<string name, string desc, list<SubtargetFeature> i>
   : SubtargetFeature<name, "m_FeatureSetDummy", "true", desc, i>;
 
 // A family of microcontrollers, defining a set of supported features.
-class Family<string name, list<SubtargetFeature> i>
-  : FeatureSet<name, !strconcat("The device is a part of the ",
-               name, " family"), i>;
+class Family<string name, string desc, list<SubtargetFeature> i>
+  : FeatureSet<name, desc, i>;
 
+
+def Family6502 
+    : Family<"mos-6502", "This device is a member of the original MOS 6502 family", [Feature6502]>;
+
+def Family6502X
+    : Family<"mos-6502x", 
+      "The device is a member of the original MOS 6502 family, with illegal opcode support",
+      [Feature6502, Feature6502X]>;
+
+def Family65C02
+    : Family<"mos-65c02",  
+      "The device is a member of the MOS 65C02 family",
+      [Feature6502, Feature65C02]>;
+
+def FamilySWEET16
+    : Family<"mos-sweet16",
+      "The device is a member of the MOS 6502 family, with SWEET16 virtual machine support",
+      [Feature6502, FeatureSWEET16]>;
 // Features as described by http://nparker.llx.com/a2/opcodes.html
-def FeatureGreen          : SubtargetFeature<"green", "m_hasGreenInsns", "true",
-                            "The device supports 6502 core instructions">;
-
-def FeatureYellow         : SubtargetFeature<"yellow", "m_hasYellowInsns", "true",
-                            "The device supports 65C02 additional instructions">;
-
-def FeatureRed            : SubtargetFeature<"red", "m_hasRedInsns", "true",
-                            "The device supports 65816 additional instructions">;
-
-def FeatureSWEET16        : SubtargetFeature<"sweet16", "m_hasSweet16Insns", "true",
-                            "The device supports SWEET16 instructions">;
 
 class ELFArch<string name>  : SubtargetFeature<"", "ELFArch",
                                     !strconcat("ELF::",name), "">;
 
 // ELF e_flags architecture values
 def ELFArchMOSGeneric : ELFArch<"EF_MOS_ARCH_GENERIC">;
+def ELFArchMOSSweet16 : ELFArch<"EF_MOS_ARCH_SWEET16">;
+
 //===---------------------------------------------------------------------===//
 // MOS Families
 //===---------------------------------------------------------------------===//
-
-def FamilyMOS6502           : Family<"mos6502", [FeatureGreen]>;
-def FamilyMOS65C02          : Family<"mos65C02", [FeatureGreen, FeatureYellow]>;
-def FamilyMOS65816          : Family<"mos65816", [FeatureGreen, FeatureYellow, FeatureRed]>;
-def FamilySWEET16_6502      : Family<"mos6502", [FeatureGreen, FeatureSWEET16]>;
 
 class Device<string Name, Family Fam, ELFArch Arch,
              list<SubtargetFeature> ExtraFeatures = []>
@@ -50,4 +80,8 @@ class Device<string Name, Family Fam, ELFArch Arch,
 // Note that several versions of GCC has strange ELF architecture
 // settings for backwards compatibility - see `gas/config/tc-avr.c`
 // in MOS binutils. We do not replicate this.
-def : Device<"mos-generic",  FamilyMOS6502, ELFArchMOSGeneric>;
+def : Device<"mos-6502",  Family6502, ELFArchMOSGeneric>;
+def : Device<"mos-6502x", Family6502X, ELFArchMOSGeneric>;
+def : Device<"mos-65c02", Family65C02, ELFArchMOSGeneric>;
+def : Device<"mos-sweet16", FamilySWEET16, ELFArchMOSSweet16>;
+
