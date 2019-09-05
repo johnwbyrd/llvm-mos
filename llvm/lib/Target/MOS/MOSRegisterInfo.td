@@ -11,6 +11,7 @@
 //  Declarations that describe the MOS register file
 //===----------------------------------------------------------------------===//
 
+class MOS6502HwMode: HwMode<"Feature6502">;
 
 class RedHwMode: HwMode<"FeatureRed">;
 class YellowHwMode: HwMode<"FeatureYellow">;
