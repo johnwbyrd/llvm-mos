@@ -51,11 +51,6 @@ private:
   const MOSRegisterInfo *TRI;
   const TargetInstrInfo *TII;
 
-  /// The register to be used for temporary storage.
-  const unsigned SCRATCH_REGISTER = MOS::R0;
-  /// The IO address of the status register.
-  const unsigned SREG_ADDR = 0x3f;
-
   MachineInstrBuilder buildMI(Block &MBB, BlockIt MBBI, unsigned Opcode) {
     return BuildMI(MBB, MBBI, MBBI->getDebugLoc(), TII->get(Opcode));
   }

@@ -27,6 +27,7 @@ public:
                  const MCRegisterInfo &MRI)
       : MCInstPrinter(MAI, MII, MRI) {}
 
+  const char *getRegisterName(unsigned RegNo);
   const char *getRegisterName(unsigned RegNo, unsigned AltIdx);
   bool printAliasInstr(const MCInst *MI, raw_ostream &OS);
   virtual void printInst(const MCInst *MI, raw_ostream &OS, StringRef Annot,
