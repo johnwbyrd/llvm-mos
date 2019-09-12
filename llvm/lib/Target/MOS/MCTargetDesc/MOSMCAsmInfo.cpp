@@ -18,14 +18,12 @@
 namespace llvm {
 
 MOSMCAsmInfo::MOSMCAsmInfo(const Triple &TT) {
-  /*
   CodePointerSize = 2;
   CalleeSaveStackSlotSize = 2;
   CommentString = ";";
   PrivateGlobalPrefix = ".L";
   UsesELFSectionDirectiveForBSS = true;
   UseIntegratedAssembler = true;
-  */
 }
 
 } // end of namespace llvm

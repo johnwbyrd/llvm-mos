@@ -29,9 +29,33 @@
 
 namespace llvm {
 
+void MOSInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
+                                  raw_ostream &O) {
+  const MCOperand &Op = MI->getOperand(OpNo);
+  const MCOperandInfo &MOI = this->MII.get(MI->getOpcode()).OpInfo[OpNo];
+
+/*
+  if (Op.isReg()) {
+      O << getRegisterName(Op.getReg(), MOS::ptr);
+    } else {
+      O << getPrettyRegisterName(Op.getReg(), MRI);
+    }
+  } else 
+  */
+  if (Op.isImm()) {
+    O << Op.getImm();
+  } else {
+    assert(Op.isExpr() && "Unknown operand kind in printOperand");
+    O << *Op.getExpr();
+  }
+}
+
+
 // Include the auto-generated portion of the assembly writer.
 #define PRINT_ALIAS_INSTR
 #include "MOSGenAsmWriter.inc"
+
+
 
 
 } // end of namespace llvm

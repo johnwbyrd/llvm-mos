@@ -32,9 +32,30 @@ class MOSInst8 : MOSInst
   field bits<8> Inst;
   let Inst = 0;
   let Size = 1;
+}
+
+def imm8 : SDNodeXForm<imm,
+[{
+  return CurDAG->getTargetConstant(N->getAPIntValue(), SDLoc(N), MVT::i8);
+}]>;
+
+def imm16 : SDNodeXForm<imm,
+[{
+  return CurDAG->getTargetConstant(N->getAPIntValue(), SDLoc(N), MVT::i8);
+}]>;
+
+def BRK: MOSInst8
+{
   let OutOperandList = (outs unknown:$dst); 
   let InOperandList = (ins unknown:$src);
   let AsmString = "brk";
+  let Inst = 0x00;
 }
 
-def BRK: MOSInst8;
+def LDAIMM: MOSInst8
+{
+  let Inst = 0xa9;
+  let OutOperandList = (outs); 
+  let InOperandList = (ins i8imm:$src);
+  let AsmString = "lda\t$src";
+}
