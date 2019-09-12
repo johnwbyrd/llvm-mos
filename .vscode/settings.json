@@ -18,10 +18,13 @@
     "C_Cpp.clang_format_style": "LLVM",
     "C_Cpp.loggingLevel": "Debug",
     "files.associations": {
-        "*.inc": "cpp"
+        "*.inc": "cpp",
+        "memory": "cpp"
     },
     "C_Cpp.clang_format_sortIncludes": true,
     "C_Cpp.default.cppStandard": "c++17",
     "C_Cpp.default.cStandard": "c11",
-    "C_Cpp.default.intelliSenseMode": "msvc-x64"
+    "C_Cpp.default.intelliSenseMode": "msvc-x64",
+    "cmake.clearOutputBeforeBuild": false,
+    "clang.executable": "c:/git/llvm-project/build/ninja-clang-release/install/bin/clang.exe"
 }
