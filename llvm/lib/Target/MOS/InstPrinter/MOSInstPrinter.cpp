@@ -29,6 +29,11 @@
 
 namespace llvm {
 
+void MOSInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
+                               StringRef Annot, const MCSubtargetInfo &STI) {
+  printInstruction(MI, OS);
+}
+
 void MOSInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
                                   raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);

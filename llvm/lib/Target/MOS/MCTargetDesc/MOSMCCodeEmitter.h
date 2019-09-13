@@ -97,10 +97,7 @@ private:
                              const MCSubtargetInfo &STI) const;
 
   void emitInstruction(uint64_t Val, unsigned Size, const MCSubtargetInfo &STI,
-                       raw_ostream &OS) const 
-                       {
-                         //todo
-                       }
+                       raw_ostream &OS) const;
 
   void encodeInstruction(const MCInst &MI, raw_ostream &OS,
                          SmallVectorImpl<MCFixup> &Fixups,
@@ -113,7 +110,6 @@ private:
   MCContext &Ctx;
 };
 
-} // end namespace of llvm.
+} // namespace llvm
 
 #endif // LLVM_MOS_CODE_EMITTER_H
-
