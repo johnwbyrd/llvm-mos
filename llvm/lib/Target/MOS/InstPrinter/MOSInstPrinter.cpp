@@ -37,7 +37,7 @@ void MOSInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
 void MOSInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
                                   raw_ostream &O) {
   const MCOperand &Op = MI->getOperand(OpNo);
-  const MCOperandInfo &MOI = this->MII.get(MI->getOpcode()).OpInfo[OpNo];
+  // const MCOperandInfo &MOI = this->MII.get(MI->getOpcode()).OpInfo[OpNo];
 
 /*
   if (Op.isReg()) {

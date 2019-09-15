@@ -40,7 +40,9 @@ class MOSObjectTargetWriter : public MCObjectTargetWriter
 class MOSAsmBackend : public MCAsmBackend {
 public:
   MOSAsmBackend(Triple::OSType OSType)
-      : llvm::MCAsmBackend(support::little), OSType(OSType) {}
+      : llvm::MCAsmBackend(support::little)
+      // , OSType(OSType) 
+      {}
 
   /// Apply the \p Value for given \p Fixup into the provided data fragment, at
   /// the offset specified by the fixup and following the fixup kind as
@@ -85,7 +87,7 @@ public:
   virtual bool writeNopData(raw_ostream &OS, uint64_t Count) const override;
 
 private:
-  Triple::OSType OSType;
+ // Triple::OSType OSType;
 };
 
 } // end namespace llvm
