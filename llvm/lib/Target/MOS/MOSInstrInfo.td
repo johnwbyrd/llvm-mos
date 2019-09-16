@@ -13,17 +13,19 @@
 
 include "MOSInstrFormats.td"
 
-def BRK: MOSInst8< MOSOpcode< 0x00 > >
-{
-  let OutOperandList = (outs unknown:$dst); 
-  let InOperandList = (ins unknown:$src);
-  let AsmString = "brk";
-  let Inst = 0x00;
-}
+def BRK: MOSInst8< 
+    (outs),
+    (ins),
+    "brk",
+    [], 
+    MOSOpcode< 0x00 > >;
+  // Requires<[Has6502]>;
 
-def LDAIMM: MOSInst8< MOSOpcode< 0xa9 > >
-{
-  let OutOperandList = (outs); 
-  let InOperandList = (ins i8imm:$src);
-  let AsmString = "lda\t$src";
-}
+/*
+def LDAIMM: MOSInst16< 
+  (outs A),
+  (ins i8imm:$src),
+  "lda\t$src",
+  [(set A, (i8imm:$src))],
+  MOSOpcode< 0xa9 > >;
+  */

@@ -12,20 +12,16 @@
 //===----------------------------------------------------------------------===//
 
 // The base MOS instruction class, from which all instructions descend.
-class MOSInst : Instruction
+class MOSInst< dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
 {
-  let Namespace = "mos";
-  // DecoderNamespace - The "namespace" in which this instruction exists, on
-  // targets like ARM which multiple ISA namespaces exist.
-  let DecoderNamespace = "mos";
-  // Mask of bits that cause an encoding to be UNPREDICTABLE.
-  // If a bit is set, then if the corresponding bit in the
-  // target encoding differs from its value in the "Inst" field,
-  // the instruction is UNPREDICTABLE (SoftFail in abstract parlance).
-  field bits<32> Unpredictable = 0;
-  // SoftFail is the generic name for this field, but we alias it so
-  // as to make it more obvious what it means in ARM-land.
-  field bits<32> SoftFail = Unpredictable;
+  let Namespace = "MOS";
+
+  dag OutOperandList = outs;
+  dag InOperandList = ins;
+  let AsmString = asmstr;
+  let Pattern = pattern;
+
+  field bits<32> SoftFail = 0;
 }
 
 // All MOS-related platforms depend on an 8-bit opcode.  
@@ -38,30 +34,37 @@ class MOSInst : Instruction
 class MOSOpcode< bits< 8 > opcode >
 {
     field bits<8> Opcode;
+    let Opcode = opcode;
 }
 
-// A MOS opcode with default settings
-def MOSOpcodeDefault : MOSOpcode< 0x00 >;
-
 // The base class for all operands on MOS.
-class MOSOperand;
+class MOSAsmOperand : AsmOperandClass;
 
 // An 8-bit instruction.  Sources and targets are always implied in 
 // this instruction format.
-class MOSInst8< MOSOpcode opcode > : MOSInst
+class MOSInst8< dag outs, dag ins, string asmstr, list<dag> pattern, 
+        MOSOpcode opcode > :
+    MOSInst< outs, ins, asmstr, pattern>
 {
   let Size = 1;
   field bits<8> Inst;
   let Inst = opcode.Opcode;
 }
 
-class MOSOperand8< bits< 8 > operand > : MOSOperand
+class MOSAsmOperand8< bits< 8 > operand > : MOSAsmOperand
 {
   field bits< 8 > Operand8;
   let Operand8 = operand;
 }
 
-class MOSInst16< MOSOpcode opcode, MOSOperand8 operand > : MOSInst
+class MOSOpImm< bits< 8 > operand > : MOSAsmOperand8< operand >
+{
+    let Name = "Imm";
+}
+
+class MOSInst16< dag outs, dag ins, string asmstr, list<dag> pattern, 
+    MOSOpcode opcode, MOSAsmOperand8 operand > :
+  MOSInst< outs, ins, asmstr, pattern >
 {
   let Size = 2;
   field bits<16> Inst;
@@ -69,13 +72,15 @@ class MOSInst16< MOSOpcode opcode, MOSOperand8 operand > : MOSInst
   let Inst{8-15} = operand.Operand8;
 }
 
-class MOSOperand16< bits< 16 > operand > : MOSOperand
+class MOSAsmOperand16< bits< 16 > operand > : MOSAsmOperand
 {
   field bits< 16 > Operand16;
   let Operand16 = operand;
 }
 
-class MOSInst24< MOSOpcode opcode, MOSOperand16 operand > : MOSInst
+class MOSInst24< dag outs, dag ins, string asmstr, list<dag> pattern, 
+    MOSOpcode opcode, MOSAsmOperand16 operand > : 
+  MOSInst< outs, ins, asmstr, pattern >
 {
   let Size = 3;
   field bits<24> Inst;
@@ -83,8 +88,10 @@ class MOSInst24< MOSOpcode opcode, MOSOperand16 operand > : MOSInst
   let Inst{8-23} = operand.Operand16;
 }
 
+// Predicates for subtarget features.
 
-def Has6502       :    Predicate<"Subtarget->has6502()">,
-                         AssemblerPredicate<"Feature6502", "Has 6502 original core instructions">;
+
+def Has6502 : Predicate<"Subtarget->has6502()">,
+                         AssemblerPredicate<"Feature6502">;
 
 
