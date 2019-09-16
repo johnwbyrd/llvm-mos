@@ -238,8 +238,9 @@ bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
                                            MCStreamer &Out, uint64_t &ErrorInfo,
                                            bool MatchingInlineAsm) override {
   MCInst Inst;
+  SmallVector<NearMissInfo, 8> nearMisses;
   unsigned MatchResult =
-      MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm);
+      MatchInstructionImpl(Operands, Inst, &nearMisses, ErrorInfo, MatchingInlineAsm);
 
   switch (MatchResult) {
   case Match_Success:        return emit(Inst, Loc, Out);
@@ -414,7 +415,7 @@ bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
     SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
     Operands.push_back(MOSOperand::CreateImm(Expression, S, E));
     return false;
-  }
+  } // class llvm::MOSAsmParser
 }; // namespace llvm
 
 #define GET_MATCHER_IMPLEMENTATION
