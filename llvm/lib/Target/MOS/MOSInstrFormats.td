@@ -92,6 +92,9 @@ class MOSInst24< dag outs, dag ins, string asmstr, list<dag> pattern,
 
 
 def Has6502 : Predicate<"Subtarget->has6502()">,
-                         AssemblerPredicate<"Feature6502">;
+                         AssemblerPredicate<"Feature6502">
+{
+  let PredicateName = "Feature6502";
+}
 
 

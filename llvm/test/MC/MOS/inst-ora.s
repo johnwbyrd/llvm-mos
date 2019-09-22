@@ -2,6 +2,6 @@
 
 
 foo:
-  ora   (R10, x)
+  ora #15
 
 ;; CHECK: ora    (00, x)          ; encoding: [0x01]

@@ -64,8 +64,9 @@ public:
   MOSOperand(unsigned Reg, MCExpr const *Imm, SMLoc const &S, SMLoc const &E)
       : Base(), Kind(k_Memri), RegImm({Reg, Imm}), Start(S), End(E) {}
 
+  bool tryParseImmediate(OperandVector &operands);
   bool tryParseRegisterOperand(OperandVector &Operands);
-  bool tryParseExpression(OperandVector &Operands);
+  bool tryParseExpression(OperandVector &Operand);
 
   void addExpr(MCInst &Inst, const MCExpr *Expr) const {
     // Add as immediate when possible
@@ -186,46 +187,45 @@ public:
   MCAsmLexer &getLexer() const { return Parser.getLexer(); }
   MCAsmParser &getParser() const { return Parser; }
 
-#define GET_REGISTER_MATCHER
-#include "MOSGenAsmMatcher.inc"
+  // #define GET_REGISTER_MATCHER
+  // #include "MOSGenAsmMatcher.inc"
 
-bool invalidOperand(SMLoc const &Loc,
-                                  OperandVector const &Operands,
-                                  uint64_t const &ErrorInfo) {
-  SMLoc ErrorLoc = Loc;
-  char const *Diag = 0;
+  bool invalidOperand(SMLoc const &Loc, OperandVector const &Operands,
+                      uint64_t const &ErrorInfo) {
+    SMLoc ErrorLoc = Loc;
+    char const *Diag = 0;
 
-  if (ErrorInfo != ~0U) {
-    if (ErrorInfo >= Operands.size()) {
-      Diag = "too few operands for instruction.";
-    } else {
-      MOSOperand const &Op = (MOSOperand const &)*Operands[ErrorInfo];
+    if (ErrorInfo != ~0U) {
+      if (ErrorInfo >= Operands.size()) {
+        Diag = "too few operands for instruction.";
+      } else {
+        MOSOperand const &Op = (MOSOperand const &)*Operands[ErrorInfo];
 
-      // TODO: See if we can do a better error than just "invalid ...".
-      if (Op.getStartLoc() != SMLoc()) {
-        ErrorLoc = Op.getStartLoc();
+        // TODO: See if we can do a better error than just "invalid ...".
+        if (Op.getStartLoc() != SMLoc()) {
+          ErrorLoc = Op.getStartLoc();
+        }
       }
     }
+
+    if (!Diag) {
+      Diag = "invalid operand for instruction";
+    }
+
+    return Error(ErrorLoc, Diag);
   }
 
-  if (!Diag) {
-    Diag = "invalid operand for instruction";
+  bool missingFeature(llvm::SMLoc const &Loc, uint64_t const &ErrorInfo) {
+    return Error(Loc,
+                 "instruction requires a CPU feature not currently enabled");
   }
 
-  return Error(ErrorLoc, Diag);
-}
+  bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
+    Inst.setLoc(Loc);
+    Out.EmitInstruction(Inst, STI);
 
-bool missingFeature(llvm::SMLoc const &Loc,
-                                  uint64_t const &ErrorInfo) {
-  return Error(Loc, "instruction requires a CPU feature not currently enabled");
-}
-
-bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
-  Inst.setLoc(Loc);
-  Out.EmitInstruction(Inst, STI);
-
-  return false;
-}
+    return false;
+  }
 
   /// MatchAndEmitInstruction - Recognize a series of operands of a parsed
   /// instruction as an actual MCInst and emit it to the specified MCStreamer.
@@ -234,22 +234,27 @@ bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
   /// On failure, the target parser is responsible for emitting a diagnostic
   /// explaining the match failure.
   bool MatchAndEmitInstruction(SMLoc Loc, unsigned &Opcode,
-                                           OperandVector &Operands,
-                                           MCStreamer &Out, uint64_t &ErrorInfo,
-                                           bool MatchingInlineAsm) override {
-  MCInst Inst;
-  SmallVector<NearMissInfo, 8> nearMisses;
-  unsigned MatchResult =
-      MatchInstructionImpl(Operands, Inst, &nearMisses, ErrorInfo, MatchingInlineAsm);
+                               OperandVector &Operands, MCStreamer &Out,
+                               uint64_t &ErrorInfo,
+                               bool MatchingInlineAsm) override {
+    MCInst Inst;
+    SmallVector<NearMissInfo, 8> nearMisses;
+    unsigned MatchResult = MatchInstructionImpl(Operands, Inst, &nearMisses,
+                                                ErrorInfo, MatchingInlineAsm);
 
-  switch (MatchResult) {
-  case Match_Success:        return emit(Inst, Loc, Out);
-  case Match_MissingFeature: return missingFeature(Loc, ErrorInfo);
-  case Match_InvalidOperand: return invalidOperand(Loc, Operands, ErrorInfo);
-  case Match_MnemonicFail:   return Error(Loc, "invalid instruction");
-  default:                   return true;
+    switch (MatchResult) {
+    case Match_Success:
+      return emit(Inst, Loc, Out);
+    case Match_MissingFeature:
+      return missingFeature(Loc, ErrorInfo);
+    case Match_InvalidOperand:
+      return invalidOperand(Loc, Operands, ErrorInfo);
+    case Match_MnemonicFail:
+      return Error(Loc, "invalid instruction");
+    default:
+      return true;
+    }
   }
-}
 
   /// ParseDirective - Parse a target specific assembler directive
   ///
@@ -318,6 +323,16 @@ bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
     Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
 
     while (getLexer().isNot(AsmToken::EndOfStatement)) {
+      if (!tryParseImmediate(Operands))
+        continue;
+
+      if (!parseOperand(Operands)) {
+        continue;
+      }
+
+      if (!tryParseRegisterOperand(Operands)) {
+        continue;
+      }
 
       if (!tryParseExpression(Operands)) {
         continue;
@@ -374,13 +389,28 @@ bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
     return RegNum;
   }
 
-  int parseRegisterName() {
-    int RegNum = parseRegisterName(&MatchRegisterName);
+  int parseRegisterName();
 
-    if (RegNum == MOS::NoRegister)
-      RegNum = parseRegisterName(&MatchRegisterAltName);
+  bool tryParseImmediate(OperandVector &Operands) {
+    if (Parser.getTok().is(AsmToken::Hash)) {
+      Lex();
+      AsmToken const &T = Parser.getTok();
+      // it's a hex constant
+      MCExpr const *Expression;
+      if (getParser().parseExpression(Expression))
+        return true;
 
-    return RegNum;
+      if (Parser.getTok().is(AsmToken::Integer)) {
+        Operands.push_back(MOSOperand::CreateImm(Expression, T.getLoc(), T.getEndLoc()));
+        return false;
+      }
+
+      /*
+      Operands.push_back( MOSOperand::CreateImm( T, T.getLoc(), T.getEndLoc());
+      */
+      return true;
+    }
+    return true;
   }
 
   bool tryParseRegisterOperand(OperandVector &Operands) {
@@ -415,11 +445,21 @@ bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
     SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
     Operands.push_back(MOSOperand::CreateImm(Expression, S, E));
     return false;
-  } // class llvm::MOSAsmParser
-}; // namespace llvm
-
+  }
+}; // class MOSAsmParser
 #define GET_MATCHER_IMPLEMENTATION
+#define GET_SUBTARGET_FEATURE_NAME
+#define GET_REGISTER_MATCHER
 #include "MOSGenAsmMatcher.inc"
+
+int MOSAsmParser::parseRegisterName() {
+  int RegNum = parseRegisterName(&MatchRegisterName);
+
+  if (RegNum == MOS::NoRegister)
+    RegNum = parseRegisterName(&MatchRegisterAltName);
+
+  return RegNum;
+}
 
 extern "C" void LLVMInitializeMOSAsmParser() {
   RegisterMCAsmParser<MOSAsmParser> X(getTheMOSTarget());

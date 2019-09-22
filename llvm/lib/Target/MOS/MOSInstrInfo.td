@@ -18,8 +18,8 @@ def BRK: MOSInst8<
     (ins),
     "brk",
     [], 
-    MOSOpcode< 0x00 > >;
-  // Requires<[Has6502]>;
+    MOSOpcode< 0x00 > >, 
+    Requires<[Has6502]>;
 
 /*
 def LDAIMM: MOSInst16< 
