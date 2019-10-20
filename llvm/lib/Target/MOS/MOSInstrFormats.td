@@ -53,13 +53,14 @@ class MOSInst8< dag outs, dag ins, string asmstr, list<dag> pattern,
 
 class MOSAsmOperand8< bits< 8 > operand > : MOSAsmOperand
 {
+  let Name = "MOSAsmOperand8";
   field bits< 8 > Operand8;
   let Operand8 = operand;
 }
 
-class MOSOpImm< bits< 8 > operand > : MOSAsmOperand8< operand >
+class MOSOpImm8< bits< 8 > operand > : MOSAsmOperand8< operand >
 {
-    let Name = "Imm";
+    let Name = "Imm8";
 }
 
 class MOSInst16< dag outs, dag ins, string asmstr, list<dag> pattern, 

@@ -35,7 +35,8 @@ MOSSubtarget::MOSSubtarget(const Triple &TT, const std::string &CPU,
 
       // Subtarget features
       m_hasTinyEncoding(false), m_has6502Insns(false), m_has6502XInsns(false),
-      m_has65C02Insns(false), m_hasSweet16Insns(false), ELFArch(false),
+      m_has65C02Insns(false), m_has65SC02Insns(false), 
+      m_hasSweet16Insns(false), ELFArch(false),
       m_FeatureSetDummy(false) {
   // Parse features string.
   ParseSubtargetFeatures(CPU, FS);

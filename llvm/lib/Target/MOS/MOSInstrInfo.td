@@ -21,6 +21,15 @@ def BRK: MOSInst8<
     MOSOpcode< 0x00 > >, 
     Requires<[Has6502]>;
 
+def ORA_imm: MOSInst16<
+  (outs),
+  (ins i8imm:$val),
+  "ora\t#val",
+  [],
+  MOSOpcode< 0x05 >, MOSOpImm8< 0x00 > >,
+    Requires<[Has6502]>;
+
+
 /*
 def LDAIMM: MOSInst16< 
   (outs A),

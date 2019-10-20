@@ -77,6 +77,7 @@ private:
   bool m_has6502Insns;
   bool m_has6502XInsns;
   bool m_has65C02Insns;
+  bool m_has65SC02Insns;
   bool m_hasSweet16Insns;
 
   /// The ELF e_flags architecture.

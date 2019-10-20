@@ -124,7 +124,19 @@ public:
 
   SMLoc getStartLoc() const { return Start; }
 
+  template<int64_t N, int64_t M>
+  bool isImmediate() const {
+    if (!isImm()) return false;
+    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) return false;
+    int64_t Value = CE->getValue();
+    return Value >= N && Value <= M;
+  }
+
   virtual bool isImm() const { return (Kind == k_Immediate); }
+  virtual bool isImm8() const { return isImmediate<0, (1 << 8) >(); }
+  virtual bool isImm16() const { return isImmediate<0, (1 << 16) >(); }
+
   virtual bool isMem() const { return (Kind == k_Memri); }
   virtual bool isReg() const { return (Kind == k_Register); }
   virtual bool isToken() const { return (Kind == k_Token); }
@@ -323,6 +335,7 @@ public:
     Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
 
     while (getLexer().isNot(AsmToken::EndOfStatement)) {
+
       if (!tryParseImmediate(Operands))
         continue;
 
