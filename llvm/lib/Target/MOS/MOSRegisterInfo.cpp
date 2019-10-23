@@ -49,7 +49,7 @@ MOSRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
   return nullptr;
 }
 
-unsigned MOSRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
+Register MOSRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   return 0;
 }
 

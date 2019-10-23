@@ -36,7 +36,7 @@ public:
   getCalleeSavedRegs(const MachineFunction *MF = 0) const override;
   const uint32_t *getCallPreservedMask(const MachineFunction &MF,
                                        CallingConv::ID CC) const override;
-  unsigned getFrameRegister(const MachineFunction &MF) const override;
+  virtual Register getFrameRegister(const MachineFunction &MF) const override;
 
   const TargetRegisterClass *
   getLargestLegalSuperClass(const TargetRegisterClass *RC,

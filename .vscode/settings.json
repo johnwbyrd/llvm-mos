@@ -6,7 +6,7 @@
     "cmake.configureSettings": {
         "LLVM_TARGETS_TO_BUILD": "X86",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
-        "CMAKE_LINKER" : "C:/git/llvm-project/build/ninja-clang-release/bin/lld-link.exe"
+        "CMAKE_LINKER" : "c:/Program Files/LLVM/bin/lld-link.exe"
     },
     "cmake.cacheInit": "../llvm-cache.cmake",
     "cmake.autoRestartBuild": true,
@@ -22,7 +22,10 @@
     "C_Cpp.clang_format_sortIncludes": true,
     "C_Cpp.default.cppStandard": "c++17",
     "C_Cpp.default.cStandard": "c11",
-    "C_Cpp.default.intelliSenseMode": "msvc-x64",
+    "C_Cpp.default.intelliSenseMode": "clang-x64",
     "cmake.clearOutputBeforeBuild": false,
-    "clang.executable": "c:/git/llvm-project/build/ninja-clang-release/install/bin/clang.exe"
+    "clang.executable": "c:/Program Files/LLVM/bin/clang.exe",
+    "C_Cpp.experimentalFeatures": "Enabled",
+    "C_Cpp.intelliSenseEngineFallback": "Enabled",
+    "C_Cpp.workspaceParsingPriority": "low"
 }
