@@ -12,13 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 
-class MOS6502HwMode: HwMode<"Feature6502">;
-
-class RedHwMode: HwMode<"FeatureRed">;
-class YellowHwMode: HwMode<"FeatureYellow">;
-class GreenHwMode: HwMode<"FeatureGreen">;
-class SWEET16HwMode: HwMode<"FeatureSWEET16">;
-
 // Most real registers on 6502 are 8 bits.
 class RealRegInfo: RegInfo< 8, 8, 8>;
 

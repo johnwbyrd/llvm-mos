@@ -41,7 +41,7 @@ public:
       : AsmPrinter(TM, std::move(Streamer)), MRI(*TM.getMCRegisterInfo()) {}
 
   StringRef getPassName() const override { return "MOS Assembly Printer"; }
-  void EmitInstruction(const MachineInstr *MI) override {};
+  void EmitInstruction(const MachineInstr *MI) override { int i = 0; i++ };
 
 private:
   const MCRegisterInfo &MRI;
