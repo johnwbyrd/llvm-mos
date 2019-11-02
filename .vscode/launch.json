@@ -5,6 +5,18 @@
     "version": "0.2.0",
     "configurations": [   
         {
+            "name": "llvm-mc --mattr=help",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
+            "args": ["--triple", "mos", "-debug", "--mattr=help", "blank.s"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/cmake/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },       
+        {
             "name": "Debug inst-brk.s",
             "type": "cppvsdbg",
             "request": "launch",

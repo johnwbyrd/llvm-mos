@@ -11,7 +11,8 @@
             "windowsSdkVersion": "10.0.18362.0",
             "cStandard": "c11",
             "cppStandard": "c++17",
-            "configurationProvider": "vector-of-bool.cmake-tools"
+            "configurationProvider": "vector-of-bool.cmake-tools",
+            "compilerPath": "c:/Program Files/LLVM/bin/clang-cl.exe"
         }
     ],
     "version": 4

@@ -14,6 +14,7 @@
     "C_Cpp.default.compileCommands": "${workspaceRoot}/build/cmake/compile_commands.json",
     "C_Cpp.clang_format_fallbackStyle": "LLVM",
     "C_Cpp.clang_format_style": "LLVM",
+    "C_Cpp.clang_format_path": "c:/Program Files/LLVM/bin/clang-format.exe",
     "C_Cpp.loggingLevel": "Debug",
     "files.associations": {
         "*.inc": "cpp",
@@ -22,10 +23,9 @@
     "C_Cpp.clang_format_sortIncludes": true,
     "C_Cpp.default.cppStandard": "c++17",
     "C_Cpp.default.cStandard": "c11",
-    "C_Cpp.default.intelliSenseMode": "clang-x64",
+    "C_Cpp.default.intelliSenseMode": "msvc-x64",
     "cmake.clearOutputBeforeBuild": false,
     "clang.executable": "c:/Program Files/LLVM/bin/clang.exe",
     "C_Cpp.experimentalFeatures": "Enabled",
-    "C_Cpp.intelliSenseEngineFallback": "Enabled",
     "C_Cpp.workspaceParsingPriority": "low"
 }
