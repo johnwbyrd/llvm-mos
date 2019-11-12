@@ -21,7 +21,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
-            "args": ["-arch=mos", "-mcpu=mos-generic", "-debug", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-brk.s"],
+            "args": ["-triple", "mos-generic", "-debug", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-brk.s"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/cmake/bin",
             "environment": [],
