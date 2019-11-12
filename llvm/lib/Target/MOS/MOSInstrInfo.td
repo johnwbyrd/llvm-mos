@@ -30,11 +30,11 @@ def ORA_imm: MOSInst16<
     Requires<[Has6502]>;
 
 
-/*
-def LDAIMM: MOSInst16< 
-  (outs A),
-  (ins i8imm:$src),
-  "lda\t$src",
-  [(set A, (i8imm:$src))],
-  MOSOpcode< 0xa9 > >;
-  */
+def LDA_imm: MOSInst16< 
+  (outs),
+  (ins i8imm:$val),
+  "lda\t$val",
+  [],
+  MOSOpcode< 0xa9 >, MOSOpImm8< 0x00 > >,
+  Requires<[Has6502]>;
+  
