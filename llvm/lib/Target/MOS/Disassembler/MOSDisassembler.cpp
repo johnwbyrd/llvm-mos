@@ -62,7 +62,7 @@ extern "C" void LLVMInitializeMOSDisassembler() {
                                          createMOSDisassembler);
 }
 
-#include "MOSGenDisassemblerTables.inc"
+// #include "MOSGenDisassemblerTables.inc"
 
 typedef DecodeStatus (*DecodeFunc)(MCInst &MI, unsigned insn, uint64_t Address,
                                    const void *Decoder);
