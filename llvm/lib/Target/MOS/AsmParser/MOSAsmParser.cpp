@@ -252,7 +252,7 @@ public:
     MCInst Inst;
     SmallVector<NearMissInfo, 8> nearMisses;
     unsigned MatchResult = MatchInstructionImpl(Operands, Inst, &nearMisses,
-                                                ErrorInfo, MatchingInlineAsm);
+                                                MatchingInlineAsm);
 
     switch (MatchResult) {
     case Match_Success:
@@ -455,14 +455,15 @@ public:
     if (getParser().parseExpression(Expression))
       return true;
 
-    SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
+    SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer());
     Operands.push_back(MOSOperand::CreateImm(Expression, S, E));
     return false;
   }
 }; // class MOSAsmParser
 #define GET_MATCHER_IMPLEMENTATION
-#define GET_SUBTARGET_FEATURE_NAME
+// #define GET_SUBTARGET_FEATURE_NAME
 #define GET_REGISTER_MATCHER
+// #define GET_MNEMONIC_SPELL_CHECKER
 #include "MOSGenAsmMatcher.inc"
 
 int MOSAsmParser::parseRegisterName() {

@@ -58,6 +58,30 @@ void MOSMCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
   emitInstruction(BinaryOpCode, Size, STI, OS);
 }
 
+unsigned MOSMCCodeEmitter::getMachineOpValue(const MCInst &MI, const MCOperand &MO,
+                             SmallVectorImpl<MCFixup> &Fixups,
+                             const MCSubtargetInfo &STI) const
+{
+    if (MO.isImm())
+    return MO.getImm();
+
+  assert(MO.isExpr());
+  /*
+  const MCExpr *Expr = MO.getExpr();
+  if (const MOSMCExpr *SExpr = dyn_cast<MOSMCExpr>(Expr)) {
+    MCFixupKind Kind = (MCFixupKind)SExpr->getFixupKind();
+    Fixups.push_back(MCFixup::create(0, Expr, Kind));
+    return 0;
+  }
+
+  int64_t Res;
+  if (Expr->evaluateAsAbsolute(Res))
+    return Res;
+*/
+  llvm_unreachable("Unhandled expression!");
+  return 0;
+}
+
 MCCodeEmitter *createMOSMCCodeEmitter(const MCInstrInfo &MCII,
                                       const MCRegisterInfo &MRI,
                                       MCContext &Ctx) {

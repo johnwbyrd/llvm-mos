@@ -19,7 +19,11 @@
     "files.associations": {
         "*.inc": "cpp",
         "memory": "cpp",
-        "*.def": "cpp"
+        "*.def": "cpp",
+        "deque": "cpp",
+        "list": "cpp",
+        "vector": "cpp",
+        "xstring": "cpp"
     },
     "C_Cpp.clang_format_sortIncludes": true,
     "C_Cpp.default.cppStandard": "c++17",

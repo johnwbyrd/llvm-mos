@@ -17,16 +17,15 @@ def BRK: MOSInst8<
     (outs),
     (ins),
     "brk",
-    [], 
-    MOSOpcode< 0x00 > >, 
+    [] >, 
     Requires<[Has6502]>;
 
-def ORA_imm: MOSInst16<
-  (outs),
-  (ins i8imm:$val),
-  "ora\t#val",
-  [],
-  MOSOpcode< 0x05 >, MOSOpImm8< 0x00 > >,
+def ASL_imm: MOSInst8< 
+    (outs),
+    (ins),
+    "asl",
+    [], 
+    0x0a>, 
     Requires<[Has6502]>;
 
 
@@ -34,7 +33,11 @@ def LDA_imm: MOSInst16<
   (outs),
   (ins i8imm:$val),
   "lda\t$val",
-  [],
-  MOSOpcode< 0xa9 >, MOSOpImm8< 0x00 > >,
-  Requires<[Has6502]>;
+  [] >,
+  Requires<[Has6502]>
+  {
+      bits<8> val;
+      let Inst{7-0} = 0xa9;
+      let Inst{15-8} = val;
+  }
   
