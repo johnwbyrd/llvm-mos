@@ -31,7 +31,7 @@ def ASL_imm: MOSInst8<
 
 def LDA_imm: MOSInst16< 
   (outs),
-  (ins i8imm:$val),
+  (ins imm8:$val),
   "lda\t$val",
   [] >,
   Requires<[Has6502]>

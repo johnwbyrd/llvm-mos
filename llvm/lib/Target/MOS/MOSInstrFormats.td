@@ -25,6 +25,17 @@ class MOSInst< dag outs, dag ins, string asmstr, list<dag> pattern> : Instructio
   let DecoderNamespace = "MOS";
 }
 
+class ImmediateAsmOperand<string name>
+  : AsmOperandClass {
+  let Name = name;
+  let RenderMethod = "addImmOperands";
+  let DiagnosticType = !strconcat("Invalid", name);
+}
+
+def imm8 : Operand<i32> {
+  let ParserMatchClass = ImmediateAsmOperand<"Imm8">;
+}
+
 class MOSInst8< dag outs, dag ins, string asmstr, list<dag> pattern, bits<8> opcode = 0> :
     MOSInst< outs, ins, asmstr, pattern>
 {

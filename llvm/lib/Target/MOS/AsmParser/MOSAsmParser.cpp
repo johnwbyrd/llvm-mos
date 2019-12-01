@@ -188,6 +188,14 @@ class MOSAsmParser : public MCTargetAsmParser {
 #include "MOSGenAsmMatcher.inc"
 
 public:
+
+ enum MOSMatchResultTy {
+    Match_UnknownError = FIRST_TARGET_MATCH_RESULT_TY,
+#define GET_OPERAND_DIAGNOSTIC_TYPES
+#include "MOSGenAsmMatcher.inc"
+
+  };
+
   MOSAsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
       : MCTargetAsmParser(Options, STI, MII), STI(STI), Parser(Parser) {
@@ -250,10 +258,8 @@ public:
                                uint64_t &ErrorInfo,
                                bool MatchingInlineAsm) override {
     MCInst Inst;
-    SmallVector<NearMissInfo, 8> nearMisses;
-    unsigned MatchResult = MatchInstructionImpl(Operands, Inst, &nearMisses,
+    unsigned MatchResult = MatchInstructionImpl(Operands, Inst, ErrorInfo,
                                                 MatchingInlineAsm);
-
     switch (MatchResult) {
     case Match_Success:
       return emit(Inst, Loc, Out);
@@ -263,6 +269,10 @@ public:
       return invalidOperand(Loc, Operands, ErrorInfo);
     case Match_MnemonicFail:
       return Error(Loc, "invalid instruction");
+    case Match_InvalidImm8:
+      return Error(Loc, "operand too large; must be an 8-bit value");
+    case Match_NearMisses:
+      return Error(Loc, "found some near misses");
     default:
       return true;
     }

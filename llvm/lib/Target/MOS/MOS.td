@@ -55,9 +55,8 @@ def MOSAsmWriter : AsmWriter {
 //===---------------------------------------------------------------------===//
 
 def MOSAsmParser : AsmParser {
-  let ShouldEmitMatchRegisterName = 1;
   let ShouldEmitMatchRegisterAltName = 1;
-  let ReportMultipleNearMisses = 1;
+  let ReportMultipleNearMisses = 0;
   string RegisterPrefix = "";
   string TokenizingCharacters = "(),[]*!";
 }
