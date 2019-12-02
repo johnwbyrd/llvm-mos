@@ -16,12 +16,73 @@ TableGen
 Introduction
 ============
 
-TableGen's purpose is to help a human develop and maintain records of
-domain-specific information.  Because there may be a large number of these
-records, it is specifically designed to allow writing flexible descriptions and
-for common features of these records to be factored out.  This reduces the
-amount of duplication in the description, reduces the chance of error, and makes
-it easier to structure domain specific information.
+TableGen is a domain-specific language for compactly expressing backend 
+representations of target-specific machine language within LLVM.  The 
+llvm-tblgen tool takes as input files with a .td (TableGen Description) 
+extension. It produces as output .inc files, which are snippets of C++ code 
+that you can #include in the classes that implement your LLVM backend. 
+
+TableGen .td files act as a single source of truth for the source and binary 
+representations of machine-language instructions for each target platform. 
+Additionally, TableGen files describe the operation of each target instruction 
+abstractly as a SelectionDAG, including the types of inputs and outputs for 
+each instruction, as well as an abstract representation of the inputs, 
+outputs, and actions that each target instruction is responsible for.
+ 
+TableGen's functionality can be compared to yacc or antlr or other parser 
+generators; however, TableGen is not a general-purpose parsing language. It is 
+intended specifically to fill out large quantities of default information, 
+within the myriad tables and objects that your LLVM backend code will require.
+ 
+TableGen is heavily biased towards a DRY (Don't Repeat Yourself) 
+representation of the properties of a target.  As a result, the TableGen 
+syntax may initially seem terse to the point of rudeness.  Reviewing the 
+syntax with respect to simpler LLVM backends, such as the .td files in Sparc 
+backend, can serve as an object introduction to TableGen.
+ 
+TableGen uses a template system for creating more complex objects from simple
+ones.  This template system has some syntax in common with C++, but it is
+not C++, and should not be confused with it.  Abstract classes are represented
+as class types, and instances of a class are represented as def types.
+
+The base class types in TableGen are not arbitrary.  Most platform .td files 
+start by including llvm/include/llvm/Target/Target.td .  A solid understanding 
+of the base classes in this file is a necessary prerequisite for writing or
+maintaining an LLVM backend.  Most of your implementation time in TableGen will
+be spent extending these base classes and then instancing your subclasses,
+in order to explain all the nitpicky details of your target to LLVM.
+ 
+Much of the responsibility for implementing assembly and disassembly parsers 
+can be subsumed by TableGen.  As TableGen has been developed over the years, 
+more and more compiler features which would normally be dealt with by 
+custom-written C++, have been pushed into TableGen's responsibility.  As a 
+result, TableGen can handle much of the heavy lifting that would go into 
+representing the details of your target, at some cost to readability of the
+TableGen .td files.
+ 
+TableGen can be convinced to generate different assembly language parser for 
+different variants of assembly sources (e.g. AT&T versus Intel); it can handle 
+parsing of complicated platform-specific operand formats; and it can handle 
+automatic generation of near-miss information for assembler instructions ("did 
+you mean ADDI?").  Before implementing a new feature in your particular 
+backend, it is worthwhile to ask whether the feature has already been 
+partially or completely implemented in TableGen, before writing any code. 
+ 
+TableGen has specific export functionality built in for parsing, analyzing, 
+and emitting at least the following types of information:
+ 
+- Assembler intrinsics 
+- Assembly language matchers (per language variant) and assembly language writers
+  per language variant
+- Per-platform calling conventions
+- Instruction selection: fast, DAG, and global
+- Pseudo-instruction lowering 
+- Registers, register banks, aliases, and bank priorities
+- Platform subtargets
+- Option parsers
+- Exegesis (instruction benchmarking) information
+
+Some backends add platform-specific export functionality into TableGen itself.
 
 The core part of TableGen parses a file, instantiates the declarations, and
 hands the result off to a domain-specific `backend`_ for processing.
@@ -30,9 +91,9 @@ The current major users of TableGen are :doc:`../CodeGenerator`
 and the
 `Clang diagnostics and attributes <http://clang.llvm.org/docs/UsersManual.html#controlling-errors-and-warnings>`_.
 
-Note that if you work on TableGen much, and use emacs or vim, that you can find
-an emacs "TableGen mode" and a vim language file in the ``llvm/utils/emacs`` and
-``llvm/utils/vim`` directories of your LLVM distribution, respectively.
+TableGen's syntax has become sufficiently stable that formatters for several
+common editors exist in ``llvm/utils``.  See the emacs, vim, vscode, and jedit
+subdirectories in your LLVM source distribution.
 
 .. _intro:
 
@@ -279,26 +340,3 @@ in different contexts (like Instruction names), so your back-end should print
 a meta-information list that can be shaped into different compile-time formats.
 
 See the `TableGen BackEnds <BackEnds.html>`_ for more information.
-
-TableGen Deficiencies
-=====================
-
-Despite being very generic, TableGen has some deficiencies that have been
-pointed out numerous times. The common theme is that, while TableGen allows
-you to build Domain-Specific-Languages, the final languages that you create
-lack the power of other DSLs, which in turn increase considerably the size
-and complexity of TableGen files.
-
-At the same time, TableGen allows you to create virtually any meaning of
-the basic concepts via custom-made back-ends, which can pervert the original
-design and make it very hard for newcomers to understand the evil TableGen
-file.
-
-There are some in favour of extending the semantics even more, but making sure
-back-ends adhere to strict rules. Others are suggesting we should move to less,
-more powerful DSLs designed with specific purposes, or even re-using existing
-DSLs.
-
-Either way, this is a discussion that will likely span across several years,
-if not decades. You can read more in the `TableGen Deficiencies <Deficiencies.html>`_
-document.
