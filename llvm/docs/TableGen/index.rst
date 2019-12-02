@@ -16,35 +16,38 @@ TableGen
 Introduction
 ============
 
-TableGen is a domain-specific language for compactly expressing backend 
-representations of target-specific machine language within LLVM.  The 
-llvm-tblgen tool takes as input files with a .td (TableGen Description) 
-extension. It produces as output .inc files, which are snippets of C++ code 
-that you can #include in the classes that implement your LLVM backend. 
+TableGen is a domain-specific, declarative language for compactly expressing
+detailed information about target platforms, including their processor
+families, register sets, and instruction formats and functionality.
 
 TableGen .td files act as a single source of truth for the source and binary 
 representations of machine-language instructions for each target platform. 
 Additionally, TableGen files describe the operation of each target instruction 
-abstractly as a SelectionDAG, including the types of inputs and outputs for 
-each instruction, as well as an abstract representation of the inputs, 
-outputs, and actions that each target instruction is responsible for.
- 
+abstractly as a SelectionDAG.  This SelectionDAG includes the types of inputs
+and outputs for each instruction, as well as an algebraic representation of
+the logic that each instruction performs.
+
+The llvm-tblgen tool takes as input files with a .td (TableGen Description) 
+extension. Normally, it produces as output .inc files, which are snippets of
+C++ code that you can #include in the classes that implement your LLVM backend.  
+Additionally, command-line options to the TableGen tool permit dumping of
+per-platform information in text formats. 
+
 TableGen's functionality can be compared to yacc or antlr or other parser 
-generators; however, TableGen is not a general-purpose parsing language. It is 
-intended specifically to fill out large quantities of default information, 
+generators; however, TableGen is not a general-purpose parsing language.
+It is intended specifically to fill out large quantities of default information, 
 within the myriad tables and objects that your LLVM backend code will require.
- 
-TableGen is heavily biased towards a DRY (Don't Repeat Yourself) 
-representation of the properties of a target.  As a result, the TableGen 
-syntax may initially seem terse to the point of rudeness.  Reviewing the 
-syntax with respect to simpler LLVM backends, such as the .td files in Sparc 
-backend, can serve as an object introduction to TableGen.
- 
+
 TableGen uses a template system for creating more complex objects from simple
 ones.  This template system has some syntax in common with C++, but it is
 not C++, and should not be confused with it.  Abstract classes are represented
 as class types, and instances of a class are represented as def types.
 
+TableGen's design is intentionally, and extremely, DRY (Don't Repeat Yourself).
+As a result, the TableGen syntax may initially seem terse to the point of
+rudeness. Reviewing the TableGen syntax as used in simpler LLVM backends, such
+as the .td files in Sparc backend, can serve as an object introduction to TableGen.
+ 
 The base class types in TableGen are not arbitrary.  Most platform .td files 
 start by including llvm/include/llvm/Target/Target.td .  A solid understanding 
 of the base classes in this file is a necessary prerequisite for writing or
@@ -58,9 +61,10 @@ more and more compiler features which would normally be dealt with by
 custom-written C++, have been pushed into TableGen's responsibility.  As a 
 result, TableGen can handle much of the heavy lifting that would go into 
 representing the details of your target, at some cost to readability of the
-TableGen .td files.
+TableGen .td files.  This includes generating optimized code for critical
+parts of back-end assemblers and disassemblers.
  
-TableGen can be convinced to generate different assembly language parser for 
+TableGen can be convinced to generate different assembly language parsers for 
 different variants of assembly sources (e.g. AT&T versus Intel); it can handle 
 parsing of complicated platform-specific operand formats; and it can handle 
 automatic generation of near-miss information for assembler instructions ("did 
@@ -78,11 +82,12 @@ and emitting at least the following types of information:
 - Instruction selection: fast, DAG, and global
 - Pseudo-instruction lowering 
 - Registers, register banks, aliases, and bank priorities
-- Platform subtargets
+- Platform subtargets, and the instructions they support
 - Option parsers
 - Exegesis (instruction benchmarking) information
 
 Some backends add platform-specific export functionality into TableGen itself.
+See the ``llvm/utils/TableGen`` directory in your distribution for details.
 
 The core part of TableGen parses a file, instantiates the declarations, and
 hands the result off to a domain-specific `backend`_ for processing.
