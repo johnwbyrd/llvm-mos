@@ -9,23 +9,35 @@ Introduction
 ============
 
 Despite being very generic, TableGen has some deficiencies that have been
-pointed out numerous times. The common theme is that, while TableGen allows
-you to build Domain-Specific-Languages, the final languages that you create
+pointed out numerous times.
+
+TableGen is written in C++.  C++ is fast, but since TableGen essentially
+converts text-format files to text-format files, TableGen requires a 
+great deal of internal complexity to express relatively simple ideas.
+Hacking TableGen takes more time than it ought.
+
+As of this writing, for many important TableGen concepts, the documentation
+is the source code itself.  This is a side effect of TableGen's 
+complexity.
+
+TableGen's declarative language has been called upon to do more and more
+over the years, and it is not growing gracefully.  Many TableGen 
+concepts were added as needed, not part of a grand design, and the 
+inconsistent language treatment of similar ideas reflects this.  TableGen
+also suppports per-platform behavior, increasing its complexity for each
+supported platform.
+
+The common theme is that, while TableGen allows you to build
+Domain-Specific-Languages, the final languages that you create
 lack the power of other DSLs, which in turn increase considerably the size
 and complexity of TableGen files.
 
-At the same time, TableGen allows you to create virtually any meaning of
-the basic concepts via custom-made back-ends, which can pervert the original
-design and make it very hard for newcomers to understand it.
-
-There are some in favour of extending the semantics even more, but making sure
-back-ends adhere to strict rules. Others suggesting we should move to more
-powerful DSLs designed with specific purposes, or even re-using existing
+There are some in favour of extending the semantics even more, while making sure
+back-ends adhere to strict rules. Others suggest we should move to more
+powerful DSLs designed with specific purposes, or even re-use existing
 DSLs.
 
-Known Problems
-==============
-
-TODO: Add here frequently asked questions about why TableGen doesn't do
-what you want, how it might, and how we could extend/restrict it to
-be more use friendly.
+While there are reasons to dislike TableGen language, there is a vast amount
+of work currently invested in the language.  See for example the X86 backend.
+The effort required in replacing or transitioning TableGen should not be
+underestimated.

@@ -1,21 +1,17 @@
 {
-    "cmake.buildDirectory": "${workspaceRoot}/build/cmake",
-    "cmake.installPrefix": "${workspaceRoot}/build/cmake/install",
+    "cmake.buildDirectory": "${workspaceRoot}/build",
+    "cmake.installPrefix": "${workspaceRoot}/build/install",
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.generator": "Ninja",
     "cmake.configureSettings": {
-        "LLVM_TARGETS_TO_BUILD": "X86",
+        "LLVM_TARGETS_TO_BUILD": "all",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
-        "CMAKE_LINKER" : "c:/Program Files/LLVM/bin/lld-link.exe"
+        "CMAKE_INSTALL_PREFIX": "${workspaceRoot}/build/install",
+        "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": "MOS",
+        "LLVM_ENABLE_PROJECTS": "clang;lld"
     },
-    "cmake.cacheInit": "../llvm-cache.cmake",
     "cmake.autoRestartBuild": true,
     "cmake.buildBeforeRun": false,
-    "C_Cpp.default.compileCommands": "${workspaceRoot}/build/cmake/compile_commands.json",
-    "C_Cpp.clang_format_fallbackStyle": "LLVM",
-    "C_Cpp.clang_format_style": "LLVM",
-    "C_Cpp.clang_format_path": "c:/Program Files/LLVM/bin/clang-format.exe",
-    "C_Cpp.loggingLevel": "Debug",
     "files.associations": {
         "*.inc": "cpp",
         "memory": "cpp",
@@ -23,14 +19,30 @@
         "deque": "cpp",
         "list": "cpp",
         "vector": "cpp",
-        "xstring": "cpp"
+        "xstring": "cpp",
+        "algorithm": "cpp"
     },
-    "C_Cpp.clang_format_sortIncludes": true,
-    "C_Cpp.default.cppStandard": "c++17",
-    "C_Cpp.default.cStandard": "c11",
-    "C_Cpp.default.intelliSenseMode": "msvc-x64",
-    "cmake.clearOutputBeforeBuild": false,
-    "clang.executable": "c:/Program Files/LLVM/bin/clang.exe",
-    "C_Cpp.experimentalFeatures": "Enabled",
-    "C_Cpp.workspaceParsingPriority": "low"
-}
+    "cmake.clearOutputBeforeBuild": true,
+    "restructuredtext.sphinxBuildPath": "c:/Anaconda3/Scripts/sphinx-build.exe",
+    "python.condaPath": "c:/Anaconda3/Scripts/conda.exe",
+    "python.pythonPath": "c:/anaconda3/envs/varantic/python.exe",
+    "editor.rulers": [
+        80,
+        120
+    ],
+    "restructuredtext.confPath": "${workspaceFolder}\\llvm\\docs",
+    "clangd.path": "C:/Program Files/LLVM/bin/clangd.exe",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceRoot}/build",
+        "--clang-tidy",
+        "--clang-tidy-checks=-*,clang*,llvm*,bugprone*,cpp*,portability*,readability*"
+    ],
+    "lldb.executable": "c:/program files/llvm/bin/lldb.exe",
+    "C_Cpp.autocomplete": "Disabled",
+    "C_Cpp.default.intelliSenseMode": "clang-x64",
+    "C_Cpp.enhancedColorization": "Enabled",
+    "C_Cpp.intelliSenseEngine": "Disabled",
+    "C_Cpp.clang_format_fallbackStyle": "LLVM",
+    "C_Cpp.clang_format_style": "LLVM",
+    "C_Cpp.workspaceParsingPriority": "low",
+} 

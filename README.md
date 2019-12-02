@@ -1,7 +1,14 @@
-# LLVM Experimental MOS Fork
+# Experimental LLVM backend for MOS 6502 and variants
 
-This is an experimental effort to provide MOS target support for LLVM.
-This fork of LLVM doesn't do anything useful yet.  Come back later.
+This is an experimental effort to create a MOS 6502 backend for the LLVM
+compiler suite.  This effort is *incomplete* and does not compile C code yet.
+
+**This repository will be rebased!**  Do not fork this repository without
+coordinating with [me](mailto:johnwbyrd-at-gmail-dot-com).  Otherwise your
+work may be lost!
+
+For important information and current status of this fork, please see
+[the Wiki](https://github.com/johnwbyrd/llvm-mos/wiki).
 
 ------------
 
