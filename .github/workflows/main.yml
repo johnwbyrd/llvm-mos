@@ -13,5 +13,5 @@ jobs:
       run: |
         mkdir -p build/stage1
         cd build/stage1
-        cmake ../../llvm -C ../../llvm-cache.cmake -G Ninja
+        cmake ../../llvm -G Ninja
         cmake --build . --target install --config Release
