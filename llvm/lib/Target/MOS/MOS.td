@@ -61,17 +61,20 @@ def MOSAsmParser : AsmParser {
   string TokenizingCharacters = "(),[]*!";
 }
 
-def MOSAsmParserVariant : AsmParserVariant {
+def MOSAsmParserVariantDefault : AsmParserVariant {
   int Variant = 0;
-  // Recognize hard coded registers.
+  let Name = "generic";
 }
 
 def MOSAsmParserVariantCA65 : AsmParserVariant {
   int Variant = 1;
   let Name = "ca65";
-  string RegisterPrefix = "";
 }
 
+def MOSAsmParserVariantXA65 : AsmParserVariant {
+  int Variant = 2;
+  let Name = "xa65";
+}
 
 //===---------------------------------------------------------------------===//
 // Target Declaration
@@ -82,6 +85,8 @@ def MOS : Target {
   let AssemblyWriters        = [MOSAsmWriter];
 
   let AssemblyParsers        = [MOSAsmParser];
-  let AssemblyParserVariants = [MOSAsmParserVariant, MOSAsmParserVariantCA65];
+  let AssemblyParserVariants = [MOSAsmParserVariantDefault, 
+                                MOSAsmParserVariantCA65, 
+                                MOSAsmParserVariantXA65];
 }
 

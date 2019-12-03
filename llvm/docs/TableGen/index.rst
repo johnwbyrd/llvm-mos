@@ -18,7 +18,8 @@ Introduction
 
 TableGen is a domain-specific, declarative language for compactly expressing
 detailed information about target platforms, including their processor
-families, register sets, and instruction formats and functionality.
+families and register sets, as well as detailed information about every 
+machine-languge instruction that each platform supports.
 
 TableGen .td files act as a single source of truth for the source and binary 
 representations of machine-language instructions for each target platform. 
@@ -27,31 +28,39 @@ abstractly as a SelectionDAG.  This SelectionDAG includes the types of inputs
 and outputs for each instruction, as well as an algebraic representation of
 the logic that each instruction performs.
 
+TableGen's functionality can be roughly compared to yacc or antlr or other parser 
+generators, in that it reads files describing data structures, and writes out
+code and tables for representing and parsing those data structures. However,
+unlike yacc or antlr, TableGen is not a general-purpose parsing framework. It
+is intended specifically to fill out large quantities of default information
+specifically for LLVM, including the myriad tables and objects that your LLVM
+backend code will consume.
+
 The llvm-tblgen tool takes as input files with a .td (TableGen Description) 
 extension. Normally, it produces as output .inc files, which are snippets of
 C++ code that you can #include in the classes that implement your LLVM backend.  
 Additionally, command-line options to the TableGen tool permit dumping of
-per-platform information in text formats. 
-
-TableGen's functionality can be compared to yacc or antlr or other parser 
-generators; however, TableGen is not a general-purpose parsing language.
-It is intended specifically to fill out large quantities of default information, 
-within the myriad tables and objects that your LLVM backend code will require.
+per-platform information in JSON and other text formats. 
 
 TableGen uses a template system for creating more complex objects from simple
 ones.  This template system has some syntax in common with C++, but it is
-not C++, and should not be confused with it.  Abstract classes are represented
-as class types, and instances of a class are represented as def types.
+not C++, and should not be confused with C++.  C++ is procedural, but TableGen
+is declarative.  With the exception of short bits of inlined C++ code within
+TableGen, you should not think of TableGen as a procedural language.
+
+Within TableGen, abstract collections of values and properties are denoted
+as class types.  Concrete instances of a class are represented as def types.
 
 TableGen's design is intentionally, and extremely, DRY (Don't Repeat Yourself).
 As a result, the TableGen syntax may initially seem terse to the point of
 rudeness. Reviewing the TableGen syntax as used in simpler LLVM backends, such
 as the .td files in Sparc backend, can serve as an object introduction to TableGen.
  
-The base class types in TableGen are not arbitrary.  Most platform .td files 
-start by including llvm/include/llvm/Target/Target.td .  A solid understanding 
-of the base classes in this file is a necessary prerequisite for writing or
-maintaining an LLVM backend.  Most of your implementation time in TableGen will
+The base class types in TableGen are not arbitrary.  LLVM backends expect your
+TableGen code to describe and define at least a base set of TableGen objects.
+Most platform .td files start by including llvm/include/llvm/Target/Target.td .
+This file is required reading for anyone who needs to create or hack TableGen
+files. Most of your implementation time in TableGen will
 be spent extending these base classes and then instancing your subclasses,
 in order to explain all the nitpicky details of your target to LLVM.
  
@@ -63,6 +72,20 @@ result, TableGen can handle much of the heavy lifting that would go into
 representing the details of your target, at some cost to readability of the
 TableGen .td files.  This includes generating optimized code for critical
 parts of back-end assemblers and disassemblers.
+
+TableGen shines when you need to express all the details of your machine-code
+formats and instructions to LLVM.  For example, support exists in TableGen
+to describe: the input and output properties of any instruction; its
+equivalent SelectionDAG; its length; whether it is a branch, or a return,
+or whether it ends a scope, or is a barrier, or whether it reads or writes 
+memory, or whether it needs special register allocation requirements, 
+whether it operates on subregisters, and so forth.  Because LLVM already
+supports so many different platforms, it is difficult to find any instruction
+concepts that are not already supported to some extent in TableGen.
+
+However, because TableGen ultimately spits out C++ code fragments, nothing
+prevents you from writing your own custom C++ code to override or reimplement
+touchy bits of the parsing and generation for your platform.
  
 TableGen can be convinced to generate different assembly language parsers for 
 different variants of assembly sources (e.g. AT&T versus Intel); it can handle 
@@ -70,19 +93,21 @@ parsing of complicated platform-specific operand formats; and it can handle
 automatic generation of near-miss information for assembler instructions ("did 
 you mean ADDI?").  Before implementing a new feature in your particular 
 backend, it is worthwhile to ask whether the feature has already been 
-partially or completely implemented in TableGen, before writing any code. 
+partially or completely implemented in TableGen, before you write any new
+code. 
  
 TableGen has specific export functionality built in for parsing, analyzing, 
 and emitting at least the following types of information:
  
 - Assembler intrinsics 
-- Assembly language matchers (per language variant) and assembly language writers
-  per language variant
-- Per-platform calling conventions
+- Machine-code instruction formats and actions, in exhaustive detail
+- Assembly language matchers, per assembly language variant
+- Assembly language writers, per assembly language variant
+- Calling conventions
 - Instruction selection: fast, DAG, and global
 - Pseudo-instruction lowering 
 - Registers, register banks, aliases, and bank priorities
-- Platform subtargets, and the instructions they support
+- Platform subtargets
 - Option parsers
 - Exegesis (instruction benchmarking) information
 

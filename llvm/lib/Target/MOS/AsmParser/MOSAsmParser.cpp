@@ -312,6 +312,7 @@ public:
     case AsmToken::Dot:
       return tryParseExpression(Operands);
     case AsmToken::Plus:
+    case AsmToken::Hash:
     case AsmToken::Minus: {
       // If the sign preceeds a number, parse the number,
       // otherwise treat the sign a an independent token.
@@ -343,6 +344,12 @@ public:
                                 OperandVector &Operands) override {
     // todo
     Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
+
+    if (getLexer().is(AsmToken::Hash))
+    {
+       int i = 1;
+       /// it's an immediate
+    }
 
     while (getLexer().isNot(AsmToken::EndOfStatement)) {
 
@@ -418,20 +425,13 @@ public:
     if (Parser.getTok().is(AsmToken::Hash)) {
       Lex();
       AsmToken const &T = Parser.getTok();
-      // it's a hex constant
-      MCExpr const *Expression;
-      if (getParser().parseExpression(Expression))
-        return true;
 
-      if (Parser.getTok().is(AsmToken::Integer)) {
-        Operands.push_back(MOSOperand::CreateImm(Expression, T.getLoc(), T.getEndLoc()));
+  /*
+      if (T.is(AsmToken::Integer)) {
+        Operands.push_back(MOSOperand::CreateImm( T, T.getLoc(), T.getEndLoc() );
         return false;
       }
-
-      /*
-      Operands.push_back( MOSOperand::CreateImm( T, T.getLoc(), T.getEndLoc());
-      */
-      return true;
+  */
     }
     return true;
   }
