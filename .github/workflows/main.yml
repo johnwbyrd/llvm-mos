@@ -1,0 +1,17 @@
+name: CI
+
+on: [push]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Prepare a cmake environment
+      run: |
+        mkdir build/stage1
+        cd build/stage1
+        cmake ../../llvm -C ../../llvm-cache.cmake -G Ninja
+        cmake --build . --target install --config Release
