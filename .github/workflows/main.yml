@@ -13,5 +13,5 @@ jobs:
       run: |
         mkdir -p build/stage1
         cd build/stage1
-        cmake ../../llvm
+        cmake ../../llvm -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
         cmake --build . --target install --config Release
