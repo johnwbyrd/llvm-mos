@@ -1,7 +1,18 @@
 # LLVM Experimental MOS Fork
 
-This is an experimental effort to provide MOS target support for LLVM.
-This fork of LLVM doesn't do anything useful yet.  Come back later.
+*This experimental fork does nothing useful at this time.  Please come back later.*
+
+This is an experimental effort to provide MOS target support for LLVM, including support for variants of the MOS 65xx architecture.  At some point, clang may have this 65xx target added to it, but current work focus is on getting the 6502 assembly backend to be stable.
+
+Current status:
+
+- Dummy MOS target added 
+- Added a few MOS target instructions in TableGen
+- Descriptions and subtargets added for some common 65xx variants
+- Proof of concept operand and instruction parsing (needs to be fleshed out)
+- Development environment for Visual Studio Code
+
+Do not fork this repository.  The contents of this repository may be rebased randomly at any time.
 
 ------------
 
