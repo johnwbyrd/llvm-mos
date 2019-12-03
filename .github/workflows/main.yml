@@ -9,9 +9,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: Prepare a cmake environment
+    - name: Create stage1 compiler build environment
       run: |
         mkdir -p build/stage1
         cd build/stage1
         cmake ../../llvm -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
+    - name: Build stage1 compiler
+      run: |        
         cmake --build . --target install --config Release
