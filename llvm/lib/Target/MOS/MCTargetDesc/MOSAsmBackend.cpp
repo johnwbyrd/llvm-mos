@@ -70,7 +70,7 @@ bool MOSAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
 
 std::unique_ptr<llvm::MCObjectTargetWriter>
 MOSAsmBackend::createObjectTargetWriter() const {
-  return std::make_unique<MOSObjectTargetWriter>();
+  return make_unique<MOSObjectTargetWriter>();
 }
 
 }; // namespace LLVM
