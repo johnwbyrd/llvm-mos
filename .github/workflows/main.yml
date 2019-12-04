@@ -8,12 +8,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    - name: Install prerequisites
+      run: |
+        sudo apt-get install ninja-build
     - uses: actions/checkout@v1
     - name: Create stage1 compiler build environment
       run: |
         mkdir -p build/stage1
         cd build/stage1
-        cmake ../../llvm -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
+        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
     - name: Build stage1 compiler
       run: |   
         cd build/stage1     
