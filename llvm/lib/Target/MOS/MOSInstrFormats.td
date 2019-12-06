@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 // The base MOS instruction class, from which all instructions descend.
-class MOSInst< dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
+class Inst< dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
 {
   let Namespace = "MOS";
 
@@ -36,22 +36,50 @@ def imm8 : Operand<i32> {
   let ParserMatchClass = ImmediateAsmOperand<"Imm8">;
 }
 
-class MOSInst8< dag outs, dag ins, string asmstr, list<dag> pattern, bits<8> opcode = 0> :
-    MOSInst< outs, ins, asmstr, pattern>
+
+class Inst8< dag outs, dag ins, string asmstr, list<dag> pattern, bits<8> op = 0> :
+  Inst< outs, ins, asmstr, pattern>
 {
   let Size = 1;
-  field bits<8> Inst;
-  let Inst = opcode;
+
+  bits<8> opcode;
+  let opcode = op;
+
+  bits<8> Inst;
+  let Inst{7-0} = opcode;
 }
 
-class MOSInst16< dag outs, dag ins, string asmstr, list<dag> pattern> :
-    MOSInst< outs, ins, asmstr, pattern>
+class Inst16< dag outs, dag ins, string asmstr, list<dag> pattern, bits<8> op = 0, bits<8> par = 0> :
+  Inst< outs, ins, asmstr, pattern>
 {
   let Size = 2;
-  field bits<16> Inst;
-}
-// Predicates for subtarget features.
 
+  bits<8> opcode;
+  bits<8> param;
+
+  let opcode = op;
+  let param = par;
+  
+  field bits<16> Inst;
+  let Inst{7-0} = opcode;
+  let Inst{15-8} = param;
+}
+
+class Inst24< dag outs, dag ins, string asmstr, list<dag> pattern, bits<8> op = 0, bits<16> par = 0> :
+  Inst< outs, ins, asmstr, pattern>
+{
+  let Size = 3;
+
+  bits<8> opcode;
+  bits<16> param;
+
+  let opcode = op;
+  let param = par;
+  
+  field bits<24> Inst;
+  let Inst{7-0} = opcode;
+  let Inst{23-8} = param;
+}
 
 def Has6502 : Predicate<"Subtarget->has6502()">,
                          AssemblerPredicate<"Feature6502">

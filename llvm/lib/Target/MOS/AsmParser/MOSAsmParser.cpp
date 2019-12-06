@@ -345,12 +345,13 @@ public:
     // todo
     Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
 
+/*
     if (getLexer().is(AsmToken::Hash))
     {
        int i = 1;
        /// it's an immediate
     }
-
+*/
     while (getLexer().isNot(AsmToken::EndOfStatement)) {
 
       if (!tryParseImmediate(Operands))
@@ -424,7 +425,7 @@ public:
   bool tryParseImmediate(OperandVector &Operands) {
     if (Parser.getTok().is(AsmToken::Hash)) {
       Lex();
-      AsmToken const &T = Parser.getTok();
+      // AsmToken const &T = Parser.getTok();
 
   /*
       if (T.is(AsmToken::Integer)) {

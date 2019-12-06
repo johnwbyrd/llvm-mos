@@ -13,31 +13,32 @@
 
 include "MOSInstrFormats.td"
 
-def BRK: MOSInst8< 
+let Predicates = [Has6502] in 
+{
+def BRK: Inst8< 
     (outs),
     (ins),
     "brk",
-    [] >, 
-    Requires<[Has6502]>;
+    [] >;
 
-def ASL_imm: MOSInst8< 
+def ASL_imm: Inst8< 
     (outs),
     (ins),
     "asl",
     [], 
-    0x0a>, 
-    Requires<[Has6502]>;
+    0x0a>;
 
-
-def LDA_imm: MOSInst16< 
+def LDA_imm: Inst16< 
   (outs),
   (ins imm8:$val),
   "lda\t$val",
-  [] >,
-  Requires<[Has6502]>
+  [],
+  0xa9>
   {
       bits<8> val;
-      let Inst{7-0} = 0xa9;
-      let Inst{15-8} = val;
+      let param = val;
   }
+
+}
+
   
