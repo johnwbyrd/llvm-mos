@@ -87,7 +87,7 @@ jobs:
     steps:
     - name: Install prerequisites
       run: |
-        echo Windows build running
+        choco install ninja
     - uses: actions/checkout@v1
     - name: Create stage1 compiler build environment
       run: |
