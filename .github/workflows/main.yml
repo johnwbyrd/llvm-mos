@@ -43,8 +43,9 @@ jobs:
   build-windows:
     runs-on: windows
     steps:
-      - name: Install prerequisites
-        run: |
+    - name: Install prerequisites
+      run: |
+        echo Windows build running
     - uses: actions/checkout@v1
     - name: Create stage1 compiler build environment
       run: |
