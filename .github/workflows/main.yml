@@ -3,10 +3,8 @@ name: CI
 on: [push]
 
 jobs:
-  build:
-
+  build-ubuntu:
     runs-on: ubuntu-latest
-
     steps:
     - name: Install prerequisites
       run: |
@@ -21,3 +19,64 @@ jobs:
       run: |   
         cd build/stage1     
         cmake --build . --target install --config Release
+    - name: Create stage2 compiler build environment
+      run: |
+        PWD=`pwd`
+        export PATH=$PWD/build/stage1/install:$PATH
+        mkdir -p build/stage2
+        cd build/stage2
+        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
+    - name: Build stage2 compiler
+      run: |   
+        cd build/stage2     
+        cmake --build . --target install --config Release
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ubuntu-latest-${{ github.ref }}
+        draft: false
+        prerelease: true
+      
+  build-windows:
+    runs-on: windows
+    steps:
+      - name: Install prerequisites
+        run: |
+    - uses: actions/checkout@v1
+    - name: Create stage1 compiler build environment
+      run: |
+        mkdir -p build/stage1
+        cd build/stage1
+        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
+    - name: Build stage1 compiler
+      run: |   
+        cd build/stage1     
+        cmake --build . --target install --config Release
+    - name: Create stage2 compiler build environment
+      run: |
+        PWD=`pwd`
+        export PATH=$PWD/build/stage1/install:$PATH
+        mkdir -p build/stage2
+        cd build/stage2
+        cmake ../../llvm -G Ninja -DLLVM-DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
+    - name: Build stage2 compiler
+      run: |   
+        cd build/stage2     
+        cmake --build . --target install --config Release
+        zip llvm-mos-ubuntu-${{ github.ref }}.zip install/*
+    - name: Create release
+      uses: softprops/action-gh-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: llvm-mos-ubuntu-latest-${{ github.ref }}
+        draft: true
+        prerelease: true
+        files: |
+          *.zip
+          
+          
