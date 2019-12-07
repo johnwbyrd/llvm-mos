@@ -21,22 +21,23 @@ jobs:
     - name: Create stage2 compiler build environment
       run: |
         PWD=`pwd`
-        export PATH=$PWD/build/stage1/install:$PATH
+        export PATH=$PWD/build/stage1/install/bin:$PATH
         mkdir -p build/stage2
         cd build/stage2
         cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
     - name: Build stage2 compiler
       run: |   
         cd build/stage2     
+        cmake --build . --target check-all --config Release
         cmake --build . --target install --config Release
-        zip llvm-mos-ubuntu-${{ github.ref }}.zip install/*
+        zip llvm-mos-ubuntu.zip install/*
     - name: Create release
       uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
         tag_name: ${{ github.ref }}
-        release_name: llvm-mos-ubuntu-latest-${{ github.ref }}
+        release_name: llvm-mos-ubuntu-${{ github.ref }}
         draft: true
         prerelease: true
         files: |
@@ -61,22 +62,23 @@ jobs:
     - name: Create stage2 compiler build environment
       run: |
         PWD=`pwd`
-        export PATH=$PWD/build/stage1/install:$PATH
+        export PATH=$PWD/build/stage1/install/bin:$PATH
         mkdir -p build/stage2
         cd build/stage2
         cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
     - name: Build stage2 compiler
       run: |   
         cd build/stage2     
+        cmake --build . --target check-all --config Release
         cmake --build . --target install --config Release
-        zip llvm-mos-ubuntu-${{ github.ref }}.zip install/*
+        zip llvm-mos-ubuntu-macos.zip install/*
     - name: Create release
       uses: softprops/action-gh-release@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
         tag_name: ${{ github.ref }}
-        release_name: llvm-mos-ubuntu-latest-${{ github.ref }}
+        release_name: llvm-mos-macos-${{ github.ref }}
         draft: true
         prerelease: true
         files: |
@@ -93,8 +95,21 @@ jobs:
       run: |
         mkdir build/stage1/install
         cd build/stage1
-        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
+        cmake ../../llvm -G "Visual Studio 16 2019" -Thost=x64 -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
     - name: Build stage1 compiler
       run: |   
         cd build/stage1     
         cmake --build . --target install --config Release
+    - name: Create stage2 compiler build environment
+      run: |
+        export PATH=%GITHUB_WORKSPACE%/build/stage1/install/bin:$PATH
+        mkdir build/stage2/install
+        cd build/stage2
+        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
+    - name: Build stage2 compiler
+      run: |   
+        cd build/stage2     
+        cmake --build . --target check-all --config Release
+        cmake --build . --target install --config Release
+        zip llvm-mos-ubuntu-macos.zip install/*
+
