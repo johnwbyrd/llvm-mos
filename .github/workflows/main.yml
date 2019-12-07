@@ -43,7 +43,7 @@ jobs:
           
       
   build-windows:
-    runs-on: windows
+    runs-on: windows-latest
     steps:
     - name: Install prerequisites
       run: |
