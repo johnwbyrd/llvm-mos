@@ -10,7 +10,7 @@ env:
   mkdir-windows-latest: mkdir 
   mkdir-macOS-latest: mkdir -p
   
-  stage1-cmake-flags: ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install 
+  stage1-cmake-flags: '../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install'
 
 jobs:
   build:
