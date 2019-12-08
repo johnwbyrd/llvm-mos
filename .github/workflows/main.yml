@@ -12,8 +12,6 @@ env:
   
 jobs:
   build:
-    env:
-      stage1_cmake_flags: '../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install'
     strategy:
       matrix:
         platform: [ubuntu-latest, macOS-latest, windows-latest]
@@ -27,7 +25,7 @@ jobs:
       run: |
         mkdir-${{ matrix.os }} build/stage1/install
         cd build/stage1
-        cmake ${{ stage1_cmake_flags }}
+        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
     - name: Build stage1 compiler
       run: |   
         cd build/stage1     
