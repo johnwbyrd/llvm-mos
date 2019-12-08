@@ -20,25 +20,6 @@ def BRK: Inst8<
     (ins),
     "brk",
     [] >;
-
-def ASL_imm: Inst8< 
-    (outs),
-    (ins),
-    "asl",
-    [], 
-    0x0a>;
-
-def LDA_imm: Inst16< 
-  (outs),
-  (ins imm8:$val),
-  "lda\t$val",
-  [],
-  0xa9>
-  {
-      bits<8> val;
-      let param = val;
-  }
-
 }
 
   

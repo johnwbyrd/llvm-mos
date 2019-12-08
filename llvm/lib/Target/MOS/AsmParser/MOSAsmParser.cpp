@@ -136,6 +136,7 @@ public:
   virtual bool isImm() const { return (Kind == k_Immediate); }
   virtual bool isImm8() const { return isImmediate<0, (1 << 8) >(); }
   virtual bool isImm16() const { return isImmediate<0, (1 << 16) >(); }
+  virtual bool isImm8To16() const { return (!isImm8() && isImm16()); }
 
   virtual bool isMem() const { return (Kind == k_Memri); }
   virtual bool isReg() const { return (Kind == k_Register); }
@@ -270,7 +271,11 @@ public:
     case Match_MnemonicFail:
       return Error(Loc, "invalid instruction");
     case Match_InvalidImm8:
-      return Error(Loc, "operand too large; must be an 8-bit value");
+      return Error(Loc, "operand must be an 8-bit value");
+    case Match_InvalidImm16:
+      return Error(Loc, "operand must be an 16-bit value");
+    case Match_InvalidImm8To16:
+      return Error(Loc, "operand must be an 8 to 16 bit value (between 256 and 65535 inclusive)");
     case Match_NearMisses:
       return Error(Loc, "found some near misses");
     default:
