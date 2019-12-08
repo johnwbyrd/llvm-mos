@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-/* Much of the structure of this file is interpolated from Neil Parker's 
- * analysis of the 65xx instruction set, at http://nparker.llx.com/a2/opcodes.html 
+/* Much of the structure of this file is copied from Neil Parker's 
+ * analysis of the 65xx instruction set, at http://nparker.llx.com/a2/opcodes.html .
  */
 
 // The base MOS instruction class, from which all instructions descend.
@@ -232,11 +232,13 @@ InstAddressMode< outs, ins, asmstr, pattern, op, mode>
 }
 
 
-
+/* OpcodeC1 class instructions */
 /* Because the cc = 01 instructions are relatively regular, we sketch them out first. */
-multiclass CC1< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", list<dag> pattern = []> 
+multiclass CC1_NoImmediate< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", 
+    list<dag> pattern = []> 
 {
-  /*
+/*
+For cc = 01:
 000	(zero page,X)
 001	zero page
 010	#immediate
@@ -251,35 +253,34 @@ multiclass CC1< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", list<d
 
   def _ZeroPage : 
     Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b001 >, 0, ZeroPage >;
-  
-  def _Immediate : 
-    Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b010 >, 0, Immediate >;
 
+  /* skip immediate instruction types here */
+  
   def _Absolute : 
     Inst24< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b010 >, 0, Absolute >;
 
+  def _IndirectIndexed : 
+    Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b100 >, 0, IndirectIndexed >;
+
+  def _ZeroPageX : 
+    Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b101 >, 0, ZeroPageX >;
+
+  def _AbsoluteY : 
+    Inst24< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b110 >, 0, AbsoluteY >;
+
+  def _AbsoluteX : 
+    Inst24< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b111 >, 0, AbsoluteX >;
 }
 
-/* 
+/* All cc=01 instruction types, for the majority of opcodes where cc-01 */
+multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", list<dag> pattern = []> :
+  CC1_NoImmediate< aaa, outs, ins, OpcodeStr, pattern> 
+{
+    def _Immediate : 
+      Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b010 >, 0, Immediate >;
+}
 
-aaa	opcode
-000	ORA
-001	AND
-010	EOR
-011	ADC
-100	STA
-101	LDA
-110	CMP
-111	SBC
-*/
-defm ORA : CC1< 0b000, (outs), (ins), "ora", []>;
-defm AND : CC1< 0b001, (outs), (ins), "and", []>;
-defm EOR : CC1< 0b010, (outs), (ins), "eor", []>;
-defm ADC : CC1< 0b011, (outs), (ins), "adc", []>;
-defm STA : CC1< 0b100, (outs), (ins), "sta", []>;
-defm LDA : CC1< 0b101, (outs), (ins), "lda", []>;
-defm CMP : CC1< 0b110, (outs), (ins), "cmp", []>;
-defm SBC : CC1< 0b111, (outs), (ins), "sbc", []>;
+
   
 
 /* Predicates.  Useful for limiting instructions to particular hardware modes or 
