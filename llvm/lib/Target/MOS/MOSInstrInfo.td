@@ -40,6 +40,29 @@ defm SBC : CC1_All< 0b111, (outs), (ins), "sbc", []>;
 /* The STA # instruction would be nonsensical, so skip it. */
 defm STA : CC1_NoImmediate< 0b100, (outs), (ins), "sta", []>;
 
+/*
+
+The conditional branch instructions all have the form xxy10000. The flag indicated by xx is compared with y, and the branch is taken if they are equal.
+
+xx	flag
+00	negative
+01	overflow
+10	carry
+11	zero
+This gives the following branches:
+
+BPL	BMI	BVC	BVS	BCC	BCS	BNE	BEQ
+10	30	50	70	90	B0	D0	F0
+*/
+def BPL : ConditionalBranch< "bpl", (outs), (ins), [], 0b00, 0b0 >;
+def BMI : ConditionalBranch< "bmi", (outs), (ins), [], 0b00, 0b1 >;
+def BVC : ConditionalBranch< "bvc", (outs), (ins), [], 0b01, 0b0 >;
+def BVS : ConditionalBranch< "bvs", (outs), (ins), [], 0b01, 0b1 >;
+def BCC : ConditionalBranch< "bcc", (outs), (ins), [], 0b10, 0b0 >;
+def BCS : ConditionalBranch< "bcs", (outs), (ins), [], 0b10, 0b1 >;
+def BNE : ConditionalBranch< "bne", (outs), (ins), [], 0b11, 0b0 >;
+def BEQ : ConditionalBranch< "beq", (outs), (ins), [], 0b11, 0b1 >;
+
 
 
 def BRK: Inst8< 

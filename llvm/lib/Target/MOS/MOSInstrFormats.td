@@ -280,7 +280,29 @@ multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", li
       Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b010 >, 0, Immediate >;
 }
 
+/* "The conditional branch instructions all have the form xxy10000. The flag indicated by
+ * xx is compared with y, and the branch is taken if they are equal."
+xx	flag
+00	negative
+01	overflow
+10	carry
+11	zero
+This gives the following branches:
 
+BPL	BMI	BVC	BVS	BCC	BCS	BNE	BEQ
+10	30	50	70	90	B0	D0	F0
+*/
+
+class ConditionalBranch< string opcodestr = "nop", dag outs, dag ins, list<dag> pattern, bits<2> flagType, 
+    bits<1> value >:
+  Inst16< outs, ins, "", pattern, DefaultOpcode, 0, Relative>
+{
+   let AsmString = opcodestr # " " # OperandsStr;
+   bits<3> a;
+   let a{2-1} = flagType;
+   let a{0} = value;
+   let opcode = OpcodeABC< a, 0b100, 0b00 >;
+}
   
 
 /* Predicates.  Useful for limiting instructions to particular hardware modes or 
