@@ -11,8 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-/* Much of the structure of this file is copied from Neil Parker's 
- * analysis of the 65xx instruction set, at http://nparker.llx.com/a2/opcodes.html .
+/* Much of the structure of this file is dependent on Neil Parker's analysis of
+ * the 65xx instruction set, at http://nparker.llx.com/a2/opcodes.html .
+ * Parker's analysis is closely reflected in the structure of this file.
  */
 
 // The base MOS instruction class, from which all instructions descend.
@@ -64,10 +65,10 @@ class Opcode< bits<8> opcode = 0 >
 }
 def DefaultOpcode : Opcode< 0 >;
 
-/* Opcodes on the MOS series tend to fit into the pattern aaabbbcc, where bbb is the addressing
- * mode, and aaacc describe the instruction in question.  This is not a fixed rule however,
- * and later invocations of the 65xx series break this pattern.  So don't depend on it, but
- * use it where it's useful.
+/* Per Parker, opcodes on the MOS series tend to fit into the pattern aaabbbcc, where
+ * bbb is the addressing mode, and aaacc describe the instruction in question. 
+ * This is not a fixed rule however, especially for later processors in the
+ * MOS series.
  * 
  * Parker: "Most instructions that explicitly reference memory locations have bit
  * patterns of the form aaabbbcc. The aaa and cc bits determine the opcode, and the bbb 
@@ -88,11 +89,9 @@ class OpcodeC1< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 1 >;
 class OpcodeC2< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 2 >;
 class OpcodeC3< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 3 >;
 
-
-
 /* Addressing modes on 65xx do not perfectly map to bit fields across all instructions.
- * So we define the concepts of the addressing modes here, and deal with implementation
- * details later in TableGen.
+ * So we define the concepts of the addressing modes here, and define how the operands
+ * should be parsed per addressing mode.
  */
 class AddressingMode
 {

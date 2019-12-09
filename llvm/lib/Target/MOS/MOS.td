@@ -58,7 +58,7 @@ def MOSAsmParser : AsmParser {
   let ShouldEmitMatchRegisterAltName = 1;
   let ReportMultipleNearMisses = 0;
   string RegisterPrefix = "";
-  string TokenizingCharacters = "(),[]*!";
+  string TokenizingCharacters = "#(),[]*!";
 }
 
 def MOSAsmParserVariantDefault : AsmParserVariant {
