@@ -171,6 +171,7 @@ def IndirectIndexed : AddressingMode
   let InOperandList = (ins imm8:$param);
 }
 
+/* An unsized MOS instruction, to which an addressing mode may be applied. */
 class InstAddressMode< dag outs, dag ins, string asmstr, list<dag> pattern, 
              Opcode op = DefaultOpcode, AddressingMode mode = Implicit > :
     Inst< outs, ins, asmstr, pattern >
@@ -277,6 +278,7 @@ For cc = 01:
 multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", list<dag> pattern = []> :
   CC1_NoImmediate< aaa, outs, ins, OpcodeStr, pattern> 
 {
+    // handle immediate CC1 instruction types here for opcodes that fit the CC1 pattern
     def _Immediate : 
       Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b010 >, Immediate >;
 }

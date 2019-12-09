@@ -28,7 +28,6 @@ aaa	opcode
 110	CMP
 111	SBC
 */
-
 defm ORA : CC1_All< 0b000, (outs), (ins), "ora", []>;
 defm AND : CC1_All< 0b001, (outs), (ins), "and", []>;
 defm EOR : CC1_All< 0b010, (outs), (ins), "eor", []>;
@@ -41,8 +40,8 @@ defm SBC : CC1_All< 0b111, (outs), (ins), "sbc", []>;
 defm STA : CC1_NoImmediate< 0b100, (outs), (ins), "sta", []>;
 
 /*
-
-The conditional branch instructions all have the form xxy10000. The flag indicated by xx is compared with y, and the branch is taken if they are equal.
+The conditional branch instructions all have the form xxy10000. The flag indicated
+by xx is compared with y, and the branch is taken if they are equal.
 
 xx	flag
 00	negative
