@@ -168,7 +168,7 @@ def IndexedIndirect : AddressingMode
 
 def IndirectIndexed : AddressingMode
 {
-  let OperandsStr = "($param),y";
+  let OperandsStr = "( $param ),y";
   let InOperandList = (ins imm8:$param);
 }
 
@@ -196,9 +196,9 @@ class Inst8< dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 /* A 16 bit MOS instruction.  Always an 8 bit opcode and an 8 bit parameter. */
-class Inst16< dag outs, dag ins = ?, string asmstr, list<dag> pattern, 
-              Opcode op = DefaultOpcode, bits<8> par = 0, AddressingMode mode = Implicit> :
-InstAddressMode< outs, ins, asmstr, pattern, op, mode>
+class Inst16< dag outs, dag ins, string opcodestr = "unknown", list<dag> pattern, 
+              Opcode op = DefaultOpcode, AddressingMode mode = Implicit> :
+InstAddressMode< outs, ins, opcodestr, pattern, op, mode>
 {
   let Size = 2;
 
@@ -206,17 +206,18 @@ InstAddressMode< outs, ins, asmstr, pattern, op, mode>
   let opcode = op;
 
   bits<8> param;
-  let param = par;
-  
+    
   bits<16> Inst;
   let Inst{7-0} = opcode.op;
   let Inst{15-8} = param;
+
+  let AsmString = opcodestr # " " # mode.OperandsStr;
 }
 
 /* A 24 bit MOS instruction. Always an 8 bit opcode and a 16 bit parameter. */
-class Inst24< dag outs, dag ins, string asmstr, list<dag> pattern,
-              Opcode op = DefaultOpcode, bits<16> par = 0, AddressingMode mode = Implicit> :
-InstAddressMode< outs, ins, asmstr, pattern, op, mode>
+class Inst24< dag outs, dag ins, string opcodestr = "unknown", list<dag> pattern,
+              Opcode op = DefaultOpcode, AddressingMode mode = Implicit> :
+InstAddressMode< outs, ins, opcodestr, pattern, op, mode>
 {
   let Size = 3;
 
@@ -224,11 +225,12 @@ InstAddressMode< outs, ins, asmstr, pattern, op, mode>
   let opcode = op;
 
   bits<16> param;
-  let param = par;
   
   bits<24> Inst;
   let Inst{7-0} = opcode.op;
   let Inst{23-8} = param;
+
+  let AsmString = opcodestr # " " # mode.OperandsStr;
 }
 
 
@@ -249,27 +251,27 @@ For cc = 01:
 111	absolute,X
 */
   def _IndexedIndirect : 
-    Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b000 >, 0, IndexedIndirect >;
+    Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b000 >, IndexedIndirect >;
 
   def _ZeroPage : 
-    Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b001 >, 0, ZeroPage >;
+    Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b001 >, ZeroPage >;
 
   /* skip immediate instruction types here */
   
   def _Absolute : 
-    Inst24< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b010 >, 0, Absolute >;
+    Inst24< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b010 >, Absolute >;
 
   def _IndirectIndexed : 
-    Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b100 >, 0, IndirectIndexed >;
+    Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b100 >, IndirectIndexed >;
 
-  def _ZeroPageX : 
-    Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b101 >, 0, ZeroPageX >;
+  def _ZeroPageX :
+    Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b101 >, ZeroPageX >;
 
   def _AbsoluteY : 
-    Inst24< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b110 >, 0, AbsoluteY >;
+    Inst24< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b110 >, AbsoluteY >;
 
   def _AbsoluteX : 
-    Inst24< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b111 >, 0, AbsoluteX >;
+    Inst24< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b111 >, AbsoluteX >;
 }
 
 /* All cc=01 instruction types, for the majority of opcodes where cc-01 */
@@ -277,7 +279,7 @@ multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", li
   CC1_NoImmediate< aaa, outs, ins, OpcodeStr, pattern> 
 {
     def _Immediate : 
-      Inst16< outs, ins, OpcodeStr # " " # Operands, [], OpcodeC1< aaa, 0b010 >, 0, Immediate >;
+      Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b010 >, Immediate >;
 }
 
 /* "The conditional branch instructions all have the form xxy10000. The flag indicated by
@@ -293,11 +295,10 @@ BPL	BMI	BVC	BVS	BCC	BCS	BNE	BEQ
 10	30	50	70	90	B0	D0	F0
 */
 
-class ConditionalBranch< string opcodestr = "nop", dag outs, dag ins, list<dag> pattern, bits<2> flagType, 
+class ConditionalBranch< string opcodestr = "unknown", dag outs, dag ins, list<dag> pattern, bits<2> flagType, 
     bits<1> value >:
-  Inst16< outs, ins, "", pattern, DefaultOpcode, 0, Relative>
+  Inst16< outs, ins, opcodestr, pattern, DefaultOpcode, Relative>
 {
-   let AsmString = opcodestr # " " # OperandsStr;
    bits<3> a;
    let a{2-1} = flagType;
    let a{0} = value;
