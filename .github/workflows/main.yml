@@ -1,102 +1,36 @@
-name: llvm-mos
-on: [push]
+name: CI
+
+on:
+  push:
+    types:
+
 jobs:
-  
-  ubuntu:
-    runs-on: ubuntu-latest
+  build_llvm:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macOS-latest
+        cmake_args:
+          - ""
     steps:
-    - name: Install prerequisites
-      run: |
-        sudo apt-get install ninja-build
-    - uses: actions/checkout@v1
-    - name: Create stage1 compiler build environment
-      run: |
-        mkdir -p build/stage1
-        cd build/stage1
-        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
-    - name: Build stage1 compiler
-      run: |   
-        cd build/stage1     
-        cmake --build . --target install --config Release
-    - name: Create stage2 compiler build environment
-      run: |
-        PWD=`pwd`
-        export PATH=$PWD/build/stage1/install/bin:$PATH
-        set
-        mkdir -p build/stage2
-        cd build/stage2
-        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
-    - name: Build stage2 compiler
-      run: |   
-        cd build/stage2     
-        cmake --build . --target install --config Release
-        zip llvm-mos-ubuntu-${{ github.ref }}.zip install/*
-    - name: Create release
-      uses: softprops/action-gh-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+    - name: Setup Windows
+      if: startsWith(matrix.os, 'windows')
+      uses: tstellar/actions/setup-windows@master
       with:
-        tag_name: ${{ github.ref }}
-        release_name: llvm-mos-ubuntu-latest-${{ github.ref }}
-        draft: true
-        prerelease: true
-        files: |
-          *.zip
-          
-  macos:
-    runs-on: macOS-latest
-    steps:
-    - name: Install prerequisites
-      run: |
-        brew install ninja
+        arch: amd64
     - uses: actions/checkout@v1
-    - name: Create stage1 compiler build environment
-      run: |
-        mkdir -p build/stage1
-        cd build/stage1
-        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
-    - name: Build stage1 compiler
-      run: |   
-        cd build/stage1     
-        cmake --build . --target install --config Release
-    - name: Create stage2 compiler build environment
-      run: |
-        PWD=`pwd`
-        export PATH=$PWD/build/stage1/install/bin:$PATH
-        set
-        mkdir -p build/stage2
-        cd build/stage2
-        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
-    - name: Build stage2 compiler
-      run: |   
-        cd build/stage2     
-        cmake --build . --target install --config Release
-        zip llvm-mos-ubuntu-${{ github.ref }}.zip install/*
-    - name: Create release
-      uses: softprops/action-gh-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
       with:
-        tag_name: ${{ github.ref }}
-        release_name: llvm-mos-ubuntu-latest-${{ github.ref }}
-        draft: true
-        prerelease: true
-        files: |
-          *.zip
-                
-  windows:
-    runs-on: windows-latest
-    steps:
-    - name: Install prerequisites
-      run: |
-        choco install ninja
-    - uses: actions/checkout@v1
-    - name: Create stage1 compiler build environment
-      run: |
-        mkdir build/stage1/install
-        cd build/stage1
-        cmake ../../llvm -G Ninja -DLLVM_TARGETS_TO_BUILD="X86" -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DCMAKE_BUILD_TYPE=Release -DLLVM_OPTIMIZED_TABLEGEN=1 -DCMAKE_INSTALL_PREFIX=./install
-    - name: Build stage1 compiler
-      run: |   
-        cd build/stage1     
-        cmake --build . --target install --config Release
+        fetch-depth: 1
+    - name: Install Ninja
+      uses: tstellar/actions/install-ninja@master
+      with:
+        os: ${{ runner.os }}
+    - name: Test LLVM
+      uses: tstellar/actions/build-test-llvm-project@master
+      with:
+        cmake_args: -G Ninja -DLLVM_ENABLE_PROJECTS="clang;lld;" -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_args }}
+        os: ${{ runner.os }}
