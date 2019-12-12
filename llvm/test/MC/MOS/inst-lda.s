@@ -4,8 +4,8 @@ foo:
   lda 255
   lda 256
   lda 257
-  lda 258, x
-  lda 259, y
+  lda 258,x
+  lda 259,y
   lda foo
   lda 65535
   lda #0

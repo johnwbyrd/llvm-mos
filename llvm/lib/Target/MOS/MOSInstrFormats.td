@@ -84,10 +84,10 @@ class OpcodeABC< bits<3> aaa = 0, bits<3> bbb = 0, bits<2> cc = 0 > : Opcode< 0 
 /* Instructions tend to break down into similar addressing modes by the cc 
  * bits. So we deal with base instruction classes in four groups.
  */
-class OpcodeC0< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 0 >;
-class OpcodeC1< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 1 >;
-class OpcodeC2< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 2 >;
-class OpcodeC3< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 3 >;
+class OpcodeC0< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 0b00 >;
+class OpcodeC1< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 0b01 >;
+class OpcodeC2< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 0b10 >;
+class OpcodeC3< bits<3> aaa = 0, bits<3> bbb = 0 > : OpcodeABC< aaa, bbb, 0b11 >;
 
 /* Addressing modes on 65xx do not perfectly map to bit fields across all instructions.
  * So we define the concepts of the addressing modes here, and define how the operands
@@ -240,7 +240,7 @@ multiclass CC1_NoImmediate< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "
     list<dag> pattern = []> 
 {
 /*
-For cc = 01:
+For cc = 01, then bbb equals:
 000	(zero page,X)
 001	zero page
 010	#immediate
@@ -256,10 +256,10 @@ For cc = 01:
   def _ZeroPage : 
     Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b001 >, ZeroPage >;
 
-  /* skip immediate instruction types here */
+  /* skip immediate instruction types here for 0b010 */
   
   def _Absolute : 
-    Inst24< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b010 >, Absolute >;
+    Inst24< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b011 >, Absolute >;
 
   def _IndirectIndexed : 
     Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b100 >, IndirectIndexed >;

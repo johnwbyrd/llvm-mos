@@ -124,18 +124,19 @@ public:
 
   SMLoc getStartLoc() const { return Start; }
 
-  template<int64_t N, int64_t M>
-  bool isImmediate() const {
-    if (!isImm()) return false;
+  template <int64_t N, int64_t M> bool isImmediate() const {
+    if (!isImm())
+      return false;
     const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
-    if (!CE) return false;
+    if (!CE)
+      return false;
     int64_t Value = CE->getValue();
     return Value >= N && Value <= M;
   }
 
   virtual bool isImm() const { return (Kind == k_Immediate); }
   virtual bool isImm8() const { return isImmediate<0, (1 << 8) - 1>(); }
-  virtual bool isImm16() const { return isImmediate<0, (1 << 16)  - 1>(); }
+  virtual bool isImm16() const { return isImmediate<0, (1 << 16) - 1>(); }
   virtual bool isImm8To16() const { return (!isImm8() && isImm16()); }
 
   virtual bool isMem() const { return (Kind == k_Memri); }
@@ -189,8 +190,7 @@ class MOSAsmParser : public MCTargetAsmParser {
 #include "MOSGenAsmMatcher.inc"
 
 public:
-
- enum MOSMatchResultTy {
+  enum MOSMatchResultTy {
     Match_UnknownError = FIRST_TARGET_MATCH_RESULT_TY,
 #define GET_OPERAND_DIAGNOSTIC_TYPES
 #include "MOSGenAsmMatcher.inc"
@@ -259,8 +259,8 @@ public:
                                uint64_t &ErrorInfo,
                                bool MatchingInlineAsm) override {
     MCInst Inst;
-    unsigned MatchResult = MatchInstructionImpl(Operands, Inst, ErrorInfo,
-                                                MatchingInlineAsm);
+    unsigned MatchResult =
+        MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm);
     switch (MatchResult) {
     case Match_Success:
       return emit(Inst, Loc, Out);
@@ -275,7 +275,8 @@ public:
     case Match_InvalidImm16:
       return Error(Loc, "operand must be an 16-bit value (less than 65536)");
     case Match_InvalidImm8To16:
-      return Error(Loc, "operand must be an 8 to 16 bit value (between 256 and 65535 inclusive)");
+      return Error(Loc, "operand must be an 8 to 16 bit value (between 256 and "
+                        "65535 inclusive)");
     case Match_NearMisses:
       return Error(Loc, "found some near misses");
     default:
@@ -347,17 +348,28 @@ public:
   virtual bool ParseInstruction(ParseInstructionInfo &Info, StringRef Mnemonic,
                                 SMLoc NameLoc,
                                 OperandVector &Operands) override {
-    // todo
+        // First, the mnemonic goes on the stack.
     Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
+    /*
+    std::vector<AsmToken> toks;
+    toks.resize(256); // unthinkable
+    size_t numToks;
+    numToks = getLexer().peekTokens(toks);
+    */
 
-/*
-    if (getLexer().is(AsmToken::Hash))
-    {
-       int i = 1;
-       /// it's an immediate
-    }
-*/
     while (getLexer().isNot(AsmToken::EndOfStatement)) {
+        if (getLexer().is(AsmToken::Hash) ||
+            getLexer().is(AsmToken::Dollar) ||
+            getLexer().is(AsmToken::Comma)
+          )
+        {
+          Operands.push_back( MOSOperand::CreateToken( 
+            Parser.getTok().getString(),
+            Parser.getTok().getLoc()));
+          Lex();
+          continue;
+        }
+
 
       if (!tryParseImmediate(Operands))
         continue;
@@ -432,12 +444,12 @@ public:
       Lex();
       // AsmToken const &T = Parser.getTok();
 
-  /*
-      if (T.is(AsmToken::Integer)) {
-        Operands.push_back(MOSOperand::CreateImm( T, T.getLoc(), T.getEndLoc() );
-        return false;
-      }
-  */
+      /*
+          if (T.is(AsmToken::Integer)) {
+            Operands.push_back(MOSOperand::CreateImm( T, T.getLoc(),
+         T.getEndLoc() ); return false;
+          }
+      */
     }
     return true;
   }
