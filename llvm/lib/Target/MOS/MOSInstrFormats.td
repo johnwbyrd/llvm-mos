@@ -167,7 +167,7 @@ def IndexedIndirect : AddressingMode
 
 def IndirectIndexed : AddressingMode
 {
-  let OperandsStr = "( $param ),y";
+  let OperandsStr = "($param ),y";
   let InOperandList = (ins imm8:$param);
 }
 
@@ -282,6 +282,36 @@ multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop", li
     def _Immediate : 
       Inst16< outs, ins, OpcodeStr, [], OpcodeC1< aaa, 0b010 >, Immediate >;
 }
+
+/* " Next we consider the cc = 10 instructions. These have a completely different set of opcodes:
+aaa	opcode
+000	ASL
+001	ROL
+010	LSR
+011	ROR
+100	STX
+101	LDX
+110	DEC
+111	INC
+
+Note that bbb = 100 and 110 are missing. 
+Also, with STX and LDX, "zero page,X" addressing becomes "zero page,Y", 
+and with LDX, "absolute,X" becomes "absolute,Y".
+
+These fit together like this:
+
+ 	          ASL	ROL	LSR	ROR	STX	LDX	DEC	INC
+#	 	 	 	 	 	                    A2	 	 
+zp	        06  26  46  66  86  A6  C6  E6
+A           0A  2A  4A  6A	 	 	 	 
+abs         0E  2E  4E  6E  8E  AE  CE  EE
+zp,X/zp,Y	  16  36  56  76  96  B6  D6  F6
+abs,X/abs,Y	1E	3E	5E	7E      BE  DE  FE
+
+*/
+
+/* First, we'll consider only instructions of the form 0aabbb10. */
+
 
 /* "The conditional branch instructions all have the form xxy10000. The flag indicated by
  * xx is compared with y, and the branch is taken if they are equal."
