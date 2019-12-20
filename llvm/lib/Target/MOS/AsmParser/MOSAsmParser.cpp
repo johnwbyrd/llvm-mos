@@ -299,13 +299,57 @@ public:
     return true;
   }
 
+  virtual signed char hexToChar(const char letter) {
+    if (letter >= '0' && letter <= '9')
+      return letter - '0';
+    if (letter >= 'a' && letter <= 'f')
+      return letter - 'a' + 10;
+    return -1;
+  }
+
+  // Converts what could be a hex string to an integer value.
+  // Result must fit into 32 bits.  More than that is an error.
+  // Like everything else in this particular API, it returns false on success.
+  virtual bool tokenToHex(uint64_t &Res, const AsmToken &Tok) {
+    Res = 0;
+    std::string text = Tok.getString();
+    if (text.size() > 8)
+      return true;
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    for (char letter : text) {
+      signed char converted = hexToChar(letter);
+      if (converted == -1)
+        return true;
+      Res = (Res * 16) + converted;
+    }
+    return false;
+  }
+
+  // Handle the dollar sign as an prefix for a hexadecimal expression.
+  virtual bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) override {
+    AsmToken::TokenKind FirstTokenKind = getLexer().getKind();
+    //    SMLoc FirstTokenLoc = getLexer().getLoc();
+    if (FirstTokenKind == AsmToken::TokenKind::Dollar) {
+      uint64_t Value = 0;
+      if (tokenToHex(Value, getLexer().peekTok()))
+        return true;
+      // we've successfully got two tokens which can collectively be understood
+      // as a constant integer value
+      Lex();
+      Lex();
+      Res = MCConstantExpr::create(Value, getContext(), true);
+      return false;
+    }
+    return getParser().parsePrimaryExpr(Res, EndLoc);
+  }
+
   bool parseOperand(OperandVector &Operands) {
     LLVM_DEBUG(dbgs() << "parseOperand\n");
 
     switch (getLexer().getKind()) {
     default:
       return Error(Parser.getTok().getLoc(), "unexpected token in operand");
-
     case AsmToken::Identifier:
       // Try to parse a register, if it fails,
       // fall through to the next case.
@@ -315,6 +359,7 @@ public:
       LLVM_FALLTHROUGH;
     case AsmToken::LParen:
     case AsmToken::Integer:
+    case AsmToken::Dollar:
     case AsmToken::Dot:
       return tryParseExpression(Operands);
     case AsmToken::Plus:
@@ -345,31 +390,47 @@ public:
     return true;
   } // class MOSOperand;
 
+  /*
+    Remember that in AsmParser land, everyone returns FALSE for a successful
+    parse, because that is more funner!
+  */
   virtual bool ParseInstruction(ParseInstructionInfo &Info, StringRef Mnemonic,
                                 SMLoc NameLoc,
                                 OperandVector &Operands) override {
-        // First, the mnemonic goes on the stack.
-    Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
     /*
-    std::vector<AsmToken> toks;
-    toks.resize(256); // unthinkable
-    size_t numToks;
-    numToks = getLexer().peekTokens(toks);
+    On 65xx family instructions, mnemonics and addressing modes take the form:
+
+    mnemonic (#)expr
+    mnemonic [(]expr[),xy]*
+
+    65816 only:
+    mnemonic [(]expr[),sxy]*
+    mnemonic \[ expr \]
+
+    Any constant may be prefixed by a $, indicating that it is a hex constant.
+    Such onstants can appear anywhere an integer appears in an expr, so expr
+    parsing needs to take that into account.
+
+    Handle all these cases, fairly loosely, and let tablegen sort out what's
+    what.
+
     */
+    // First, the mnemonic goes on the stack.
+    Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
 
-    while (getLexer().isNot(AsmToken::EndOfStatement)) {
-        if (getLexer().is(AsmToken::Hash) ||
-            getLexer().is(AsmToken::Dollar) ||
-            getLexer().is(AsmToken::Comma)
-          )
-        {
-          Operands.push_back( MOSOperand::CreateToken( 
-            Parser.getTok().getString(),
-            Parser.getTok().getLoc()));
-          Lex();
-          continue;
-        }
-
+    auto &lexer = getLexer();
+    while (lexer.isNot(AsmToken::EndOfStatement)) {
+      auto &curTok = Parser.getTok();
+      if (lexer.is(AsmToken::Hash)) {
+        // if the next operand is a decimal value, we can call the hash and
+        // its corresponding expression as a single immediate
+      }
+      if (0) {
+        Operands.push_back(
+            MOSOperand::CreateToken(curTok.getString(), curTok.getLoc()));
+        Lex();
+        continue;
+      }
 
       if (!tryParseImmediate(Operands))
         continue;

@@ -45,7 +45,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
-            "args": ["-arch=mos", "-mcpu=mos-generic", "-debug", "-show-inst-operands", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-lda.s"],
+            "args": ["-arch=mos", "-mcpu=mos-generic", "-debug", "-print-imm-hex", "-show-inst-operands", "-show-encoding", "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\inst-lda.s"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/cmake/bin",
             "environment": [],
