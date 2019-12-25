@@ -26,4 +26,4 @@ MOSMCAsmInfo::MOSMCAsmInfo(const Triple &TT) {
   UseIntegratedAssembler = true;
 }
 
-} // end of namespace llvm
+} //  namespace llvm

@@ -47,7 +47,7 @@ public:
                                 return DecodeStatus::Fail;
                               }
 };
-}
+} // namespace llvm
 
 static MCDisassembler *createMOSDisassembler(const Target &T,
                                              const MCSubtargetInfo &STI,
@@ -64,6 +64,6 @@ extern "C" void LLVMInitializeMOSDisassembler() {
 
 // #include "MOSGenDisassemblerTables.inc"
 
-typedef DecodeStatus (*DecodeFunc)(MCInst &MI, unsigned insn, uint64_t Address,
+typedef DecodeStatus (*DecodeFunc)(MCInst &MI, unsigned Insn, uint64_t Address,
                                    const void *Decoder);
 

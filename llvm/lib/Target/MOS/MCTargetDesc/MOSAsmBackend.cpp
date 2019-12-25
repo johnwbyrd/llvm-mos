@@ -73,4 +73,4 @@ MOSAsmBackend::createObjectTargetWriter() const {
   return make_unique<MOSObjectTargetWriter>();
 }
 
-}; // namespace LLVM
+} // namespace llvm
