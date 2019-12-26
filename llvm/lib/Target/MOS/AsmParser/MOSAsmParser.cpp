@@ -321,6 +321,24 @@ public:
     return getParser().parsePrimaryExpr(Res, EndLoc);
   }
 
+  void eatThatToken(OperandVector &Operands) {
+    Operands.push_back(MOSOperand::createToken(getLexer().getTok().getString(),
+                                               getLexer().getLoc()));
+    Lex();
+  }
+
+  bool tryParseExpr(OperandVector &Operands, StringRef ErrorMsg) {
+    MCExpr const *Expression;
+    SMLoc S = getLexer().getLoc();
+    if (getParser().parseExpression(Expression)) {
+      Parser.eatToEndOfStatement();
+      return Error(getLexer().getLoc(), ErrorMsg);
+    }
+    SMLoc E = getLexer().getTok().getEndLoc();
+    Operands.push_back(MOSOperand::createImm(Expression, S, E));
+    return false;
+  }
+
   bool ParseInstruction(ParseInstructionInfo & /*Info*/, StringRef Mnemonic,
                         SMLoc NameLoc, OperandVector &Operands) override {
     /*
@@ -343,44 +361,34 @@ public:
     */
     // First, the mnemonic goes on the stack.
     Operands.push_back(MOSOperand::createToken(Mnemonic, NameLoc));
-#if 0
-    std::vector<AsmToken> Tokens;
-    const size_t MaxTokensPerLine = 256;
-    Tokens.resize(MaxTokensPerLine);
-    getLexer().peekTokens(Tokens);
-    for (size_t T = 0; T < MaxTokensPerLine; T++) {
-      if (Tokens[T].is(AsmToken::EndOfStatement)) {
-        Tokens.resize(T);
-        break;
-      }
-    }
-#endif
 
+    bool FirstTime = true;
     while (getLexer().isNot(AsmToken::EndOfStatement)) {
       if (getLexer().is(AsmToken::Hash)) {
-        Operands.push_back(MOSOperand::createToken(
-            getLexer().getTok().getString(), getLexer().getLoc()));
-        Lex();
-        MCExpr const *Expression;
-        SMLoc S = getLexer().getLoc();
-        if (getParser().parseExpression(Expression)) {
-          Parser.eatToEndOfStatement();
-          return Error(
-              getLexer().getLoc(),
-              "immediate operand must be an expression evaluating to a "
-              "value between 0 and 255 inclusive");
+        eatThatToken(Operands);
+        if (!tryParseExpr(Operands,
+                          "immediate operand must be an expression evaluating "
+                          "to a value between 0 and 255 inclusive")) {
+          continue;
         }
-        SMLoc E = getLexer().getTok().getEndLoc();
-        Operands.push_back(MOSOperand::createImm(Expression, S, E));
-        return false;
       }
-      if (!tryParseImmediate(Operands)) {
+      if (getLexer().is(AsmToken::LParen)) {
+        eatThatToken(Operands);
+        if (!tryParseExpr(Operands,
+                          "expression expected after left parenthesis")) {
+          continue;
+        }
+      }
+      if (FirstTime && !tryParseExpr(Operands, "expression expected")) {
+        FirstTime = false;
         continue;
       }
+      FirstTime = false;
 
-      SMLoc Loc = getLexer().getLoc();
-      Parser.eatToEndOfStatement();
-      return Error(Loc, "failed to parse register and immediate pair");
+      // Okay then, you're a token.  Hope you're happy.
+      Operands.push_back( MOSOperand::createToken(getLexer().getTok().getString(),
+                              getLexer().getTok().getLoc()));
+      Parser.Lex();
     }
     Parser.Lex(); // Consume the EndOfStatement
     return false;
