@@ -34,48 +34,82 @@
 
 #define DEBUG_TYPE "mos-asm-parser"
 
-using namespace llvm;
-
 namespace llvm {
 
 /// An parsed MOS assembly operand.
 class MOSOperand : public MCParsedAsmOperand {
 public:
-  typedef MCParsedAsmOperand Base;
-  enum KindTy { k_Immediate, k_Register, k_Token, k_Memri } Kind;
+  MOSOperand() = delete;
+  /// Create an immediate MOSOperand.
+  MOSOperand(const MCExpr *Val, SMLoc S, SMLoc E)
+      : Kind(k_Immediate), Imm(Val), Start(S), End(E){};
+  /// Create a register MOSOperand.
+  MOSOperand(unsigned RegNum, SMLoc S, SMLoc E)
+      : Kind(k_Register), Reg(RegNum), Start(S), End(E){};
+  /// Create a token MOSOperand.
+  MOSOperand(StringRef Str, SMLoc S)
+      : Kind(k_Token), Tok(Str), Start(S) {};
 
-  struct RegisterImmediate {
-    unsigned Reg;
-    MCExpr const *Imm;
-  };
-  union {
-    StringRef Tok;
-    RegisterImmediate RegImm;
-  };
+private:
+  enum KindTy {
+    k_None,
+    k_Immediate,
+    k_Register,
+    k_Token,
+  } Kind{k_None};
 
+  MCExpr const *Imm{};
+  unsigned int Reg{};
+  StringRef Tok;
   SMLoc Start, End;
 
-  MOSOperand(StringRef Tok, SMLoc const &S)
-      : Base(), Kind(k_Token), Tok(Tok), Start(S), End(S) {}
-  MOSOperand(unsigned Reg, SMLoc const &S, SMLoc const &E)
-      : Base(), Kind(k_Register), RegImm({Reg, nullptr}), Start(S), End(E) {}
-  MOSOperand(MCExpr const *Imm, SMLoc const &S, SMLoc const &E)
-      : Base(), Kind(k_Immediate), RegImm({0, Imm}), Start(S), End(E) {}
-  MOSOperand(unsigned Reg, MCExpr const *Imm, SMLoc const &S, SMLoc const &E)
-      : Base(), Kind(k_Memri), RegImm({Reg, Imm}), Start(S), End(E) {}
+public:
+  template <int64_t Low, int64_t High> bool isImmediate() const {
+    if (!isImm()) {
+      return false;
+    }
+    const auto *CE = dyn_cast<MCConstantExpr>(getImm());
+    if (!CE) {
+      return false;
+    }
+    int64_t Value = CE->getValue();
+    return Value >= Low && Value <= High;
+  }
 
-  bool tryParseImmediate(OperandVector &operands);
-  bool tryParseRegisterOperand(OperandVector &Operands);
-  bool tryParseExpression(OperandVector &Operand);
+  virtual bool is(KindTy K) const { return (Kind == K); }
+  bool isToken() const override { return is(k_Token); }
+  bool isImm() const override { return is(k_Immediate); }
+  bool isReg() const override { return is(k_Register); }
+  bool isMem() const override {
+    assert(false);
+    return false;
+  }
+  SMLoc getStartLoc() const override { return Start; }
+  SMLoc getEndLoc() const override { return End; }
+  const StringRef &getToken() const {
+    assert(isToken());
+    return Tok;
+  }
+  const MCExpr *getImm() const {
+    assert(isImm());
+    return Imm;
+  };
+  unsigned getReg() const override {
+    assert(isReg());
+    return Reg;
+  }
 
-  void addExpr(MCInst &Inst, const MCExpr *Expr) const {
-    // Add as immediate when possible
-    if (!Expr)
+  virtual bool isImm8() const { return isImmediate<0, 0x100 - 1>(); }
+  virtual bool isImm16() const { return isImmediate<0, 0x10000 - 1>(); }
+  virtual bool isImm8To16() const { return (!isImm8() && isImm16()); }
+  static void addExpr(MCInst Inst, const MCExpr *Expr) {
+    if (Expr != nullptr) {
       Inst.addOperand(MCOperand::createImm(0));
-    else if (const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(Expr))
+    } else if (const auto *CE = dyn_cast<MCConstantExpr>(Expr)) {
       Inst.addOperand(MCOperand::createImm(CE->getValue()));
-    else
+    } else {
       Inst.addOperand(MCOperand::createExpr(Expr));
+    }
   }
 
   void addImmOperands(MCInst &Inst, unsigned N) const {
@@ -86,80 +120,29 @@ public:
     addExpr(Inst, Expr);
   }
 
-  void addRegOperands(MCInst &Inst, unsigned N) const {
+  void addRegOperands(MCInst &Inst, unsigned /*N*/) const {
     Inst.addOperand(MCOperand::createReg(getReg()));
   }
 
-  static std::unique_ptr<MOSOperand> CreateImm(const MCExpr *Val, SMLoc S,
+  static std::unique_ptr<MOSOperand> createImm(const MCExpr *Val, SMLoc S,
                                                SMLoc E) {
     return make_unique<MOSOperand>(Val, S, E);
   }
 
-  static std::unique_ptr<MOSOperand> CreateReg(unsigned RegNum, SMLoc S,
+  static std::unique_ptr<MOSOperand> createReg(unsigned RegNum, SMLoc S,
                                                SMLoc E) {
     return make_unique<MOSOperand>(RegNum, S, E);
   }
 
-  static std::unique_ptr<MOSOperand> CreateToken(StringRef Str, SMLoc S) {
+  static std::unique_ptr<MOSOperand> createToken(StringRef Str, SMLoc S) {
     return make_unique<MOSOperand>(Str, S);
   }
 
-  SMLoc getEndLoc() const { return End; }
-
-  StringRef getToken() const {
-    assert(Kind == k_Token && "Invalid access!");
-    return Tok;
-  }
-
-  unsigned getReg() const {
-    assert((Kind == k_Register || Kind == k_Memri) && "Invalid access!");
-
-    return RegImm.Reg;
-  }
-
-  const MCExpr *getImm() const {
-    assert((Kind == k_Immediate || Kind == k_Memri) && "Invalid access!");
-    return RegImm.Imm;
-  }
-
-  SMLoc getStartLoc() const { return Start; }
-
-  template <int64_t N, int64_t M> bool isImmediate() const {
-    if (!isImm())
-      return false;
-    const MCConstantExpr *CE = dyn_cast<MCConstantExpr>(getImm());
-    if (!CE)
-      return false;
-    int64_t Value = CE->getValue();
-    return Value >= N && Value <= M;
-  }
-
-  virtual bool isImm() const { return (Kind == k_Immediate); }
-  virtual bool isImm8() const { return isImmediate<0, (1 << 8) - 1>(); }
-  virtual bool isImm16() const { return isImmediate<0, (1 << 16) - 1>(); }
-  virtual bool isImm8To16() const { return (!isImm8() && isImm16()); }
-
-  virtual bool isMem() const { return (Kind == k_Memri); }
-  virtual bool isReg() const { return (Kind == k_Register); }
-  virtual bool isToken() const { return (Kind == k_Token); }
-
-  void makeImm(MCExpr const *Ex) {
-    Kind = k_Immediate;
-    RegImm = {0, Ex};
-  }
-
-  void makeReg(unsigned RegNo) {
-    Kind = k_Register;
-    RegImm = {RegNo, nullptr};
-  }
-
-  void makeToken(StringRef Token) {
-    Kind = k_Token;
-    Tok = Token;
-  }
-
-  virtual void print(raw_ostream &O) const {
+  void print(raw_ostream &O) const override {
     switch (Kind) {
+    case k_None:
+      O << "None";
+      break;
     case k_Token:
       O << "Token: \"" << getToken() << "\"";
       break;
@@ -169,15 +152,9 @@ public:
     case k_Immediate:
       O << "Immediate: \"" << *getImm() << "\"";
       break;
-    case k_Memri: {
-      // only manually print the size for non-negative values,
-      // as the sign is inserted automatically.
-      O << "Memri: \"" << getReg() << '+' << *getImm() << "\"";
-      break;
-    }
     }
     O << "\n";
-  }
+  };
 };
 
 /// Parses MOS assembly from a stream.
@@ -214,29 +191,27 @@ public:
   bool invalidOperand(SMLoc const &Loc, OperandVector const &Operands,
                       uint64_t const &ErrorInfo) {
     SMLoc ErrorLoc = Loc;
-    char const *Diag = 0;
+    char const *Diag = nullptr;
 
     if (ErrorInfo != ~0U) {
       if (ErrorInfo >= Operands.size()) {
         Diag = "too few operands for instruction";
       } else {
-        MOSOperand const &Op = (MOSOperand const &)*Operands[ErrorInfo];
-
-        // TODO: See if we can do a better error than just "invalid ...".
+        auto const &Op = dynamic_cast<MOSOperand const &>(*Operands[ErrorInfo]);
         if (Op.getStartLoc() != SMLoc()) {
           ErrorLoc = Op.getStartLoc();
         }
       }
     }
 
-    if (!Diag) {
+    if (Diag == nullptr) {
       Diag = "invalid operand for instruction";
     }
 
     return Error(ErrorLoc, Diag);
   }
 
-  bool missingFeature(llvm::SMLoc const &Loc, uint64_t const &ErrorInfo) {
+  bool missingFeature(llvm::SMLoc const &Loc, uint64_t const & /*ErrorInfo*/) {
     return Error(Loc,
                  "instruction requires a CPU feature not currently enabled");
   }
@@ -254,7 +229,7 @@ public:
   ///
   /// On failure, the target parser is responsible for emitting a diagnostic
   /// explaining the match failure.
-  bool MatchAndEmitInstruction(SMLoc Loc, unsigned &Opcode,
+  bool MatchAndEmitInstruction(SMLoc Loc, unsigned & /*Opcode*/,
                                OperandVector &Operands, MCStreamer &Out,
                                uint64_t &ErrorInfo,
                                bool MatchingInlineAsm) override {
@@ -294,16 +269,18 @@ public:
   /// end-of-statement token and false is returned.
   ///
   /// \param DirectiveID - the identifier token of the directive.
-  virtual bool ParseDirective(AsmToken DirectiveID) override {
+  bool ParseDirective(AsmToken /*DirectiveID*/) override {
     // todo
     return true;
   }
 
-  virtual signed char hexToChar(const char letter) {
-    if (letter >= '0' && letter <= '9')
-      return letter - '0';
-    if (letter >= 'a' && letter <= 'f')
-      return letter - 'a' + 10;
+  virtual signed char hexToChar(const signed char Letter) {
+    if (Letter >= '0' && Letter <= '9') {
+      return static_cast<signed char>(Letter - '0');
+    }
+    if (Letter >= 'a' && Letter <= 'f') {
+      return static_cast<signed char>(Letter - 'a' + 10);
+    }
     return -1;
   }
 
@@ -312,30 +289,33 @@ public:
   // Like everything else in this particular API, it returns false on success.
   virtual bool tokenToHex(uint64_t &Res, const AsmToken &Tok) {
     Res = 0;
-    std::string text = Tok.getString();
-    if (text.size() > 8)
+    std::string Text = Tok.getString();
+    if (Text.size() > 8) {
       return true;
-    std::transform(text.begin(), text.end(), text.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-    for (char letter : text) {
-      signed char converted = hexToChar(letter);
-      if (converted == -1)
+    }
+    std::transform(Text.begin(), Text.end(), Text.begin(),
+                   [](unsigned char C) { return std::tolower(C); });
+    for (char Letter : Text) {
+      signed char Converted = hexToChar(Letter);
+      if (Converted == -1) {
         return true;
-      Res = (Res * 16) + converted;
+      }
+      Res = (Res * 16) + Converted;
     }
     return false;
   }
 
   // Handle the dollar sign as an prefix for a hexadecimal expression.
-  virtual bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) override {
+  bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) override {
     AsmToken::TokenKind FirstTokenKind = getLexer().getKind();
     //    SMLoc FirstTokenLoc = getLexer().getLoc();
     if (FirstTokenKind == AsmToken::TokenKind::Dollar) {
       uint64_t Value = 0;
-      if (tokenToHex(Value, getLexer().peekTok()))
+      if (tokenToHex(Value, getLexer().peekTok())) {
         return true;
-      // we've successfully got two tokens which can collectively be understood
-      // as a constant integer value
+      }
+      // we've successfully got two tokens which can collectively be
+      // understood as a constant integer value
       Lex();
       Lex();
       Res = MCConstantExpr::create(Value, getContext(), true);
@@ -372,14 +352,15 @@ public:
       case AsmToken::BigNum:
       case AsmToken::Identifier:
       case AsmToken::Real:
-        if (!tryParseExpression(Operands))
+        if (!tryParseExpression(Operands)) {
           return false;
+        }
         break;
       default:
         break;
       }
       // Treat the token as an independent token.
-      Operands.push_back(MOSOperand::CreateToken(Parser.getTok().getString(),
+      Operands.push_back(MOSOperand::createToken(Parser.getTok().getString(),
                                                  Parser.getTok().getLoc()));
       Parser.Lex(); // Eat the token.
       return false;
@@ -394,9 +375,8 @@ public:
     Remember that in AsmParser land, everyone returns FALSE for a successful
     parse, because that is more funner!
   */
-  virtual bool ParseInstruction(ParseInstructionInfo &Info, StringRef Mnemonic,
-                                SMLoc NameLoc,
-                                OperandVector &Operands) override {
+  bool ParseInstruction(ParseInstructionInfo & /*Info*/, StringRef Mnemonic,
+                        SMLoc NameLoc, OperandVector &Operands) override {
     /*
     On 65xx family instructions, mnemonics and addressing modes take the form:
 
@@ -416,24 +396,25 @@ public:
 
     */
     // First, the mnemonic goes on the stack.
-    Operands.push_back(MOSOperand::CreateToken(Mnemonic, NameLoc));
+    Operands.push_back(MOSOperand::createToken(Mnemonic, NameLoc));
 
-    auto &lexer = getLexer();
-    while (lexer.isNot(AsmToken::EndOfStatement)) {
-      auto &curTok = Parser.getTok();
-      if (lexer.is(AsmToken::Hash)) {
+    auto &Lexer = getLexer();
+    while (Lexer.isNot(AsmToken::EndOfStatement)) {
+      if (Lexer.is(AsmToken::Hash)) {
         // if the next operand is a decimal value, we can call the hash and
         // its corresponding expression as a single immediate
       }
+      /*
       if (0) {
         Operands.push_back(
-            MOSOperand::CreateToken(curTok.getString(), curTok.getLoc()));
+            MOSOperand::createToken(CurTok.getString(), CurTok.getLoc()));
         Lex();
         continue;
       }
-
-      if (!tryParseImmediate(Operands))
+      */
+      if (!tryParseImmediate(Operands)) {
         continue;
+      }
 
       if (!parseOperand(Operands)) {
         continue;
@@ -455,8 +436,8 @@ public:
     return false;
   }
 
-  int parseRegister() {
-    int RegNum = MOS::NoRegister;
+  unsigned int parseRegister() {
+    unsigned int RegNum = MOS::NoRegister;
 
     if (Parser.getTok().is(AsmToken::Identifier)) {
       // Check for register pair syntax
@@ -477,30 +458,30 @@ public:
     return RegNum;
   }
 
-  virtual bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc,
-                             SMLoc &EndLoc) override {
+  bool ParseRegister(unsigned & /*RegNo*/, SMLoc & /*StartLoc*/,
+                     SMLoc & /*EndLoc*/) override {
     // todo
     return true;
   }
 
-  int parseRegisterName(unsigned (*matchFn)(StringRef)) {
+  unsigned int parseRegisterName(unsigned (*MatchFn)(StringRef)) {
     StringRef Name = Parser.getTok().getString();
 
-    int RegNum = matchFn(Name);
+    unsigned int RegNum = MatchFn(Name);
 
     if (RegNum == MOS::NoRegister) {
-      RegNum = matchFn(Name.lower());
+      RegNum = MatchFn(Name.lower());
     }
     if (RegNum == MOS::NoRegister) {
-      RegNum = matchFn(Name.upper());
+      RegNum = MatchFn(Name.upper());
     }
 
     return RegNum;
   }
 
-  int parseRegisterName();
+  unsigned int parseRegisterName();
 
-  bool tryParseImmediate(OperandVector &Operands) {
+  bool tryParseImmediate(OperandVector & /*Operands*/) {
     if (Parser.getTok().is(AsmToken::Hash)) {
       Lex();
       // AsmToken const &T = Parser.getTok();
@@ -516,13 +497,14 @@ public:
   }
 
   bool tryParseRegisterOperand(OperandVector &Operands) {
-    int RegNo = parseRegister();
+    unsigned int RegNo = parseRegister();
 
-    if (RegNo == MOS::NoRegister)
+    if (RegNo == MOS::NoRegister) {
       return true;
+    }
 
     AsmToken const &T = Parser.getTok();
-    Operands.push_back(MOSOperand::CreateReg(RegNo, T.getLoc(), T.getEndLoc()));
+    Operands.push_back(MOSOperand::createReg(RegNo, T.getLoc(), T.getEndLoc()));
     Parser.Lex(); // Eat register token.
 
     return false;
@@ -541,11 +523,12 @@ public:
 
     // Parse (potentially inner) expression
     MCExpr const *Expression;
-    if (getParser().parseExpression(Expression))
+    if (getParser().parseExpression(Expression)) {
       return true;
+    }
 
     SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer());
-    Operands.push_back(MOSOperand::CreateImm(Expression, S, E));
+    Operands.push_back(MOSOperand::createImm(Expression, S, E));
     return false;
   }
 }; // class MOSAsmParser
@@ -555,16 +538,15 @@ public:
 // #define GET_MNEMONIC_SPELL_CHECKER
 #include "MOSGenAsmMatcher.inc"
 
-int MOSAsmParser::parseRegisterName() {
-  int RegNum = parseRegisterName(&MatchRegisterName);
-
-  if (RegNum == MOS::NoRegister)
+unsigned int MOSAsmParser::parseRegisterName() {
+  unsigned int RegNum = parseRegisterName(&MatchRegisterName);
+  if (RegNum == MOS::NoRegister) {
     RegNum = parseRegisterName(&MatchRegisterAltName);
-
+  }
   return RegNum;
 }
 
-extern "C" void LLVMInitializeMOSAsmParser() {
+extern "C" void LLVMInitializeMOSAsmParser() { // NOLINT
   RegisterMCAsmParser<MOSAsmParser> X(getTheMOSTarget());
 }
 
