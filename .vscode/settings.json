@@ -29,5 +29,16 @@
         80,
         120
     ],
-    "restructuredtext.confPath": "${workspaceFolder}\\llvm\\docs"
+    "restructuredtext.confPath": "${workspaceFolder}\\llvm\\docs",
+    "clangd.path": "C:/Program Files/LLVM/bin/clangd.exe",
+    "clangd.arguments": [
+        "--compile-commands-dir=c:/git/llvm-project/build/cmake",
+        "--clang-tidy",
+        "--clang-tidy-checks=*,-modernize-use-trailing-return-type,-google-runtime-references,-fuchsia-default-arguments-calls"
+    ],
+    "lldb.executable": "c:/program files/llvm/bin/lldb.exe",
+    "C_Cpp.autocomplete": "Disabled",
+    "C_Cpp.default.intelliSenseMode": "clang-x64",
+    "C_Cpp.enhancedColorization": "Enabled",
+    "C_Cpp.intelliSenseEngine": "Disabled"
 } 
