@@ -12,7 +12,6 @@
 #include "MCTargetDesc/MOSMCTargetDesc.h"
 #include "MOS.h"
 #include "MOSRegisterInfo.h"
-
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/MC/MCContext.h"
@@ -36,7 +35,6 @@
 
 namespace llvm {
 
-/// An parsed MOS assembly operand.
 class MOSOperand : public MCParsedAsmOperand {
 public:
   MOSOperand() = delete;
@@ -47,8 +45,7 @@ public:
   MOSOperand(unsigned RegNum, SMLoc S, SMLoc E)
       : Kind(k_Register), Reg(RegNum), Start(S), End(E){};
   /// Create a token MOSOperand.
-  MOSOperand(StringRef Str, SMLoc S)
-      : Kind(k_Token), Tok(Str), Start(S) {};
+  MOSOperand(StringRef Str, SMLoc S) : Kind(k_Token), Tok(Str), Start(S){};
 
 private:
   enum KindTy {
@@ -102,10 +99,8 @@ public:
   virtual bool isImm8() const { return isImmediate<0, 0x100 - 1>(); }
   virtual bool isImm16() const { return isImmediate<0, 0x10000 - 1>(); }
   virtual bool isImm8To16() const { return (!isImm8() && isImm16()); }
-  static void addExpr(MCInst Inst, const MCExpr *Expr) {
-    if (Expr != nullptr) {
-      Inst.addOperand(MCOperand::createImm(0));
-    } else if (const auto *CE = dyn_cast<MCConstantExpr>(Expr)) {
+  static void addExpr(MCInst &Inst, const MCExpr *Expr) {
+    if (const auto *CE = dyn_cast<MCConstantExpr>(Expr)) {
       Inst.addOperand(MCOperand::createImm(CE->getValue()));
     } else {
       Inst.addOperand(MCOperand::createExpr(Expr));
@@ -235,6 +230,7 @@ public:
                                bool MatchingInlineAsm) override {
     MCInst Inst;
     unsigned MatchResult =
+        // we always want ConvertToMapAndConstraints to be called
         MatchInstructionImpl(Operands, Inst, ErrorInfo, MatchingInlineAsm);
     switch (MatchResult) {
     case Match_Success:
@@ -305,10 +301,11 @@ public:
     return false;
   }
 
-  // Handle the dollar sign as an prefix for a hexadecimal expression.
+  /// On MOS, the dollar sign is a prefix for a hex number.  We handle
+  /// this as a special case of expression parsing, so that the user
+  /// can do math and such on MOS hexadecimal numbers.
   bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) override {
     AsmToken::TokenKind FirstTokenKind = getLexer().getKind();
-    //    SMLoc FirstTokenLoc = getLexer().getLoc();
     if (FirstTokenKind == AsmToken::TokenKind::Dollar) {
       uint64_t Value = 0;
       if (tokenToHex(Value, getLexer().peekTok())) {
@@ -324,57 +321,6 @@ public:
     return getParser().parsePrimaryExpr(Res, EndLoc);
   }
 
-  bool parseOperand(OperandVector &Operands) {
-    LLVM_DEBUG(dbgs() << "parseOperand\n");
-
-    switch (getLexer().getKind()) {
-    default:
-      return Error(Parser.getTok().getLoc(), "unexpected token in operand");
-    case AsmToken::Identifier:
-      // Try to parse a register, if it fails,
-      // fall through to the next case.
-      if (!tryParseRegisterOperand(Operands)) {
-        return false;
-      }
-      LLVM_FALLTHROUGH;
-    case AsmToken::LParen:
-    case AsmToken::Integer:
-    case AsmToken::Dollar:
-    case AsmToken::Dot:
-      return tryParseExpression(Operands);
-    case AsmToken::Plus:
-    case AsmToken::Hash:
-    case AsmToken::Minus: {
-      // If the sign preceeds a number, parse the number,
-      // otherwise treat the sign a an independent token.
-      switch (getLexer().peekTok().getKind()) {
-      case AsmToken::Integer:
-      case AsmToken::BigNum:
-      case AsmToken::Identifier:
-      case AsmToken::Real:
-        if (!tryParseExpression(Operands)) {
-          return false;
-        }
-        break;
-      default:
-        break;
-      }
-      // Treat the token as an independent token.
-      Operands.push_back(MOSOperand::createToken(Parser.getTok().getString(),
-                                                 Parser.getTok().getLoc()));
-      Parser.Lex(); // Eat the token.
-      return false;
-    } // case AsmToken::minus
-    } // switch
-
-    // Could not parse operand
-    return true;
-  } // class MOSOperand;
-
-  /*
-    Remember that in AsmParser land, everyone returns FALSE for a successful
-    parse, because that is more funner!
-  */
   bool ParseInstruction(ParseInstructionInfo & /*Info*/, StringRef Mnemonic,
                         SMLoc NameLoc, OperandVector &Operands) override {
     /*
@@ -397,34 +343,38 @@ public:
     */
     // First, the mnemonic goes on the stack.
     Operands.push_back(MOSOperand::createToken(Mnemonic, NameLoc));
-
-    auto &Lexer = getLexer();
-    while (Lexer.isNot(AsmToken::EndOfStatement)) {
-      if (Lexer.is(AsmToken::Hash)) {
-        // if the next operand is a decimal value, we can call the hash and
-        // its corresponding expression as a single immediate
+#if 0
+    std::vector<AsmToken> Tokens;
+    const size_t MaxTokensPerLine = 256;
+    Tokens.resize(MaxTokensPerLine);
+    getLexer().peekTokens(Tokens);
+    for (size_t T = 0; T < MaxTokensPerLine; T++) {
+      if (Tokens[T].is(AsmToken::EndOfStatement)) {
+        Tokens.resize(T);
+        break;
       }
-      /*
-      if (0) {
-        Operands.push_back(
-            MOSOperand::createToken(CurTok.getString(), CurTok.getLoc()));
+    }
+#endif
+
+    while (getLexer().isNot(AsmToken::EndOfStatement)) {
+      if (getLexer().is(AsmToken::Hash)) {
+        Operands.push_back(MOSOperand::createToken(
+            getLexer().getTok().getString(), getLexer().getLoc()));
         Lex();
-        continue;
+        MCExpr const *Expression;
+        SMLoc S = getLexer().getLoc();
+        if (getParser().parseExpression(Expression)) {
+          Parser.eatToEndOfStatement();
+          return Error(
+              getLexer().getLoc(),
+              "immediate operand must be an expression evaluating to a "
+              "value between 0 and 255 inclusive");
+        }
+        SMLoc E = getLexer().getTok().getEndLoc();
+        Operands.push_back(MOSOperand::createImm(Expression, S, E));
+        return false;
       }
-      */
       if (!tryParseImmediate(Operands)) {
-        continue;
-      }
-
-      if (!parseOperand(Operands)) {
-        continue;
-      }
-
-      if (!tryParseRegisterOperand(Operands)) {
-        continue;
-      }
-
-      if (!tryParseExpression(Operands)) {
         continue;
       }
 
