@@ -26,7 +26,7 @@ namespace MOS {
 ///       in `MOSAsmBackend.cpp`.
 enum Fixups {
   /// A 7-bit PC-relative fixup for the family of conditional
-  /// branches which take 7-bit targets (BRNE,BRGT,etc).
+  /// branches which take 7-bit targets.
   fixup_7_pcrel = FirstTargetFixupKind,
   /// A 16-bit address.
   fixup_16,

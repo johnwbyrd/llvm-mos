@@ -44,7 +44,14 @@ void MOSAsmBackend::relaxInstruction(const MCInst &Inst,
 }
 
 bool MOSAsmBackend::writeNopData(raw_ostream &OS, uint64_t Count) const {
-  return false;
+  // todo: fix for virtual targets
+  while (Count--)
+  {
+    OS << 0xea; // sports. It's in the game.  Knowing the 6502 hexadecimal
+                // representation of a NOP on 6502, used to be an interview
+                // question at EA.
+  }
+  return true;
 }
 
 bool MOSAsmBackend::mayNeedRelaxation(const MCInst &Inst,
@@ -52,7 +59,9 @@ bool MOSAsmBackend::mayNeedRelaxation(const MCInst &Inst,
   return false;
 }
 
-unsigned MOSAsmBackend::getNumFixupKinds() const { return 0; }
+unsigned MOSAsmBackend::getNumFixupKinds() const {
+  return MOS::Fixups::NumTargetFixupKinds;
+}
 
 void MOSAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
                                const MCValue &Target,

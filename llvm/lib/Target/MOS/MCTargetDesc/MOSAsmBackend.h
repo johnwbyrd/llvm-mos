@@ -30,7 +30,7 @@ struct MCFixupKindInfo;
 
 class MOSObjectTargetWriter : public MCObjectTargetWriter
 {
-  virtual Triple::ObjectFormatType getFormat() const override
+  Triple::ObjectFormatType getFormat() const override
   {
     return Triple::ObjectFormatType::ELF;
   }

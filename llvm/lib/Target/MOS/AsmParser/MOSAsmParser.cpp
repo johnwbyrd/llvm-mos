@@ -403,7 +403,7 @@ public:
   }
 
   bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) override {
-    assert(false);
+    return true;
   }
 
 }; // class MOSAsmParser
