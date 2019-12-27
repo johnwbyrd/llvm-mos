@@ -192,10 +192,7 @@ public:
       if (ErrorInfo >= Operands.size()) {
         Diag = "too few operands for instruction";
       } else {
-        auto const &Op = dynamic_cast<MOSOperand const &>(*Operands[ErrorInfo]);
-        if (Op.getStartLoc() != SMLoc()) {
-          ErrorLoc = Op.getStartLoc();
-        }
+        ErrorLoc = Operands[ErrorInfo]->getStartLoc();
       }
     }
 
@@ -369,6 +366,7 @@ public:
         if (!tryParseExpr(Operands,
                           "immediate operand must be an expression evaluating "
                           "to a value between 0 and 255 inclusive")) {
+          FirstTime = false;
           continue;
         }
       }
@@ -376,9 +374,19 @@ public:
         eatThatToken(Operands);
         if (!tryParseExpr(Operands,
                           "expression expected after left parenthesis")) {
+          FirstTime = false;
           continue;
         }
       }
+      // I don't know what llvm has against commas, but for some reason
+      // TableGen makes an effort to ignore them during parsing.  So,
+      // strangely enough, we have to throw out commas too, even though
+      // they have semantic meaning on MOS platforms.
+      if (getLexer().is(AsmToken::Comma)) {
+        Lex();
+        continue;
+      }
+
       if (FirstTime && !tryParseExpr(Operands, "expression expected")) {
         FirstTime = false;
         continue;
@@ -386,123 +394,25 @@ public:
       FirstTime = false;
 
       // Okay then, you're a token.  Hope you're happy.
-      Operands.push_back( MOSOperand::createToken(getLexer().getTok().getString(),
-                              getLexer().getTok().getLoc()));
+      Operands.push_back(MOSOperand::createToken(
+          getLexer().getTok().getString(), getLexer().getTok().getLoc()));
       Parser.Lex();
     }
     Parser.Lex(); // Consume the EndOfStatement
     return false;
   }
 
-  unsigned int parseRegister() {
-    unsigned int RegNum = MOS::NoRegister;
-
-    if (Parser.getTok().is(AsmToken::Identifier)) {
-      // Check for register pair syntax
-      if (Parser.getLexer().peekTok().is(AsmToken::Colon)) {
-        Parser.Lex();
-        Parser.Lex(); // Eat high (odd) register and colon
-        /*
-
-        if (Parser.getTok().is(AsmToken::Identifier)) {
-          // Convert lower (even) register to DREG
-          RegNum = toDREG(parseRegisterName());
-        }
-        */
-      } else {
-        RegNum = parseRegisterName();
-      }
-    }
-    return RegNum;
+  bool ParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) override {
+    assert(false);
   }
 
-  bool ParseRegister(unsigned & /*RegNo*/, SMLoc & /*StartLoc*/,
-                     SMLoc & /*EndLoc*/) override {
-    // todo
-    return true;
-  }
-
-  unsigned int parseRegisterName(unsigned (*MatchFn)(StringRef)) {
-    StringRef Name = Parser.getTok().getString();
-
-    unsigned int RegNum = MatchFn(Name);
-
-    if (RegNum == MOS::NoRegister) {
-      RegNum = MatchFn(Name.lower());
-    }
-    if (RegNum == MOS::NoRegister) {
-      RegNum = MatchFn(Name.upper());
-    }
-
-    return RegNum;
-  }
-
-  unsigned int parseRegisterName();
-
-  bool tryParseImmediate(OperandVector & /*Operands*/) {
-    if (Parser.getTok().is(AsmToken::Hash)) {
-      Lex();
-      // AsmToken const &T = Parser.getTok();
-
-      /*
-          if (T.is(AsmToken::Integer)) {
-            Operands.push_back(MOSOperand::CreateImm( T, T.getLoc(),
-         T.getEndLoc() ); return false;
-          }
-      */
-    }
-    return true;
-  }
-
-  bool tryParseRegisterOperand(OperandVector &Operands) {
-    unsigned int RegNo = parseRegister();
-
-    if (RegNo == MOS::NoRegister) {
-      return true;
-    }
-
-    AsmToken const &T = Parser.getTok();
-    Operands.push_back(MOSOperand::createReg(RegNo, T.getLoc(), T.getEndLoc()));
-    Parser.Lex(); // Eat register token.
-
-    return false;
-  }
-
-  bool tryParseExpression(OperandVector &Operands) {
-    SMLoc S = Parser.getTok().getLoc();
-
-    if ((Parser.getTok().getKind() == AsmToken::Plus ||
-         Parser.getTok().getKind() == AsmToken::Minus) &&
-        Parser.getLexer().peekTok().getKind() == AsmToken::Identifier) {
-      // Don't handle this case - it should be split into two
-      // separate tokens.
-      return true;
-    }
-
-    // Parse (potentially inner) expression
-    MCExpr const *Expression;
-    if (getParser().parseExpression(Expression)) {
-      return true;
-    }
-
-    SMLoc E = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer());
-    Operands.push_back(MOSOperand::createImm(Expression, S, E));
-    return false;
-  }
 }; // class MOSAsmParser
+
 #define GET_MATCHER_IMPLEMENTATION
 // #define GET_SUBTARGET_FEATURE_NAME
 #define GET_REGISTER_MATCHER
 // #define GET_MNEMONIC_SPELL_CHECKER
 #include "MOSGenAsmMatcher.inc"
-
-unsigned int MOSAsmParser::parseRegisterName() {
-  unsigned int RegNum = parseRegisterName(&MatchRegisterName);
-  if (RegNum == MOS::NoRegister) {
-    RegNum = parseRegisterName(&MatchRegisterAltName);
-  }
-  return RegNum;
-}
 
 extern "C" void LLVMInitializeMOSAsmParser() { // NOLINT
   RegisterMCAsmParser<MOSAsmParser> X(getTheMOSTarget());

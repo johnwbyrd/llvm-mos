@@ -22,8 +22,10 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <cstring>
+#include <sstream>
 
 #define DEBUG_TYPE "asm-printer"
 
@@ -31,7 +33,23 @@ namespace llvm {
 
 void MOSInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
                                StringRef Annot, const MCSubtargetInfo &STI) {
-  printInstruction(MI, OS);
+  std::string AiryOperands;
+  raw_string_ostream AiryOperandStream(AiryOperands);
+  printInstruction(MI, AiryOperandStream);
+  AiryOperands = AiryOperandStream.str();
+  bool FirstSpace = true;
+  std::string CorrectOperands;
+  for (const auto &Letter : AiryOperands) {
+    if (Letter == ' ') {
+      if (FirstSpace) {
+        FirstSpace = false;
+      } else {
+        continue;
+      }
+    }
+    CorrectOperands += Letter;
+  }
+  OS << CorrectOperands;
 }
 
 void MOSInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
