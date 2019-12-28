@@ -2,8 +2,10 @@
 
 /*
 .setcpu "6502"
+*/
 
-   brk
+brk                             ; CHECK: encoding: [0x00]
+/*
    ora     ($12,x)
    .byte   $02
    .byte   $03
@@ -258,3 +260,4 @@
    sbc     $3456,x
    inc     $3456,x
    .byte   $FF
+   */
