@@ -1,6 +1,6 @@
 ; RUN: llvm-mc -triple mos -mcpu=mos-generic -show-encoding < %s | FileCheck %s
 
-
+/*
 .setcpu "6502"
 
    brk
