@@ -19,7 +19,9 @@
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCObjectWriter.h"
+#include "llvm/MC/MCSectionELF.h"
 
 namespace llvm {
 
@@ -28,12 +30,28 @@ class Target;
 
 struct MCFixupKindInfo;
 
-class MOSObjectTargetWriter : public MCObjectTargetWriter
-{
-  Triple::ObjectFormatType getFormat() const override
-  {
+class MOSObjectTargetWriter : public MCELFObjectTargetWriter {
+public:
+  MOSObjectTargetWriter() : MCELFObjectTargetWriter(false, 0, 6502, false) {
+    assert(true);
+    val = 6502;
+  }
+
+  virtual ~MOSObjectTargetWriter() {
+    assert(val == 6502);
+    val = 0;
+  }
+
+  unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
+                        const MCFixup &Fixup, bool IsPCRel) const override {
+    return 0;
+  }
+
+  Triple::ObjectFormatType getFormat() const override {
     return Triple::ObjectFormatType::ELF;
   }
+
+  int val;
 };
 
 /// Utilities for manipulating generated MOS machine code.
@@ -41,8 +59,8 @@ class MOSAsmBackend : public MCAsmBackend {
 public:
   MOSAsmBackend(Triple::OSType OSType)
       : llvm::MCAsmBackend(support::little)
-      // , OSType(OSType) 
-      {}
+  // , OSType(OSType)
+  {}
 
   /// Apply the \p Value for given \p Fixup into the provided data fragment, at
   /// the offset specified by the fixup and following the fixup kind as
@@ -70,7 +88,7 @@ public:
   virtual bool mayNeedRelaxation(const MCInst &Inst,
                                  const MCSubtargetInfo &STI) const override;
 
-    /// Relax the instruction in the given fragment to the next wider instruction.
+  /// Relax the instruction in the given fragment to the next wider instruction.
   ///
   /// \param Inst The instruction to relax, which may be the same as the
   /// output.
@@ -79,7 +97,6 @@ public:
   virtual void relaxInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
                                 MCInst &Res) const override;
 
-
   /// Write an (optimal) nop sequence of Count bytes to the given output. If the
   /// target cannot generate such a sequence, it should return an error.
   ///
@@ -87,7 +104,7 @@ public:
   virtual bool writeNopData(raw_ostream &OS, uint64_t Count) const override;
 
 private:
- // Triple::OSType OSType;
+  // Triple::OSType OSType;
 };
 
 } // end namespace llvm

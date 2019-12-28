@@ -1,7 +1,11 @@
 ; RUN: llvm-mc -triple mos -mcpu=mos-generic -show-encoding < %s | FileCheck %s
 
 foo:
-    lda ($28,x)                     ; CHECK: encoding: [0xa1,0x28]
+;	lda foo,y
+;	lda foo,x
+;	lda foo
+
+        lda ($28,x)                     ; CHECK: encoding: [0xa1,0x28]
 	lda ($28),y                     ; CHECK: encoding: [0xb1,0x28]
 	lda $40,x                       ; CHECK: encoding: [0xb5,0x40]
 	lda #$ff                        ; CHECK: encoding: [0xa9,0xff]
