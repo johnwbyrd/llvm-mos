@@ -23,6 +23,7 @@ MOSMCAsmInfo::MOSMCAsmInfo(const Triple &TT) {
   CommentString = ";";
   PrivateGlobalPrefix = ".L";
   UsesELFSectionDirectiveForBSS = true;
+  DollarIsHexPrefix = true;
   UseIntegratedAssembler = true;
 }
 

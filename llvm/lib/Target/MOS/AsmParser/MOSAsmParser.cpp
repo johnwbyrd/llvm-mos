@@ -172,7 +172,6 @@ public:
   MOSAsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
       : MCTargetAsmParser(Options, STI, MII), STI(STI), Parser(Parser) {
-    getLexer().setDollarIsHexPrefix(true);
     MCAsmParserExtension::Initialize(Parser);
     MRI = getContext().getRegisterInfo();
 

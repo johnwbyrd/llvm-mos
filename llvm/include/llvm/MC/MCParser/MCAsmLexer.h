@@ -50,7 +50,6 @@ protected: // Can only create subclasses.
   bool AllowAtInIdentifier;
   bool IsAtStartOfStatement = true;
   bool LexMasmIntegers = false;
-  bool DollarIsHexPrefix = false;
   AsmCommentConsumer *CommentConsumer = nullptr;
 
   MCAsmLexer();
@@ -151,7 +150,6 @@ public:
   /// Set whether to lex masm-style binary and hex literals. They look like
   /// 0b1101 and 0ABCh respectively.
   void setLexMasmIntegers(bool V) { LexMasmIntegers = V; }
-  void setDollarIsHexPrefix(bool V) { DollarIsHexPrefix = V; }
 };
 
 } // end namespace llvm

@@ -664,7 +664,7 @@ AsmToken AsmLexer::LexToken() {
   case '*': return AsmToken(AsmToken::Star, StringRef(TokStart, 1));
   case ',': return AsmToken(AsmToken::Comma, StringRef(TokStart, 1));
   case '$':  
-    if (DollarIsHexPrefix) {
+    if (MAI.getDollarIsHexPrefix()) {
       return LexDollarAsHexPrefix();
     }
     return AsmToken(AsmToken::Dollar, StringRef(TokStart, 1));
