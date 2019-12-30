@@ -172,6 +172,7 @@ public:
   MOSAsmParser(const MCSubtargetInfo &STI, MCAsmParser &Parser,
                const MCInstrInfo &MII, const MCTargetOptions &Options)
       : MCTargetAsmParser(Options, STI, MII), STI(STI), Parser(Parser) {
+    getLexer().setDollarIsHexPrefix(true);
     MCAsmParserExtension::Initialize(Parser);
     MRI = getContext().getRegisterInfo();
 
@@ -296,26 +297,6 @@ public:
       Res = (Res * 16) + Converted;
     }
     return false;
-  }
-
-  /// On MOS, the dollar sign is a prefix for a hex number.  We handle
-  /// this as a special case of expression parsing, so that the user
-  /// can do math and such on MOS hexadecimal numbers.
-  bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) override {
-    AsmToken::TokenKind FirstTokenKind = getLexer().getKind();
-    if (FirstTokenKind == AsmToken::TokenKind::Dollar) {
-      uint64_t Value = 0;
-      if (tokenToHex(Value, getLexer().peekTok())) {
-        return true;
-      }
-      // we've successfully got two tokens which can collectively be
-      // understood as a constant integer value
-      Lex();
-      Lex();
-      Res = MCConstantExpr::create(Value, getContext(), true);
-      return false;
-    }
-    return getParser().parsePrimaryExpr(Res, EndLoc);
   }
 
   void eatThatToken(OperandVector &Operands) {

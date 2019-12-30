@@ -5,7 +5,8 @@ foo:
 ;	lda foo,x
 ;	lda foo
 
-        lda ($28,x)                     ; CHECK: encoding: [0xa1,0x28]
+	lda #$0b						; CHECK: encoding: [0xa9,0x0b]
+    lda ($28,x)                     ; CHECK: encoding: [0xa1,0x28]
 	lda ($28),y                     ; CHECK: encoding: [0xb1,0x28]
 	lda $40,x                       ; CHECK: encoding: [0xb5,0x40]
 	lda #$ff                        ; CHECK: encoding: [0xa9,0xff]
