@@ -15,19 +15,6 @@ include "MOSInstrFormats.td"
 
 let Predicates = [Has6502] in 
 {
-
-/* 
-For cc = 01, that is, OpcodeC1 type instructions
-aaa	opcode
-000	ORA
-001	AND
-010	EOR
-011	ADC
-100	STA
-101	LDA
-110	CMP
-111	SBC
-*/
 defm ORA : CC1_All< 0b000, (outs), (ins), "ora", []>;
 defm AND : CC1_All< 0b001, (outs), (ins), "and", []>;
 defm EOR : CC1_All< 0b010, (outs), (ins), "eor", []>;
@@ -36,8 +23,40 @@ defm LDA : CC1_All< 0b101, (outs), (ins), "lda", []>;
 defm CMP : CC1_All< 0b110, (outs), (ins), "cmp", []>;
 defm SBC : CC1_All< 0b111, (outs), (ins), "sbc", []>;
 
-/* The STA # instruction would be nonsensical, so skip it. */
+/// The STA # instruction would be nonsensical, so skip it.
 defm STA : CC1_NoImmediate< 0b100, (outs), (ins), "sta", []>;
+
+/// CC2 regular instructions
+defm ASL : CC2_Shift< 0b000, (outs), (ins), "asl", []>;
+defm ROL : CC2_Shift< 0b001, (outs), (ins), "rol", []>;
+defm LSR : CC2_Shift< 0b010, (outs), (ins), "lsr", []>;
+defm ROR : CC2_Shift< 0b011, (outs), (ins), "ror", []>;
+
+defm STX : CC2_NonShift< 0b100, (outs), (ins), "stx", []>;
+defm LDX : CC2_NonShift< 0b101, (outs), (ins), "ldx", []>;
+defm DEC : CC2_NonShift< 0b110, (outs), (ins), "dec", []>;
+defm INC : CC2_NonShift< 0b111, (outs), (ins), "inc", []>;
+
+/// CC2 exceptional cases
+
+/// Single-byte opcodes
+/// subroutine instructions:
+
+/*
+BRK	JSR abs	RTI	RTS
+00	20	40	60
+(JSR is the only absolute-addressing instruction that doesn't fit the aaabbbcc pattern.)
+
+Other single-byte instructions:
+
+PHP	PLP	PHA	PLA	DEY	TAY	INY	INX
+08	28	48	68	88	A8	C8	E8
+CLC	SEC	CLI	SEI	TYA	CLV	CLD	SED
+18	38	58	78	98	B8	D8	F8
+TXA	TXS	TAX	TSX	DEX	NOP
+8A	9A	AA	BA	CA	EA
+*/
+
 
 /*
 The conditional branch instructions all have the form xxy10000. The flag indicated

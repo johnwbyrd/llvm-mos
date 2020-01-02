@@ -102,6 +102,12 @@ def Implicit : AddressingMode
   dag InOperandList = (ins);
 }
 
+def Accumulator : AddressingMode
+{
+  string OperandsStr = "";
+  dag InOperandList = (ins);
+}
+
 def Immediate : AddressingMode
 {
   let OperandsStr = "#$param";
@@ -191,7 +197,7 @@ class Inst8< dag outs, dag ins, string asmstr, list<dag> pattern,
 }
 
 /// A 16 bit real MOS instruction.  Always an 8 bit opcode and an 8 bit
-/// parameter.
+/// operand.
 class Inst16< dag outs, dag ins, string opcodestr = "unknown", 
               list<dag> pattern, Opcode op = DefaultOpcode, 
               AddressingMode mode = Implicit> :
@@ -206,7 +212,7 @@ InstAddressMode< outs, ins, opcodestr, pattern, op, mode>
 }
 
 /// A 24 bit real MOS instruction. Always an 8 bit opcode and a 16 bit
-/// parameter.
+/// operand.
 class Inst24< dag outs, dag ins, string opcodestr = "unknown", 
               list<dag> pattern, Opcode op = DefaultOpcode, 
               AddressingMode mode = Implicit> :
@@ -219,6 +225,28 @@ InstAddressMode< outs, ins, opcodestr, pattern, op, mode>
   let Inst{23-8} = param;
   let AsmString = opcodestr # " " # mode.OperandsStr;
 }
+
+/// Some one-byte opcodes tend to have fixed lower 4 bits, and vary in the
+/// higher four bits.
+class InstNybble< dag outs, dag ins, string asmstr, list<dag> pattern, 
+                  bits<4> low = 0, bits<4> high = 0 > :
+      Inst8< outs, ins, asmstr, pattern >
+{
+  let Inst{7-4} = low;
+  let Inst{3-0} = high;
+}
+
+class InstLow0< dag outs, dag ins, string asmstr, list<dag> pattern, 
+                bits<4> high = 0 >: 
+                InstNybble< outs, ins, asmstr, pattern, 0x0, high >;
+class InstLow8< dag outs, dag ins, string asmstr, list<dag> pattern, 
+                bits<4> high = 0 >: 
+                InstNybble< outs, ins, asmstr, pattern, 0x8, high >;
+class InstLowA< dag outs, dag ins, string asmstr, list<dag> pattern, 
+                bits<4> high = 0 >: 
+                InstNybble< outs, ins, asmstr, pattern, 0xa, high >;
+
+
 
 /// --------------
 /// Opcode groups based on cc
@@ -278,6 +306,7 @@ multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop",
 
 /// "Next we consider the cc = 10 instructions. These have a completely
 /// different set of opcodes:
+///
 /// aaa opcode
 /// 000 ASL
 /// 001 ROL
@@ -287,9 +316,19 @@ multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop",
 /// 101 LDX
 /// 110 DEC
 /// 111 INC
-/// Note that bbb = 100 and 110 are missing. 
-///  Also, with STX and LDX, "zero page,X" addressing becomes "zero page,Y", 
-/// and with LDX, "absolute,X" becomes "absolute,Y".
+///
+/// The addressing modes are similar to the 01 case, but not quite the same:
+/// bbb	addressing mode
+/// 000 #immediate
+/// 001 zero page
+/// 010 accumulator
+/// 011 absolute
+/// 101 zero page,X
+/// 111 absolute,X
+/// Note that bbb = 100 and 110 are missing. Also, with STX and LDX,
+/// "zero page,X" addressing becomes "zero page,Y", and with LDX, "absolute,X" 
+/// becomes "absolute,Y".
+///
 /// These fit together like this:"
 ///
 ///             ASL ROL LSR ROR STX LDX DEC INC
@@ -299,6 +338,44 @@ multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop",
 /// abs         0E  2E  4E  6E  8E  AE  CE  EE
 /// zp,X/zp,    16  36  56  76  96  B6  D6  F6
 /// abs,X/abs,Y	1E	3E	5E	7E      BE  DE  FE
+///
+/// "
+
+/// This multiclass covers ASL, ROL, LSR and ROR in the chart above.
+multiclass CC2_Shift< bits<3> aaa, dag outs, dag ins, 
+                            string OpcodeStr = "nop", list<dag> pattern = []> 
+{
+  def _ZeroPage : 
+    Inst16<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b001>, ZeroPage>;
+
+  def _Accumulator : 
+    Inst8<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b010>, Accumulator>;
+  
+  def _Absolute : 
+    Inst24<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b011>, Absolute>;
+
+  def _ZeroPageX :
+    Inst16<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b101>, ZeroPageX>;
+
+  def _AbsoluteX : 
+    Inst24<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b111>, AbsoluteX>;
+}
+
+/// This multiclass covers regular instructions for STX, LDX, INC and DEC
+/// in the chart above.
+multiclass CC2_NonShift< bits<3> aaa, dag outs, dag ins, 
+                         string OpcodeStr = "nop", list<dag> pattern = []> 
+{
+  def _ZeroPage : 
+    Inst16<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b001>, ZeroPage>;
+
+  def _Absolute : 
+    Inst24<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b011>, Absolute>;
+
+  def _ZeroPageX :
+    Inst16<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b101>, ZeroPageX>;
+}
+
 
 /// "The conditional branch instructions all have the form xxy10000. The flag
 /// indicated by xx is compared with y, and the branch is taken if they are
