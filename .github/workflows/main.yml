@@ -6,7 +6,7 @@ on: [push, pull_request]
 
 jobs:
   build_llvm:
-    name: check-all llvm/clang/lld
+    name: check-all lld
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
