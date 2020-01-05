@@ -37,7 +37,7 @@ public:
   void printInstruction(const MCInst *MI, raw_ostream &O);
   void printOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
 
-    /// Utility function to print immediates in decimal or hex.
+  /// Utility function to print immediates in decimal or hex.
   format_object<int64_t> formatImm(int64_t Value) const {
     return PrintImmHex ? formatHex(Value) : formatDec(Value);
   }
@@ -45,7 +45,22 @@ public:
   /// Utility functions to print decimal/hexadecimal values.
   format_object<int64_t> formatHex(int64_t Value) const;
   format_object<uint64_t> formatHex(uint64_t Value) const;
+};
 
+class MOSInstPrinterCA65 : public MOSInstPrinter {
+  public:
+  MOSInstPrinterCA65(const MCAsmInfo &MAI, const MCInstrInfo &MII,
+                     const MCRegisterInfo &MRI)
+      : MOSInstPrinter(MAI, MII, MRI) {}
+
+}; 
+
+class MOSInstPrinterXA65 : public MOSInstPrinter
+{
+  public:
+    MOSInstPrinterXA65(const MCAsmInfo &MAI, const MCInstrInfo &MII,
+                     const MCRegisterInfo &MRI)
+      : MOSInstPrinter(MAI, MII, MRI) {}
 };
 
 } // end namespace llvm

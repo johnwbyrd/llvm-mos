@@ -37,15 +37,14 @@ void MOSInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
   raw_string_ostream AiryOperandStream(AiryOperands);
   printInstruction(MI, AiryOperandStream);
   AiryOperands = AiryOperandStream.str();
-  bool FirstSpace = true;
+  size_t SpacesSeen = 0;
   std::string CorrectOperands;
   for (const auto &Letter : AiryOperands) {
-    if (Letter == ' ') {
-      if (FirstSpace) {
-        FirstSpace = false;
-      } else {
-        continue;
+    if (isspace(Letter) != 0) {
+      if (++SpacesSeen <= 2) {
+        CorrectOperands += '\t';
       }
+      continue;
     }
     CorrectOperands += Letter;
   }
