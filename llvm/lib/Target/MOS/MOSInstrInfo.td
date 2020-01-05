@@ -42,26 +42,82 @@ defm LDX : CC2_NonShift< 0b101, (outs), (ins), "ldx", []>;
 defm DEC : CC2_NonShift< 0b110, (outs), (ins), "dec", []>;
 defm INC : CC2_NonShift< 0b111, (outs), (ins), "inc", []>;
 
-/// CC2 exceptional cases
+/// CC2 exceptional instructions
+///             ASL ROL LSR ROR STX LDX DEC INC
+/// #                               A2	 	 
+/// zp          06  26  46  66  86  A6  C6  E6
+/// A           0A  2A  4A  6A	 	 	 	 
+/// abs         0E  2E  4E  6E  8E  AE  CE  EE
+/// zp,X/zp,    16  36  56  76  96  B6  D6  F6
+/// abs,X/abs,Y	1E	3E	5E	7E      BE  DE  FE
 
-/// Single-byte opcodes
-/// subroutine instructions:
+def LDX_Immediate : 
+    Inst16<(outs), (ins), "ldx", [], OpcodeC2<0b101, 0b000>, Immediate>;
+def LDX_AbsoluteY : 
+    Inst24<(outs), (ins), "ldx", [], OpcodeC2<0b101, 0b111>, AbsoluteY>;
+def DEC_AbsoluteX : 
+    Inst24<(outs), (ins), "dec", [], OpcodeC2<0b110, 0b111>, AbsoluteX>;
+def INC_AbsoluteX : 
+    Inst24<(outs), (ins), "inc", [], OpcodeC2<0b111, 0b111>, AbsoluteX>;
 
-/*
-BRK	JSR abs	RTI	RTS
-00	20	40	60
-(JSR is the only absolute-addressing instruction that doesn't fit the aaabbbcc pattern.)
+/// CC0 regular instructions, the nine in the top left corner of this diagram:
+///       BIT JMP JMP() STY LDY CPY CPX
+/// #                       A0  C0  E0
+/// zp    24            84  A4  C4  E4
+/// abs   2C  4C  6C    8C  AC  CC  EC
+/// zp,X                94  B4	 	 
+/// abs,X                   BC	 	
+///
+/// 101 LDY
+/// 110 CPY
+/// 111 CPX
 
-Other single-byte instructions:
+defm LDY : CC0_Regular< 0b101, (outs), (ins), "ldy", []>;
+defm CPY : CC0_Regular< 0b110, (outs), (ins), "cpy", []>;
+defm CPX : CC0_Regular< 0b111, (outs), (ins), "cpx", []>;
 
-PHP	PLP	PHA	PLA	DEY	TAY	INY	INX
-08	28	48	68	88	A8	C8	E8
-CLC	SEC	CLI	SEI	TYA	CLV	CLD	SED
-18	38	58	78	98	B8	D8	F8
-TXA	TXS	TAX	TSX	DEX	NOP
-8A	9A	AA	BA	CA	EA
-*/
+/// CC0 irregular instructions, e.g. most of them
 
+/// "Next, the cc = 00 instructions. Again, the opcodes are different:
+/// aaa opcode
+/// 001 BIT
+/// 010 JMP
+/// 011 JMP (abs)
+/// 100 STY
+/// 101 LDY
+/// 110 CPY
+/// 111 CPX
+/// The addressing modes are the same as the 10 case, except that accumulator
+/// mode is missing.
+/// bbb addressing mode
+/// 000 #immediate
+/// 001 zero page
+/// 011 absolute
+/// 101 zero page,X
+/// 111 absolute,X
+/// And here's how they fit together:
+///
+///       BIT JMP JMP() STY LDY CPY CPX
+/// #                       A0  C0  E0
+/// zp    24            84  A4  C4  E4
+/// abs   2C  4C  6C    8C  AC  CC  EC
+/// zp,X                94  B4	 	 
+/// abs,X                   BC	 	 
+
+def BIT_ZeroPage : 
+    Inst16<(outs), (ins), "bit", [], OpcodeC0<0b001, 0b001>, ZeroPage>;
+def BIT_Absolute : 
+    Inst24<(outs), (ins), "bit", [], OpcodeC0<0b001, 0b011>, Absolute>;
+def JMP_Absolute : 
+    Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b010, 0b011>, Absolute>;
+def JMP_Indirect : 
+    Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b011, 0b011>, Indirect>;
+def STY_Absolute : 
+    Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b011>, Absolute>;
+def STY_ZeroPageX : 
+    Inst16<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b101>, ZeroPageX>;
+def STY_AbsoluteX : 
+    Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b111>, ZeroPageX>;
 
 /*
 The conditional branch instructions all have the form xxy10000. The flag indicated
@@ -88,11 +144,54 @@ def BEQ : ConditionalBranch< "beq", (outs), (ins), [], 0b11, 0b1 >;
 
 
 
-def BRK: Inst8< 
-    (outs),
-    (ins),
-    "brk",
-    [] >;
-}
 
-  
+/// Single-byte opcodes
+/// subroutine instructions:
+
+/*
+BRK	JSR abs	RTI	RTS
+00	20	40	60
+(JSR is the only absolute-addressing instruction that doesn't fit the aaabbbcc pattern.)
+
+Other single-byte instructions:
+
+PHP	PLP	PHA	PLA	DEY	TAY	INY	INX
+08	28	48	68	88	A8	C8	E8
+CLC	SEC	CLI	SEI	TYA	CLV	CLD	SED
+18	38	58	78	98	B8	D8	F8
+TXA	TXS	TAX	TSX	DEX	NOP
+8A	9A	AA	BA	CA	EA
+*/
+
+def BRK_Implied: InstLow0<(outs), (ins), "brk", [], 0b0000>;
+def JSR_Absolute: Inst24< (outs), (ins), "jsr", [], 
+                        Opcode< 0x20 >, Absolute >;
+def RTI_Implied: InstLow0<(outs), (ins), "rti", [], 0b0100>;
+def RTS_Implied: InstLow0<(outs), (ins), "rts", [], 0b0110>;
+
+def PHP_Implied: InstLow8<(outs), (ins), "php", [], 0b0000>;
+def PLP_Implied: InstLow8<(outs), (ins), "plp", [], 0b0010>;
+def PHA_Implied: InstLow8<(outs), (ins), "pha", [], 0b0100>;
+def PLA_Implied: InstLow8<(outs), (ins), "pla", [], 0b0110>;
+def DEY_Implied: InstLow8<(outs), (ins), "plp", [], 0b1000>;
+def TAY_Implied: InstLow8<(outs), (ins), "tay", [], 0b1010>;
+def INY_Implied: InstLow8<(outs), (ins), "iny", [], 0b1100>;
+def INX_Implied: InstLow8<(outs), (ins), "inx", [], 0b1110>;
+
+def CLC_Implied: InstLow8<(outs), (ins), "clc", [], 0b0001>;
+def SEC_Implied: InstLow8<(outs), (ins), "sec", [], 0b0011>;
+def CLI_Implied: InstLow8<(outs), (ins), "cli", [], 0b0101>;
+def SEI_Implied: InstLow8<(outs), (ins), "sei", [], 0b0111>;
+def TYA_Implied: InstLow8<(outs), (ins), "tya", [], 0b1001>;
+def CLV_Implied: InstLow8<(outs), (ins), "clv", [], 0b1011>;
+def CLD_Implied: InstLow8<(outs), (ins), "cld", [], 0b1101>;
+def SED_Implied: InstLow8<(outs), (ins), "sed", [], 0b1111>;
+
+def TXA_Implied: InstLowA<(outs), (ins), "txa", [], 0b1000>;    
+def TXS_Implied: InstLowA<(outs), (ins), "txs", [], 0b1001>;
+def TAX_Implied: InstLowA<(outs), (ins), "tax", [], 0b1010>;
+def TSX_Implied: InstLowA<(outs), (ins), "tsx", [], 0b1011>;
+def DEX_Implied: InstLowA<(outs), (ins), "dex", [], 0b1100>;
+def NOP_Implied: InstLowA<(outs), (ins), "nop", [], 0b1110>;
+
+} // Predicates = [Has6502]

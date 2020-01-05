@@ -232,8 +232,8 @@ class InstNybble< dag outs, dag ins, string asmstr, list<dag> pattern,
                   bits<4> low = 0, bits<4> high = 0 > :
       Inst8< outs, ins, asmstr, pattern >
 {
-  let Inst{7-4} = low;
-  let Inst{3-0} = high;
+  let Inst{7-4} = high;
+  let Inst{3-0} = low;
 }
 
 class InstLow0< dag outs, dag ins, string asmstr, list<dag> pattern, 
@@ -341,7 +341,8 @@ multiclass CC1_All< bits<3> aaa, dag outs, dag ins, string OpcodeStr = "nop",
 ///
 /// "
 
-/// This multiclass covers ASL, ROL, LSR and ROR in the chart above.
+/// This multiclass covers ASL, ROL, LSR and ROR instructions in the
+/// chart above.
 multiclass CC2_Shift< bits<3> aaa, dag outs, dag ins, 
                             string OpcodeStr = "nop", list<dag> pattern = []> 
 {
@@ -376,6 +377,45 @@ multiclass CC2_NonShift< bits<3> aaa, dag outs, dag ins,
     Inst16<outs, ins, OpcodeStr, [], OpcodeC2<aaa, 0b101>, ZeroPageX>;
 }
 
+/// "Next, the cc = 00 instructions. Again, the opcodes are different:
+/// aaa opcode
+/// 001 BIT
+/// 010 JMP
+/// 011 JMP (abs)
+/// 100 STY
+/// 101 LDY
+/// 110 CPY
+/// 111 CPX
+/// The addressing modes are the same as the 10 case, except that accumulator
+/// mode is missing.
+/// bbb addressing mode
+/// 000 #immediate
+/// 001 zero page
+/// 011 absolute
+/// 101 zero page,X
+/// 111 absolute,X
+/// And here's how they fit together:
+///
+///       BIT JMP JMP() STY LDY CPY CPX
+/// #                       A0  C0  E0
+/// zp    24            84  A4  C4  E4
+/// abs   2C  4C  6C    8C  AC  CC  EC
+/// zp,X                94  B4	 	 
+/// abs,X                   BC	 	 
+
+/// The 9 instructions in the top right corner
+multiclass CC0_Regular< bits<3> aaa, dag outs, dag ins, 
+                        string OpcodeStr = "nop", list<dag> pattern = []> 
+{
+  def _Immediate : 
+    Inst16<outs, ins, OpcodeStr, [], OpcodeC0<aaa, 0b000>, Immediate>;
+
+  def _ZeroPage : 
+    Inst16<outs, ins, OpcodeStr, [], OpcodeC0<aaa, 0b001>, ZeroPage>;
+
+  def _Absolute : 
+    Inst24<outs, ins, OpcodeStr, [], OpcodeC0<aaa, 0b010>, Absolute>;
+}
 
 /// "The conditional branch instructions all have the form xxy10000. The flag
 /// indicated by xx is compared with y, and the branch is taken if they are
@@ -407,5 +447,4 @@ def Has6502 : Predicate<"Subtarget->has6502()">,
 {
   let PredicateName = "Feature6502";
 }
-
 
