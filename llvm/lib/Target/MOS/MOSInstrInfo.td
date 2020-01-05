@@ -32,6 +32,11 @@ defm ROL : CC2_Shift< 0b001, (outs), (ins), "rol", []>;
 defm LSR : CC2_Shift< 0b010, (outs), (ins), "lsr", []>;
 defm ROR : CC2_Shift< 0b011, (outs), (ins), "ror", []>;
 
+def : InstAlias<"asl a", (ASL_Accumulator)>;
+def : InstAlias<"rol a", (ROL_Accumulator)>;
+def : InstAlias<"lsr a", (LSR_Accumulator)>;
+def : InstAlias<"ror a", (ROR_Accumulator)>;
+
 defm STX : CC2_NonShift< 0b100, (outs), (ins), "stx", []>;
 defm LDX : CC2_NonShift< 0b101, (outs), (ins), "ldx", []>;
 defm DEC : CC2_NonShift< 0b110, (outs), (ins), "dec", []>;
