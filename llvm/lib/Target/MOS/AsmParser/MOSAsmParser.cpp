@@ -262,7 +262,7 @@ public:
   /// end-of-statement token and false is returned.
   ///
   /// \param DirectiveID - the identifier token of the directive.
-  bool ParseDirective(AsmToken /*DirectiveID*/) override {
+  bool ParseDirective(AsmToken DirectiveID) override {
     // todo
     return true;
   }
@@ -323,6 +323,7 @@ public:
 
     mnemonic (#)expr
     mnemonic [(]expr[),xy]*
+    mnemonic a
 
     65816 only:
     mnemonic [(]expr[),sxy]*
@@ -338,7 +339,6 @@ public:
     */
     // First, the mnemonic goes on the stack.
     Operands.push_back(MOSOperand::createToken(Mnemonic, NameLoc));
-
     bool FirstTime = true;
     while (getLexer().isNot(AsmToken::EndOfStatement)) {
       if (getLexer().is(AsmToken::Hash)) {
@@ -367,6 +367,18 @@ public:
         continue;
       }
 
+      StringRef TokName;
+      SMLoc TokLoc;
+      TokName = getLexer().getTok().getString();
+      TokLoc = getLexer().getTok().getLoc();
+
+      if (FirstTime && (TokName == "a" || TokName == "A"))
+      {
+        eatThatToken(Operands);
+        FirstTime = false;
+        continue;
+      }
+
       if (FirstTime && !tryParseExpr(Operands, "expression expected")) {
         FirstTime = false;
         continue;
@@ -374,9 +386,7 @@ public:
       FirstTime = false;
 
       // Okay then, you're a token.  Hope you're happy.
-      Operands.push_back(MOSOperand::createToken(
-          getLexer().getTok().getString(), getLexer().getTok().getLoc()));
-      Parser.Lex();
+      eatThatToken(Operands);
     }
     Parser.Lex(); // Consume the EndOfStatement
     return false;
