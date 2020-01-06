@@ -11,6 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// These instruction format definitions exist, thanks to Neil Parker's 
+/// analysis of the 65xx instruction set, at:
+/// http://nparker.llx.com/a2/opcodes.html
+/// Parker's analysis is closely reflected in the structure of this file, and
+/// his words are quoted liberally herein.  Parker's sense-making of the 6502
+/// and family was critical in creating these format definitions, and we're
+/// indebted to him for the excellent analysis.
+
 include "MOSInstrFormats.td"
 
 let Predicates = [Has6502] in 
@@ -52,13 +60,13 @@ defm INC : CC2_NonShift< 0b111, (outs), (ins), "inc", []>;
 /// abs,X/abs,Y	1E	3E	5E	7E      BE  DE  FE
 
 def LDX_Immediate : 
-    Inst16<(outs), (ins), "ldx", [], OpcodeC2<0b101, 0b000>, Immediate>;
+	Inst16<(outs), (ins), "ldx", [], OpcodeC2<0b101, 0b000>, Immediate>;
 def LDX_AbsoluteY : 
-    Inst24<(outs), (ins), "ldx", [], OpcodeC2<0b101, 0b111>, AbsoluteY>;
+	Inst24<(outs), (ins), "ldx", [], OpcodeC2<0b101, 0b111>, AbsoluteY>;
 def DEC_AbsoluteX : 
-    Inst24<(outs), (ins), "dec", [], OpcodeC2<0b110, 0b111>, AbsoluteX>;
+	Inst24<(outs), (ins), "dec", [], OpcodeC2<0b110, 0b111>, AbsoluteX>;
 def INC_AbsoluteX : 
-    Inst24<(outs), (ins), "inc", [], OpcodeC2<0b111, 0b111>, AbsoluteX>;
+	Inst24<(outs), (ins), "inc", [], OpcodeC2<0b111, 0b111>, AbsoluteX>;
 
 /// CC0 regular instructions, the nine in the top left corner of this diagram:
 ///       BIT JMP JMP() STY LDY CPY CPX
@@ -105,34 +113,32 @@ defm CPX : CC0_Regular< 0b111, (outs), (ins), "cpx", []>;
 /// abs,X                   BC	 	 
 
 def BIT_ZeroPage : 
-    Inst16<(outs), (ins), "bit", [], OpcodeC0<0b001, 0b001>, ZeroPage>;
+	Inst16<(outs), (ins), "bit", [], OpcodeC0<0b001, 0b001>, ZeroPage>;
 def BIT_Absolute : 
-    Inst24<(outs), (ins), "bit", [], OpcodeC0<0b001, 0b011>, Absolute>;
+	Inst24<(outs), (ins), "bit", [], OpcodeC0<0b001, 0b011>, Absolute>;
 def JMP_Absolute : 
-    Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b010, 0b011>, Absolute>;
+	Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b010, 0b011>, Absolute>;
 def JMP_Indirect : 
-    Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b011, 0b011>, Indirect>;
+	Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b011, 0b011>, Indirect>;
 def STY_Absolute : 
-    Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b011>, Absolute>;
+	Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b011>, Absolute>;
 def STY_ZeroPageX : 
-    Inst16<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b101>, ZeroPageX>;
+	Inst16<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b101>, ZeroPageX>;
 def STY_AbsoluteX : 
-    Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b111>, ZeroPageX>;
+	Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b111>, ZeroPageX>;
 
-/*
-The conditional branch instructions all have the form xxy10000. The flag indicated
-by xx is compared with y, and the branch is taken if they are equal.
+/// The conditional branch instructions all have the form xxy10000. The flag
+/// indicated by xx is compared with y, and the branch is taken if they are
+/// equal.
+/// xx flag
+/// 00 negative
+/// 01 overflow
+/// 10 carry
+/// 11 zero
+/// This gives the following branches:
+/// BPL BMI BVC BVS BCC BCS BNE BEQ
+/// 10  30  50  70  90  B0  D0  F0
 
-xx	flag
-00	negative
-01	overflow
-10	carry
-11	zero
-This gives the following branches:
-
-BPL	BMI	BVC	BVS	BCC	BCS	BNE	BEQ
-10	30	50	70	90	B0	D0	F0
-*/
 def BPL : ConditionalBranch< "bpl", (outs), (ins), [], 0b00, 0b0 >;
 def BMI : ConditionalBranch< "bmi", (outs), (ins), [], 0b00, 0b1 >;
 def BVC : ConditionalBranch< "bvc", (outs), (ins), [], 0b01, 0b0 >;
@@ -142,30 +148,24 @@ def BCS : ConditionalBranch< "bcs", (outs), (ins), [], 0b10, 0b1 >;
 def BNE : ConditionalBranch< "bne", (outs), (ins), [], 0b11, 0b0 >;
 def BEQ : ConditionalBranch< "beq", (outs), (ins), [], 0b11, 0b1 >;
 
-
-
-
 /// Single-byte opcodes
-/// subroutine instructions:
-
-/*
-BRK	JSR abs	RTI	RTS
-00	20	40	60
-(JSR is the only absolute-addressing instruction that doesn't fit the aaabbbcc pattern.)
-
-Other single-byte instructions:
-
-PHP	PLP	PHA	PLA	DEY	TAY	INY	INX
-08	28	48	68	88	A8	C8	E8
-CLC	SEC	CLI	SEI	TYA	CLV	CLD	SED
-18	38	58	78	98	B8	D8	F8
-TXA	TXS	TAX	TSX	DEX	NOP
-8A	9A	AA	BA	CA	EA
-*/
+/// BRK JSR abs RTI RTS
+/// 00  20      40  60
+/// (JSR is the only absolute-addressing instruction that doesn't fit the
+/// aaabbbcc pattern.)
+///
+/// Other single-byte instructions:
+/// PHP PLP PHA PLA DEY TAY INY INX
+/// 08  28  48  68  88  A8  C8  E8
+/// CLC SEC CLI SEI TYA CLV CLD SED
+/// 18  38  58  78  98  B8  D8  F8
+/// TXA TXS TAX TSX DEX NOP
+/// 8A  9A  AA  BA  CA  EA
 
 def BRK_Implied: InstLow0<(outs), (ins), "brk", [], 0b0000>;
+/// JSR is the only instruction that does not follow the current pattern.
 def JSR_Absolute: Inst24< (outs), (ins), "jsr", [], 
-                        Opcode< 0x20 >, Absolute >;
+						Opcode< 0x20 >, Absolute >;
 def RTI_Implied: InstLow0<(outs), (ins), "rti", [], 0b0100>;
 def RTS_Implied: InstLow0<(outs), (ins), "rts", [], 0b0110>;
 

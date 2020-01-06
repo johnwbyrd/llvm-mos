@@ -17,7 +17,7 @@
 /// Parker's analysis is closely reflected in the structure of this file, and
 /// his words are quoted liberally herein.  Parker's sense-making of the 6502
 /// and family was critical in creating these format definitions, and we're
-/// all indebted to him for the excellent analysis.
+/// indebted to him for the excellent analysis.
 
 /// The base MOS instruction class, from which all instructions descend.
 class Inst< dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
@@ -87,9 +87,15 @@ class OpcodeC1<bits<3> aaa = 0, bits<3> bbb = 0> : OpcodeABC<aaa, bbb, 0b01>;
 class OpcodeC2<bits<3> aaa = 0, bits<3> bbb = 0> : OpcodeABC<aaa, bbb, 0b10>;
 class OpcodeC3<bits<3> aaa = 0, bits<3> bbb = 0> : OpcodeABC<aaa, bbb, 0b11>;
 
+/// Addressing modes 
+/// ----------------
 /// Addressing modes on 65xx do not perfectly map to bit fields across all
 /// instructions. So we define the concepts of the addressing modes here, and
 /// define how the operands should be parsed per addressing mode.
+/// I wrote the operands in the a i r y format because tablegen seems to like
+/// to collapse multiple characters into one token if they are not separated
+/// by spaces.  We'll remove those spaces when we print out the operands for
+/// any instruction. See also MOSInstPrinter.cpp.
 class AddressingMode
 {
   string OperandsStr = "";
@@ -236,21 +242,21 @@ class InstNybble< dag outs, dag ins, string asmstr, list<dag> pattern,
   let Inst{3-0} = low;
 }
 
+/// Instructions where the low nybble is 0x0.
 class InstLow0< dag outs, dag ins, string asmstr, list<dag> pattern, 
                 bits<4> high = 0 >: 
                 InstNybble< outs, ins, asmstr, pattern, 0x0, high >;
+/// Instructions where the low nybble is 0x8.                
 class InstLow8< dag outs, dag ins, string asmstr, list<dag> pattern, 
                 bits<4> high = 0 >: 
                 InstNybble< outs, ins, asmstr, pattern, 0x8, high >;
+/// Instructions where the low nybble is 0xa.                
 class InstLowA< dag outs, dag ins, string asmstr, list<dag> pattern, 
                 bits<4> high = 0 >: 
                 InstNybble< outs, ins, asmstr, pattern, 0xa, high >;
 
-
-
-/// --------------
 /// Opcode groups based on cc
-/// --------------
+/// -------------------------
 
 /// OpcodeC1 class instructions
 /// "Because the cc = 01 instructions are relatively regular, we sketch them
