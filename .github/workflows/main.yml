@@ -21,6 +21,9 @@ jobs:
       uses: llvm/actions/setup-windows@master
       with:
         arch: amd64
+    - name: Install gnuwin32 on Windows
+      if: startsWith(matrix.os, 'windows')
+      run: choco install gnuwin32-coreutils.install
     - name: Install Ninja
       uses: llvm/actions/install-ninja@master
     - uses: actions/checkout@v1
