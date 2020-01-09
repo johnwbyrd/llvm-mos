@@ -35,5 +35,6 @@ jobs:
         cmake_args: -G Ninja -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DLLVM_ENABLE_PROJECTS="clang;lld;" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$GITHUB_WORKSPACE/install
     - name: Create distribution
       run: |
+        cd build
         cmake --build . --target install 
         
