@@ -5,7 +5,7 @@ env:
 on: [push, pull_request]
 
 jobs:
-  build_llvm
+  build_llvm:
     name: check-all lld
     runs-on: ${{ matrix.os }}
     strategy:
