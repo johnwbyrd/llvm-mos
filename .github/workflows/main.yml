@@ -37,7 +37,7 @@ jobs:
     - name: Test LLVM
       uses: llvm/actions/build-test-llvm-project@master
       with:
-        cmake_args: -G Ninja -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DLLVM_ENABLE_PROJECTS="clang;lld;" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_DIR=${{ steps.workspacedir.outputs.path }}/install
+        cmake_args: -G Ninja -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DLLVM_ENABLE_PROJECTS="clang;lld;" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ steps.workspacedir.outputs.path }}/install
     - name: Create distribution
       run: |
         cd build
