@@ -16,6 +16,11 @@ jobs:
           - windows-latest
           - macOS-latest
     steps:
+    - name: Determine friendly label for this branch
+      id: nicer-github-ref
+      uses: johnwbyrd/nicer-github-ref@master
+      with:
+        ref: ${{ github.ref }}
     - name: Set install directory
       id: workspacedir
       uses: johnwbyrd/setenvdir@master
@@ -41,6 +46,9 @@ jobs:
     - name: Create distribution
       run: |
         cd build
-        cat cmake_install.cmake
         ninja install 
+    - name: Zip distribution
+      run: |
+        cd install
+        zip -9 -r ../llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }} .
         
