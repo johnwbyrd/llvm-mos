@@ -51,7 +51,7 @@ jobs:
       run: |
         cd install
         zip -9 -r ../llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip .
-    - name: Create and/or update release
+    - name: Create or update release
       uses: marvinpinto/action-automatic-releases@latest
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
