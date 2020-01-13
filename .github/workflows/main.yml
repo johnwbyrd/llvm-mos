@@ -43,12 +43,12 @@ jobs:
       run: cp README.md llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip
     - name: Create and/or update release
       uses: marvinpinto/action-automatic-releases@latest
-        with:
-          repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          automatic_release_tag: ${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}
-          prerelease: true
-          files: |
-            *.zip
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: ${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}
+        prerelease: true
+        files: |
+          *.zip
     - name: Test LLVM
       uses: llvm/actions/build-test-llvm-project@master
       with:
