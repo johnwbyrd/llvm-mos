@@ -52,10 +52,11 @@ jobs:
         cd install
         zip -9 -r ../llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip .
     - name: Create or update release
-      uses: marvinpinto/action-automatic-releases@latest
+      uses: marvinpinto/action-automatic-releases@v0.2.2
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: ${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}
+        # automatic_release_tag: ${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}
+        automatic_release_tag: dogfood
         prerelease: true
         files: |
           *.zip
