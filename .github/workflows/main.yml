@@ -39,19 +39,6 @@ jobs:
     - uses: actions/checkout@v1
       with:
         fetch-depth: 1
-    - name: Create fake release
-      run: |
-        cp README.md release-${{ matrix.os }}.zip
-    - name: Update release
-      uses: johnwbyrd/update-release@master
-      id: update-release
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        asset: release-${{ matrix.os }}.zip
-    - name: Print release details
-      run: |
-        echo ${{ steps.update-release.outputs.asset }}
-        echo ${{ steps.update-release.outputs.release }}
     - name: Test LLVM
       uses: llvm/actions/build-test-llvm-project@master
       with:
@@ -64,3 +51,9 @@ jobs:
       run: |
         cd install
         zip -9 -r ../llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip .
+    - name: Update release
+      uses: johnwbyrd/update-release@master
+      id: update-release
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        asset: llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip
