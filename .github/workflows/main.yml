@@ -34,6 +34,20 @@ jobs:
     - name: Install gnuwin32 and zip on Windows
       if: startsWith(matrix.os, 'windows')
       run: choco install gnuwin32-coreutils.install zip
+          - name: Create or update release
+    - name: Create fake release
+      run: |
+        cp README.md release-${{ matrix.os }}.zip
+    - name: Update release
+      uses: johnwbyrd/update-release@master
+      id: update-release
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        asset: release-${{ matrix.os }}.zip
+    - name: Print release details
+      run: |
+        echo ${{ steps.update-release.outputs.asset }}
+        echo ${{ steps.update-release.outputs.release }}
     - name: Install Ninja
       uses: llvm/actions/install-ninja@master
     - uses: actions/checkout@v1
@@ -51,13 +65,3 @@ jobs:
       run: |
         cd install
         zip -9 -r ../llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip .
-    - name: Create or update release
-      uses: marvinpinto/action-automatic-releases@v0.2.2
-      with:
-        repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        # automatic_release_tag: ${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}
-        automatic_release_tag: dogfood
-        prerelease: true
-        files: |
-          *.zip
-        
