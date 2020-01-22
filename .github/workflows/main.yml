@@ -34,7 +34,6 @@ jobs:
     - name: Install gnuwin32 and zip on Windows
       if: startsWith(matrix.os, 'windows')
       run: choco install gnuwin32-coreutils.install zip
-          - name: Create or update release
     - name: Create fake release
       run: |
         cp README.md release-${{ matrix.os }}.zip
