@@ -34,6 +34,11 @@ jobs:
     - name: Install gnuwin32 and zip on Windows
       if: startsWith(matrix.os, 'windows')
       run: choco install gnuwin32-coreutils.install zip
+    - name: Install Ninja
+      uses: llvm/actions/install-ninja@master
+    - uses: actions/checkout@v1
+      with:
+        fetch-depth: 1
     - name: Create fake release
       run: |
         cp README.md release-${{ matrix.os }}.zip
@@ -47,11 +52,6 @@ jobs:
       run: |
         echo ${{ steps.update-release.outputs.asset }}
         echo ${{ steps.update-release.outputs.release }}
-    - name: Install Ninja
-      uses: llvm/actions/install-ninja@master
-    - uses: actions/checkout@v1
-      with:
-        fetch-depth: 1
     - name: Test LLVM
       uses: llvm/actions/build-test-llvm-project@master
       with:
