@@ -55,5 +55,5 @@ jobs:
       uses: johnwbyrd/update-release@master
       id: update-release
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.LLVM_MOS_UPDATE_RELEASE_TOKEN }}
         asset: llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip
