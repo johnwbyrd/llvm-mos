@@ -56,4 +56,4 @@ jobs:
       id: update-release
       with:
         token: ${{ secrets.LLVM_MOS_UPDATE_RELEASE_TOKEN }}
-        asset: llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip
+        files: llvm-${{ steps.nicer-github-ref.outputs.ref }}-${{ matrix.os }}.zip
