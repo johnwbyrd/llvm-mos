@@ -21,17 +21,36 @@ A backend for MOS architectures has been added to `llvm/lib/Target/MC/MOS` .
 Using the triple 'mos' will cause llvm-mc to use the new MOS backend.
 
 Tablegen recognizes all valid 6502 assembly mnemonics and spits out correct
-opcodes for all 6502 instructions. An operand parser exists that can handle at
-least all the instruction format variants in MOS.  This means that you can do
-simple 6502 assembly programming with llvm-mc now, so long as you stick with
-constant values and expressions.
+opcodes for all legal 6502 instructions. An operand parser exists that can
+handle at least all the instruction format variants in MOS.  This means that
+you can do simple 6502 assembly programming with llvm-mc now, so long as you
+stick with constant values and expressions.
+
+For some examples of what the backend can do as of this writing, see the 
+`llvm/test/MC/MOS` directory for some functional assembler tests.  Building the 
+`check-llvm-mc-mos` target, confirms just these tests for MOS.
 
 The standard LLVM lexer has been modified to permit recognizing the dollar sign
 `$` as a prefix for a hexadecimal constant, which tons of existing 6502 code
 depends on.  The lexer now queries whatever the current MCAsmInfo structure
 to see whether the target wants the dollar sign to be a hex prefix.  So,
-everything that depends on the lexer (which is almost everything in LLVM) will
-now recognize 6502 format hexadecimal constants.
+everything that depends on the lexer (which is almost everything in LLVM) can
+now recognize 6502 format hexadecimal constants, if the corresponding MCAsmInfo
+asks for it.
+
+LLVM's assembler backend depends on a lot of MCAsm-level features, such as
+[relaxation](https://eli.thegreenplace.net/2013/01/03/assembler-relaxation),
+and I don't want to mess with high-level code compilation until the base is
+rock-solid.  So, no work on clang until all assembler features are functional.
+First learn stand, then learn fly.
+
+To keep all the work honest, I'm using Github's new support for actions to 
+build the check-all target for *every* checkin in this repository.  As a neat
+side-effect of this property, you can get access to extremely fresh builds of 
+llvm-mos on Windows, MacOS and Ubuntu, by downloading the 
+[corresponding release build](https://github.com/johnwbyrd/llvm-mos/releases) 
+for the branch that you're interested in. Since each published release has
+passed check-llvm testing, the resultant builds might not be *too* broken.
 
 ## Future work
 

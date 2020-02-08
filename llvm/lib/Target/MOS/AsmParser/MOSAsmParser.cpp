@@ -65,9 +65,15 @@ public:
     if (!isImm()) {
       return false;
     }
+    // if it's a symbol ref, we'll replace it later
+    const auto *SRE = dyn_cast<MCSymbolRefExpr>(getImm());
+    if (SRE) {
+      return true;
+    }
+    // if it's an immediate but not castable to one, it must be a label
     const auto *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) {
-      return false;
+      return true;
     }
     int64_t Value = CE->getValue();
     return Value >= Low && Value <= High;
@@ -307,11 +313,11 @@ public:
   bool tryParseExpr(OperandVector &Operands, StringRef ErrorMsg) {
     MCExpr const *Expression;
     SMLoc S = getLexer().getLoc();
+    SMLoc E = getLexer().getTok().getEndLoc();
     if (getParser().parseExpression(Expression)) {
       Parser.eatToEndOfStatement();
       return Error(getLexer().getLoc(), ErrorMsg);
     }
-    SMLoc E = getLexer().getTok().getEndLoc();
     Operands.push_back(MOSOperand::createImm(Expression, S, E));
     return false;
   }

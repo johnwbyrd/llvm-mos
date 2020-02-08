@@ -11,10 +11,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MCTargetDesc/MOSMCTargetDesc.h"
 #include "MOS.h"
 #include "MOSRegisterInfo.h"
 #include "MOSSubtarget.h"
-#include "MCTargetDesc/MOSMCTargetDesc.h"
+
 
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -41,11 +42,10 @@ public:
   DecodeStatus getInstruction(MCInst &Instr, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t Address,
                               raw_ostream &VStream,
-                              raw_ostream &CStream) const override
-                              {
-                                //todo
-                                return DecodeStatus::Fail;
-                              }
+                              raw_ostream &CStream) const override {
+    // todo
+    return DecodeStatus::Fail;
+  }
 };
 } // namespace llvm
 
@@ -55,15 +55,13 @@ static MCDisassembler *createMOSDisassembler(const Target &T,
   return new MOSDisassembler(STI, Ctx);
 }
 
-
 extern "C" void LLVMInitializeMOSDisassembler() {
   // Register the disassembler.
   TargetRegistry::RegisterMCDisassembler(getTheMOSTarget(),
                                          createMOSDisassembler);
 }
 
-// #include "MOSGenDisassemblerTables.inc"
+#include "MOSGenDisassemblerTables.inc"
 
-typedef DecodeStatus (*DecodeFunc)(MCInst &MI, unsigned Insn, uint64_t Address,
-                                   const void *Decoder);
-
+using DecodeFunc = DecodeStatus (*)(MCInst &, unsigned int, uint64_t,
+                                    const void *);
