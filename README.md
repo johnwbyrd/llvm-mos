@@ -63,16 +63,18 @@ leans on them much more heavily than gas and llvm-mc do.  Since LLVM tries
 to emulate gas's behavior when compiling assembly code, it is unclear what
 size this undertaking might be.
 
-Remaining to be done at the assembly level: all things related to symbol
-handling, including labels, fixups, and relaxation.  Linker script formats in 
-ca65 are sufficiently different from the GNU linker script format, that I
-will probably just rewrite some cl65 linker scripts in an LLVM-compatible
-format.  We can probably copy the linker sections and meanings from cc65
-though, since they've put a lot of work into getting cc65 compatible with
-tons of existing 6502 platforms.  The 6502's 8-bit relative branching 
-instructions should play very nicely with LLVM's relaxation logic, as every
-B** instruction can be substituted for a slightly more expensive opposite
-B** instruction, plus an absolute JMP.
+Remaining to be done at the assembly level: more things related to symbol
+handling, including relaxation.  The assembler seems to be emitting fixups 
+more or less correctly.
+
+Linker script formats in ca65 are sufficiently different from the GNU linker
+script format, that I will probably just rewrite some cl65 linker scripts
+in an LLVM-compatible format.  We can probably copy the linker sections and
+meanings from cc65 though, since they've put a lot of work into getting cc65
+compatible with tons of existing 6502 platforms.  The 6502's 8-bit relative
+branching instructions should play very nicely with LLVM's relaxation logic,
+as every B** instruction can be substituted for a slightly more expensive
+opposite B** instruction, plus an absolute JMP.
 
 The LLVM codegen functions are all stubbed.  Current strategy for codegen
 is to choose 32 or 64 consecutive zero-page locations, and treat them all
