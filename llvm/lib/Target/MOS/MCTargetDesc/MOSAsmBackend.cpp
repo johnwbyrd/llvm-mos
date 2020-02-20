@@ -43,6 +43,31 @@ void MOSAsmBackend::relaxInstruction(const MCInst &Inst,
   // todo 
 }
 
+MCFixupKindInfo const &MOSAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
+  // NOTE: Many AVR fixups work on sets of non-contignous bits. We work around
+  // this by saying that the fixup is the size of the entire instruction.
+  const static MCFixupKindInfo Infos[MOS::NumTargetFixupKinds] = {
+      // This table *must* be in same the order of fixup_* kinds in
+      // MOSFixupKinds.h.
+      //
+      // name                    offset  bits  flags
+      {"Imm8", 0, 8, 0},
+      {"Imm16", 0, 16, 0},
+      {"PCRel8", 0, 8, MCFixupKindInfo::FKF_IsPCRel},
+      {"Addr8", 0, 8, 0},
+      {"Addr16", 0, 16, 0}
+  };
+
+  if (Kind < FirstTargetFixupKind)
+    return MCAsmBackend::getFixupKindInfo(Kind);
+
+  assert(unsigned(Kind - FirstTargetFixupKind) < getNumFixupKinds() &&
+         "Invalid kind!");
+
+  return Infos[Kind - FirstTargetFixupKind];
+}
+
+
 bool MOSAsmBackend::writeNopData(raw_ostream &OS, uint64_t Count) const {
   // todo: fix for virtual targets
   while ((Count--) > 0)

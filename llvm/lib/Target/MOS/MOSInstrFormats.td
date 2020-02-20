@@ -35,26 +35,65 @@ class Inst< dag outs, dag ins, string asmstr, list<dag> pattern> : Instruction
 
 /// Makes sure that immediate mode operands fit into the required bit field
 /// size.  See also *isImm8 functions in MOS code.
-class ImmediateAsmOperand<string name>
+class MOSAsmOperand<string name>
   : AsmOperandClass {
   let Name = name;
-  let RenderMethod = "addImmOperands";
   let DiagnosticType = !strconcat("Invalid", name);
 }
+
+class ImmediateAsmOperand<string name>
+  : MOSAsmOperand<name> {
+    let RenderMethod = "addImmOperands";
+  }
+
+class PCRelativeOperand<string name>
+  : MOSAsmOperand<name> {
+  }
+
+/// An 8-bit (i.e. zero page) address.
+class Addr8Operand<string name>
+  : MOSAsmOperand<name> {
+  }
+
+/// A 16-bit address.
+class Addr16Operand<string name>
+  : MOSAsmOperand<name> {
+  }
 
 /// This operand will only match a value from 0 to 255 inclusive.
 def imm8 : Operand<i32> {
   let ParserMatchClass = ImmediateAsmOperand<"Imm8">;
+  let EncoderMethod = "encodeImm<MOS::Imm8, 1>";
 }
 
 /// This operand will only match a value from 0 to 65535 inclusive.
+/// Only 16-bit variants and virtual instructions should need this.
 def imm16 : Operand<i32> {
   let ParserMatchClass = ImmediateAsmOperand<"Imm16">;
+  let EncoderMethod = "encodeImm<MOS::Imm16, 1>";
+}
+
+/// An 8-bit pc-relative reference, for branch instructions.
+def pcrel8 : Operand<i32> {
+  let ParserMatchClass = PCRelativeOperand<"PCRel8">;
+  let EncoderMethod = "encodeImm<MOS::PCRel8, 1>";
+}
+
+def addr8 : Operand<i32> 
+{
+  let ParserMatchClass = Addr8Operand<"Addr8">;
+  let EncoderMethod = "encodeImm<MOS::Addr8, 1>";
+}
+
+def addr16 : Operand<i32> {
+  let ParserMatchClass = Addr16Operand<"Addr16">;
+  let EncoderMethod = "encodeImm<MOS::Addr16, 1>";
 }
 
 /// This operand will only match a value from 256 to 65536 inclusive.
 def imm8to16 : Operand<i32> {
   let ParserMatchClass = ImmediateAsmOperand<"Imm8To16">;
+  let EncoderMethod = "encodeImm<MOS::Addr16, 1>";
 }
 
 /// All non-virtual MOS opcodes are 8 bits long.
@@ -123,61 +162,61 @@ def Immediate : AddressingMode
 def ZeroPage : AddressingMode
 {
   let OperandsStr = "$param";
-  let InOperandList = (ins imm8:$param);
+  let InOperandList = (ins addr8:$param);
 }
 
 def ZeroPageX : AddressingMode
 {
   let OperandsStr = "$param , x";
-  let InOperandList = (ins imm8:$param);
+  let InOperandList = (ins addr8:$param);
 }
 
 def ZeroPageY : AddressingMode
 {
   let OperandsStr = "$param , y";
-  let InOperandList = (ins imm8:$param);
+  let InOperandList = (ins addr8:$param);
 }
 
 def Relative : AddressingMode
 {
   let OperandsStr = "$param";
-  let InOperandList = (ins imm8:$param);
+  let InOperandList = (ins pcrel8:$param);
 }
 
 def Absolute : AddressingMode
 {
   let OperandsStr = "$param";
-  let InOperandList = (ins imm8to16:$param);
+  let InOperandList = (ins addr16:$param);
 }
 
 def AbsoluteX : AddressingMode
 {
   let OperandsStr = "$param , x";
-  let InOperandList = (ins imm8to16:$param);
+  let InOperandList = (ins addr16:$param);
 }
 
 def AbsoluteY : AddressingMode
 {
   let OperandsStr = "$param , y";
-  let InOperandList = (ins imm8to16:$param);
+  let InOperandList = (ins addr16:$param);
 }
 
 def Indirect : AddressingMode
 {
   let OperandsStr = "( $param )";
-  let InOperandList = (ins imm8to16:$param);
+  let InOperandList = (ins addr16:$param);
 }
 
 def IndexedIndirect : AddressingMode
 {
   let OperandsStr = "( $param , x )";
-  let InOperandList = (ins imm8:$param);
+  let InOperandList = (ins addr8:$param);
 }
 
 def IndirectIndexed : AddressingMode
 {
   let OperandsStr = "( $param ) , y";
-  let InOperandList = (ins imm8:$param);
+  let InOperandList = (ins addr8:$param);
 }
 
 /// An unsized MOS instruction, to which an addressing mode may be applied.

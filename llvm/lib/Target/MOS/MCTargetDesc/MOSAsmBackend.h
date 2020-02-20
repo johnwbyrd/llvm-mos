@@ -80,6 +80,9 @@ public:
                                     const MCRelaxableFragment *DF,
                                     const MCAsmLayout &Layout) const override;
   virtual unsigned getNumFixupKinds() const override;
+  virtual MCFixupKindInfo const &
+  getFixupKindInfo(MCFixupKind Kind) const override;
+
   /// Check whether the given instruction may need relaxation.
   ///
   /// \param Inst - The instruction to test.

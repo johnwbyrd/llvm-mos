@@ -58,6 +58,61 @@ void MOSMCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
   emitInstruction(BinaryOpCode, Size, STI, OS);
 }
 
+template <MOS::Fixups Fixup, unsigned Offset>
+unsigned MOSMCCodeEmitter::encodeImm(const MCInst &MI, unsigned OpNo,
+                                     SmallVectorImpl<MCFixup> &Fixups,
+                                     const MCSubtargetInfo &STI) const {
+  auto MO = MI.getOperand(OpNo);
+
+  if (MO.isExpr()) {
+    if (isa<MOSMCExpr>(MO.getExpr())) {
+      // If the expression is already a MOSMCExpr,
+      // we shouldn't perform any more fixups. Without this check, we would
+      // instead create a fixup to the symbol named 'lo8(symbol)' which
+      // is not correct.
+      return getExprOpValue(MO.getExpr(), Fixups, STI);
+    }
+
+    MCFixupKind FixupKind = static_cast<MCFixupKind>(Fixup);
+    Fixups.push_back(MCFixup::create(Offset, MO.getExpr(), FixupKind, MI.getLoc()));
+
+    return 0;
+  }
+
+  assert(MO.isImm());
+  return MO.getImm();
+}
+
+unsigned MOSMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
+                                          SmallVectorImpl<MCFixup> &Fixups,
+                                          const MCSubtargetInfo &STI) const {
+
+  MCExpr::ExprKind Kind = Expr->getKind();
+
+  if (Kind == MCExpr::Binary) {
+    Expr = static_cast<const MCBinaryExpr *>(Expr)->getLHS();
+    Kind = Expr->getKind();
+  }
+
+  if (Kind == MCExpr::Target) {
+    MOSMCExpr const *MOSExpr = cast<MOSMCExpr>(Expr);
+    int64_t Result;
+    /*
+    if (AVRExpr->evaluateAsConstant(Result)) {
+      return Result;
+    }
+
+    MCFixupKind FixupKind = static_cast<MCFixupKind>(MOSExpr->getFixupKind());
+    Fixups.push_back(MCFixup::create(0, AVRExpr, FixupKind));
+    */
+    return 0;
+  }
+
+  assert(Kind == MCExpr::SymbolRef);
+  return 0;
+}
+
+
 unsigned MOSMCCodeEmitter::getMachineOpValue(const MCInst &MI,
                                              const MCOperand &MO,
                                              SmallVectorImpl<MCFixup> &Fixups,
@@ -68,7 +123,7 @@ unsigned MOSMCCodeEmitter::getMachineOpValue(const MCInst &MI,
   assert(MO.isExpr());
 
   const MCExpr *Expr = MO.getExpr();
-  if (const auto *SExpr = dyn_cast<MOSMCExpr>(Expr)) {
+  if (const auto *SExpr = dyn_cast<MCSymbolRefExpr>(Expr)) {
     Fixups.push_back(MCFixup::create(0, Expr, MCFixupKind::FK_Data_1));
     return 0;
   }

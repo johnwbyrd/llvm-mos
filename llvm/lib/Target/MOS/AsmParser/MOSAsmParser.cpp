@@ -105,6 +105,10 @@ public:
   virtual bool isImm8() const { return isImmediate<0, 0x100 - 1>(); }
   virtual bool isImm16() const { return isImmediate<0, 0x10000 - 1>(); }
   virtual bool isImm8To16() const { return (!isImm8() && isImm16()); }
+  virtual bool isPCRel8() const { return isImm8(); }
+  virtual bool isAddr8() const { return isImm8(); }
+  virtual bool isAddr16() const { return isImm16(); }
+
   static void addExpr(MCInst &Inst, const MCExpr *Expr) {
     if (const auto *CE = dyn_cast<MCConstantExpr>(Expr)) {
       Inst.addOperand(MCOperand::createImm(CE->getValue()));
@@ -123,6 +127,18 @@ public:
 
   void addRegOperands(MCInst &Inst, unsigned /*N*/) const {
     Inst.addOperand(MCOperand::createReg(getReg()));
+  }
+
+  void addPCRel8Operands(MCInst &Inst, unsigned N) const {
+    addImmOperands(Inst, N);
+  }
+
+  void addAddr8Operands(MCInst &Inst, unsigned N) const {
+    addImmOperands(Inst, N);
+  }
+
+  void addAddr16Operands(MCInst &Inst, unsigned N) const {
+    addImmOperands(Inst, N);
   }
 
   static std::unique_ptr<MOSOperand> createImm(const MCExpr *Val, SMLoc S,
@@ -378,8 +394,7 @@ public:
       TokName = getLexer().getTok().getString();
       TokLoc = getLexer().getTok().getLoc();
 
-      if (FirstTime && (TokName == "a" || TokName == "A"))
-      {
+      if (FirstTime && (TokName == "a" || TokName == "A")) {
         eatThatToken(Operands);
         FirstTime = false;
         continue;
