@@ -40,5 +40,8 @@
     "C_Cpp.autocomplete": "Disabled",
     "C_Cpp.default.intelliSenseMode": "clang-x64",
     "C_Cpp.enhancedColorization": "Enabled",
-    "C_Cpp.intelliSenseEngine": "Disabled"
+    "C_Cpp.intelliSenseEngine": "Disabled",
+    "C_Cpp.clang_format_fallbackStyle": "LLVM",
+    "C_Cpp.clang_format_style": "LLVM",
+    "C_Cpp.workspaceParsingPriority": "low"
 } 
