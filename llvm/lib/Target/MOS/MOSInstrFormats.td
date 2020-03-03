@@ -44,6 +44,7 @@ class MOSAsmOperand<string name>
 class ImmediateAsmOperand<string name>
   : MOSAsmOperand<name> {
     let RenderMethod = "addImmOperands";
+    let DiagnosticType = "immediate";
   }
 
 class PCRelativeOperand<string name>
@@ -459,7 +460,7 @@ multiclass CC0_Regular< bits<3> aaa, dag outs, dag ins,
     Inst16<outs, ins, OpcodeStr, [], OpcodeC0<aaa, 0b001>, ZeroPage>;
 
   def _Absolute : 
-    Inst24<outs, ins, OpcodeStr, [], OpcodeC0<aaa, 0b010>, Absolute>;
+    Inst24<outs, ins, OpcodeStr, [], OpcodeC0<aaa, 0b011>, Absolute>;
 }
 
 /// "The conditional branch instructions all have the form xxy10000. The flag

@@ -95,7 +95,38 @@
             "externalConsole": false,
             "visualizerFile": 
                 "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },    
+        {
+            "name": "Debug ophis-hello-world.s filetype=obj",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
+            "args": ["-arch=mos", "-mcpu=mos-generic", "-print-imm-hex",
+                "-show-encoding", "-filetype=obj", "-o", "${workspaceFolder}/build/ophis-hello-world.o"
+                "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\ophis-hello-world.s"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/cmake/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": 
+                "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },        
+        {
+            "name": "llvm-objdump ophis-hello-world.o",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
+            "args": ["-arch=mos", "-mcpu=mos-generic", "-print-imm-hex",
+                "-show-encoding", "-filetype=obj", "-o", "${workspaceFolder}/build/ophis-hello-world.o"
+                "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\ophis-hello-world.s"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/cmake/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": 
+                "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },        
+
         {
             "name": "Debug inst-ora.s",
             "type": "cppvsdbg",

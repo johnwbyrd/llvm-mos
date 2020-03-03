@@ -50,7 +50,7 @@ MCFixupKindInfo const &MOSAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
       // This table *must* be in same the order of fixup_* kinds in
       // MOSFixupKinds.h.
       //
-      // name                    offset  bits  flags
+      // name, offset, bits, flags
       {"Imm8", 0, 8, 0},
       {"Imm16", 0, 16, 0},
       {"PCRel8", 0, 8, MCFixupKindInfo::FKF_IsPCRel},
@@ -81,7 +81,7 @@ bool MOSAsmBackend::writeNopData(raw_ostream &OS, uint64_t Count) const {
 
 bool MOSAsmBackend::mayNeedRelaxation(const MCInst &Inst,
                                       const MCSubtargetInfo &STI) const {
-  return false;
+  return true;
 }
 
 unsigned MOSAsmBackend::getNumFixupKinds() const {

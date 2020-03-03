@@ -260,11 +260,13 @@ public:
       return invalidOperand(Loc, Operands, ErrorInfo);
     case Match_MnemonicFail:
       return Error(Loc, "invalid instruction");
-    case Match_InvalidImm8:
-      return Error(Loc, "operand must be an 8-bit value (less than 256)");
-    case Match_InvalidImm16:
-      return Error(Loc, "operand must be an 16-bit value (less than 65536)");
-    case Match_InvalidImm8To16:
+    case Match_InvalidAddr8:
+      return Error(Loc, "operand must be an 8-bit address");
+    case Match_InvalidAddr16:
+      return Error(Loc, "operand must be an 16-bit address");
+    case Match_InvalidPCRel8:
+      return Error(Loc, "operand must be an 8-bit PC relative address");
+    case Match_immediate:
       return Error(Loc, "operand must be an 8 to 16 bit value (between 256 and "
                         "65535 inclusive)");
     case Match_NearMisses:

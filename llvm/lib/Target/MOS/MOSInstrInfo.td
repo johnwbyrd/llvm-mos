@@ -45,7 +45,6 @@ def : InstAlias<"rol a", (ROL_Accumulator)>;
 def : InstAlias<"lsr a", (LSR_Accumulator)>;
 def : InstAlias<"ror a", (ROR_Accumulator)>;
 
-defm STX : CC2_NonShift< 0b100, (outs), (ins), "stx", []>;
 defm LDX : CC2_NonShift< 0b101, (outs), (ins), "ldx", []>;
 defm DEC : CC2_NonShift< 0b110, (outs), (ins), "dec", []>;
 defm INC : CC2_NonShift< 0b111, (outs), (ins), "inc", []>;
@@ -56,9 +55,15 @@ defm INC : CC2_NonShift< 0b111, (outs), (ins), "inc", []>;
 /// zp          06  26  46  66  86  A6  C6  E6
 /// A           0A  2A  4A  6A	 	 	 	 
 /// abs         0E  2E  4E  6E  8E  AE  CE  EE
-/// zp,X/zp,    16  36  56  76  96  B6  D6  F6
+/// zp,X/zp,Y   16  36  56  76  96  B6  D6  F6
 /// abs,X/abs,Y	1E	3E	5E	7E      BE  DE  FE
 
+def STX_ZeroPage :
+	Inst16<(outs), (ins), "stx", [], OpcodeC2<0b100, 0b001>, ZeroPage>;
+def STX_ZeroPageY :
+	Inst16<(outs), (ins), "stx", [], OpcodeC2<0b100, 0b101>, ZeroPageY>;
+def STX_Absolute :
+	Inst24<(outs), (ins), "stx", [], OpcodeC2<0b100, 0b011>, Absolute>;
 def LDX_Immediate : 
 	Inst16<(outs), (ins), "ldx", [], OpcodeC2<0b101, 0b000>, Immediate>;
 def LDX_AbsoluteY : 
@@ -67,6 +72,7 @@ def DEC_AbsoluteX :
 	Inst24<(outs), (ins), "dec", [], OpcodeC2<0b110, 0b111>, AbsoluteX>;
 def INC_AbsoluteX : 
 	Inst24<(outs), (ins), "inc", [], OpcodeC2<0b111, 0b111>, AbsoluteX>;
+
 
 /// CC0 regular instructions, the nine in the top left corner of this diagram:
 ///       BIT JMP JMP() STY LDY CPY CPX
@@ -120,12 +126,16 @@ def JMP_Absolute :
 	Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b010, 0b011>, Absolute>;
 def JMP_Indirect : 
 	Inst24<(outs), (ins), "jmp", [], OpcodeC0<0b011, 0b011>, Indirect>;
+def STY_ZeroPage :
+	Inst16<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b001>, ZeroPage>;
 def STY_Absolute : 
 	Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b011>, Absolute>;
 def STY_ZeroPageX : 
 	Inst16<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b101>, ZeroPageX>;
-def STY_AbsoluteX : 
-	Inst24<(outs), (ins), "sty", [], OpcodeC0<0b100, 0b111>, ZeroPageX>;
+def LDY_ZeroPageX : 
+	Inst16<(outs), (ins), "ldy", [], OpcodeC0<0b101, 0b101>, ZeroPageX>;
+def LDY_AbsoluteX : 
+	Inst24<(outs), (ins), "ldy", [], OpcodeC0<0b110, 0b011>, AbsoluteX>;
 
 /// The conditional branch instructions all have the form xxy10000. The flag
 /// indicated by xx is compared with y, and the branch is taken if they are
@@ -173,7 +183,7 @@ def PHP_Implied: InstLow8<(outs), (ins), "php", [], 0b0000>;
 def PLP_Implied: InstLow8<(outs), (ins), "plp", [], 0b0010>;
 def PHA_Implied: InstLow8<(outs), (ins), "pha", [], 0b0100>;
 def PLA_Implied: InstLow8<(outs), (ins), "pla", [], 0b0110>;
-def DEY_Implied: InstLow8<(outs), (ins), "plp", [], 0b1000>;
+def DEY_Implied: InstLow8<(outs), (ins), "dey", [], 0b1000>;
 def TAY_Implied: InstLow8<(outs), (ins), "tay", [], 0b1010>;
 def INY_Implied: InstLow8<(outs), (ins), "iny", [], 0b1100>;
 def INX_Implied: InstLow8<(outs), (ins), "inx", [], 0b1110>;
