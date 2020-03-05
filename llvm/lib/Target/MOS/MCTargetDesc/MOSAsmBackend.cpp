@@ -40,7 +40,7 @@ MCAsmBackend *createMOSAsmBackend(const Target &T, const MCSubtargetInfo &STI,
 void MOSAsmBackend::relaxInstruction(const MCInst &Inst,
                                      const MCSubtargetInfo &STI,
                                      MCInst &Res) const {
-  // todo 
+  Res = Inst;
 }
 
 MCFixupKindInfo const &MOSAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
@@ -81,7 +81,7 @@ bool MOSAsmBackend::writeNopData(raw_ostream &OS, uint64_t Count) const {
 
 bool MOSAsmBackend::mayNeedRelaxation(const MCInst &Inst,
                                       const MCSubtargetInfo &STI) const {
-  return true;
+  return false;
 }
 
 unsigned MOSAsmBackend::getNumFixupKinds() const {
@@ -99,7 +99,7 @@ void MOSAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
 bool MOSAsmBackend::fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
                                          const MCRelaxableFragment *DF,
                                          const MCAsmLayout &Layout) const {
-  return true;
+  return false;
 }
 
 std::unique_ptr<llvm::MCObjectTargetWriter>

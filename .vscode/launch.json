@@ -115,10 +115,9 @@
             "name": "llvm-objdump ophis-hello-world.o",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/cmake/bin/llvm-mc.exe",
-            "args": ["-arch=mos", "-mcpu=mos-generic", "-print-imm-hex",
-                "-show-encoding", "-filetype=obj", "-o", "${workspaceFolder}/build/ophis-hello-world.o"
-                "C:\\git\\llvm-project\\llvm\\test\\MC\\MOS\\ophis-hello-world.s"],
+            "program": "${workspaceFolder}/build/cmake/bin/llvm-objdump.exe",
+            "args": ["--triple=mos-generic", "-print-imm-hex", "-D",
+                 "${workspaceFolder}/build/ophis-hello-world.o"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/cmake/bin",
             "environment": [],
