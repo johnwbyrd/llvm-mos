@@ -135,7 +135,7 @@ def STY_ZeroPageX :
 def LDY_ZeroPageX : 
 	Inst16<(outs), (ins), "ldy", [], OpcodeC0<0b101, 0b101>, ZeroPageX>;
 def LDY_AbsoluteX : 
-	Inst24<(outs), (ins), "ldy", [], OpcodeC0<0b110, 0b011>, AbsoluteX>;
+	Inst24<(outs), (ins), "ldy", [], OpcodeC0<0b101, 0b111>, AbsoluteX>;
 
 /// The conditional branch instructions all have the form xxy10000. The flag
 /// indicated by xx is compared with y, and the branch is taken if they are

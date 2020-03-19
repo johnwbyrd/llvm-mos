@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MOSMCTargetDesc.h"
-#include "InstPrinter/MOSInstPrinter.h"
+#include "MOSInstPrinter.h"
 #include "MOSELFStreamer.h"
 #include "MOSMCAsmInfo.h"
 #include "MOSMCELFStreamer.h"

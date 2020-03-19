@@ -17,7 +17,7 @@
 
 namespace llvm {
 
-MOSMCAsmInfo::MOSMCAsmInfo(const Triple &TT) {
+MOSMCAsmInfo::MOSMCAsmInfo(const Triple &TT, const MCTargetOptions &Options) {
   CodePointerSize = 2;
   CalleeSaveStackSlotSize = 2;
   CommentString = ";";

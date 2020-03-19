@@ -187,7 +187,7 @@
 	lda	$3456,y                 ; CHECK: encoding: [0xb9,0x56,0x34]
 	tsx                           ; CHECK: encoding: [0xba]
 	.byte	$bb
-	ldy	$3456,x                 ; CHECK: encoding: [0xcc,0x56,0x34]
+	ldy	$3456,x                 ; CHECK: encoding: [0xbc,0x56,0x34]
 	lda	$3456,x                 ; CHECK: encoding: [0xbd,0x56,0x34]
 	ldx	$3456,y                 ; CHECK: encoding: [0xbe,0x56,0x34]
 	.byte	$bf

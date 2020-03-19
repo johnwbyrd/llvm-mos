@@ -24,9 +24,11 @@ struct ModifierEntry {
   MOSMCExpr::VariantKind VariantKind;
 };
 
+/*
 const ModifierEntry ModifierNames[] = 
   {{"none", MOSMCExpr::VK_MOS_None}
 };
+*/
 
 } // end of anonymous namespace
 

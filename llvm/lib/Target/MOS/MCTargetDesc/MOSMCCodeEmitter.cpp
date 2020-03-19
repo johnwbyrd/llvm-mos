@@ -95,9 +95,9 @@ unsigned MOSMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
   }
 
   if (Kind == MCExpr::Target) {
+    /*
     MOSMCExpr const *MOSExpr = cast<MOSMCExpr>(Expr);
     int64_t Result;
-    /*
     if (AVRExpr->evaluateAsConstant(Result)) {
       return Result;
     }

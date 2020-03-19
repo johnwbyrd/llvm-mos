@@ -31,11 +31,12 @@
 
 namespace llvm {
 
-void MOSInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
-                               StringRef Annot, const MCSubtargetInfo &STI) {
+void MOSInstPrinter::printInst(const MCInst *MI, uint64_t Address,
+                               StringRef Annot, const MCSubtargetInfo &STI,
+                               raw_ostream &OS) {
   std::string AiryOperands;
   raw_string_ostream AiryOperandStream(AiryOperands);
-  printInstruction(MI, AiryOperandStream);
+  printInstruction(MI, Address, AiryOperandStream);
   AiryOperands = AiryOperandStream.str();
   size_t SpacesSeen = 0;
   std::string CorrectOperands;
@@ -75,10 +76,11 @@ void MOSInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
 format_object<int64_t> MOSInstPrinter::formatHex(int64_t Value) const {
   switch (PrintHexStyle) {
   case HexStyle::C:
-    if (Value < 0)
+    if (Value < 0) {
       return format("-$%" PRIx64, -Value);
-    else
+    } else {
       return format("$%" PRIx64, Value);
+    }
   case HexStyle::Asm:
     if (Value < 0) {
       return format("-$%" PRIx64, -Value);

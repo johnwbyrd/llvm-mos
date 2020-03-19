@@ -143,16 +143,16 @@ public:
 
   static std::unique_ptr<MOSOperand> createImm(const MCExpr *Val, SMLoc S,
                                                SMLoc E) {
-    return make_unique<MOSOperand>(Val, S, E);
+    return std::make_unique<MOSOperand>(Val, S, E);
   }
 
   static std::unique_ptr<MOSOperand> createReg(unsigned RegNum, SMLoc S,
                                                SMLoc E) {
-    return make_unique<MOSOperand>(RegNum, S, E);
+    return std::make_unique<MOSOperand>(RegNum, S, E);
   }
 
   static std::unique_ptr<MOSOperand> createToken(StringRef Str, SMLoc S) {
-    return make_unique<MOSOperand>(Str, S);
+    return std::make_unique<MOSOperand>(Str, S);
   }
 
   void print(raw_ostream &O) const override {
@@ -232,7 +232,7 @@ public:
 
   bool emit(MCInst &Inst, SMLoc const &Loc, MCStreamer &Out) const {
     Inst.setLoc(Loc);
-    Out.EmitInstruction(Inst, STI);
+    Out.emitInstruction(Inst, STI);
 
     return false;
   }
@@ -306,7 +306,7 @@ public:
   // Like everything else in this particular API, it returns false on success.
   virtual bool tokenToHex(uint64_t &Res, const AsmToken &Tok) {
     Res = 0;
-    std::string Text = Tok.getString();
+    std::string Text = Tok.getString().str();
     if (Text.size() > 8) {
       return true;
     }
@@ -339,6 +339,13 @@ public:
     Operands.push_back(MOSOperand::createImm(Expression, S, E));
     return false;
   }
+
+  OperandMatchResultTy
+  tryParseRegister(unsigned &RegNo, SMLoc &StartLoc, SMLoc &EndLoc) override
+  {
+    return MatchOperand_NoMatch;
+  }
+
 
   bool ParseInstruction(ParseInstructionInfo & /*Info*/, StringRef Mnemonic,
                         SMLoc NameLoc, OperandVector &Operands) override {

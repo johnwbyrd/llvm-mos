@@ -28,7 +28,7 @@ using namespace llvm;
 
 #define DEBUG_TYPE "mos-disassembler"
 
-typedef MCDisassembler::DecodeStatus DecodeStatus;
+using DecodeStatus = MCDisassembler::DecodeStatus;
 
 namespace {
 /// A disassembler class for MOS.
@@ -38,7 +38,6 @@ public:
       : MCDisassembler(STI, Ctx) {}
   DecodeStatus getInstruction(MCInst &Instr, uint64_t &Size,
                               ArrayRef<uint8_t> Bytes, uint64_t Address,
-                              raw_ostream &VStream,
                               raw_ostream &CStream) const override;
 };
 }; // namespace
@@ -73,7 +72,6 @@ const uint8_t *getDecoderTable(size_t Size) {
 DecodeStatus MOSDisassembler::getInstruction(MCInst &Instr, uint64_t &Size,
                                              ArrayRef<uint8_t> Bytes,
                                              uint64_t Address,
-                                             raw_ostream &VStream,
                                              raw_ostream &CStream) const {
   for (size_t InsnSize = 1; InsnSize <= 3; InsnSize++) {
     uint32_t Insn = 0;
