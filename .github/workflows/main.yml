@@ -33,7 +33,7 @@ jobs:
         arch: amd64
     - name: Install gnuwin32 and zip on Windows
       if: startsWith(matrix.os, 'windows')
-      run: choco install gnuwin32-coreutils.install zip
+      run: choco install gnuwin32-coreutils.install llvm zip
     - name: Install Ninja
       uses: llvm/actions/install-ninja@master
     - uses: actions/checkout@v1
