@@ -36,7 +36,7 @@ jobs:
       run: choco install gnuwin32-coreutils.install zip
     - name: Install Ninja
       uses: llvm/actions/install-ninja@master
-    - name Check out sources
+    - name: Check out sources
       uses: actions/checkout@v1
       with:
         fetch-depth: 1
