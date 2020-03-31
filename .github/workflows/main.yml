@@ -31,24 +31,16 @@ jobs:
       uses: llvm/actions/setup-windows@master
       with:
         arch: amd64
-    - name: Show locally installed packages
-      if: startsWith(matrix.os, 'windows')
-      run: choco list --localonly
     - name: Install gnuwin32 and zip on Windows
       if: startsWith(matrix.os, 'windows')
       run: choco install gnuwin32-coreutils.install zip
     - name: Install Ninja
       uses: llvm/actions/install-ninja@master
-    - uses: actions/checkout@v1
+    - name Check out sources
+      uses: actions/checkout@v1
       with:
         fetch-depth: 1
-    - name: Delete Android on Windows
-      if: startsWith(matrix.os, 'windows')
-      run: rmdir /s /q "C:/Program Files (x86)/Android"
-    - name: Delete Java on Windows
-      if: startsWith(matrix.os, 'windows')
-      run: rmdir /s /q "C:/Program Files (x86)/Android"
-    - name: Test LLVM
+    - name: Build and test LLVM
       uses: llvm/actions/build-test-llvm-project@master
       with:
         cmake_args: -G Ninja -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD="MOS" -DLLVM_ENABLE_PROJECTS="clang;lld;" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{ steps.workspacedir.outputs.path }}/install
@@ -56,6 +48,8 @@ jobs:
       run: |
         cd build
         ninja install 
+    - name: Free up some disk space by deleting .obj files
+      run: rm -rf *.obj
     - name: Zip distribution
       run: |
         cd install
