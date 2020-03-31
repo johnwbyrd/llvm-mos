@@ -31,6 +31,9 @@ jobs:
       uses: llvm/actions/setup-windows@master
       with:
         arch: amd64
+    - name: Show locally installed packages
+      if: startsWith(matrix.os, 'windows')
+      run: choco list --localonly
     - name: Install gnuwin32 and zip on Windows
       if: startsWith(matrix.os, 'windows')
       run: choco install gnuwin32-coreutils.install zip
@@ -39,6 +42,12 @@ jobs:
     - uses: actions/checkout@v1
       with:
         fetch-depth: 1
+    - name: Delete Android on Windows
+      if: startsWith(matrix.os, 'windows')
+      run: rmdir /s /q "C:/Program Files (x86)/Android"
+    - name: Delete Java on Windows
+      if: startsWith(matrix.os, 'windows')
+      run: rmdir /s /q "C:/Program Files (x86)/Android"
     - name: Test LLVM
       uses: llvm/actions/build-test-llvm-project@master
       with:
