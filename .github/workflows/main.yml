@@ -32,7 +32,7 @@ jobs:
       with:
         arch: amd64
     - name: Install gnuwin32 and zip on Windows
-      if: startsWith(matrix.os, 'windows')
+      if: startsWith(matrix.os, 'windows')    
       run: choco install gnuwin32-coreutils.install zip
     - name: Install Ninja
       uses: llvm/actions/install-ninja@master
@@ -48,8 +48,9 @@ jobs:
       run: |
         cd build
         ninja install 
-    - name: Free up disk space by deleting .obj files
-      run: rm -rf *.obj
+    - name: Free up disk space by deleting .obj files in PowerShell
+      if: startsWith(matrix.os, 'windows')    
+      run: Get-ChildItem * -Include *.obj -Recurse | Remove-Item -Force
     - name: Zip distribution
       run: |
         cd install
