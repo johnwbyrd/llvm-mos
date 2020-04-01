@@ -48,10 +48,8 @@ jobs:
       run: |
         cd build
         ninja install 
-    - name: Free up disk space on Windows by deleting .obj files
-      if: startsWith(matrix.os, 'windows')
-      run: |
-        del /s /q *.obj
+    - name: Free up disk space by deleting .obj files
+      run: rm -rf *.obj
     - name: Zip distribution
       run: |
         cd install
