@@ -34,7 +34,7 @@
     "clangd.arguments": [
         "--compile-commands-dir=c:/git/llvm-project/build/cmake",
         "--clang-tidy",
-        "--clang-tidy-checks=*,-modernize-use-trailing-return-type,-google-runtime-references,-fuchsia-default-arguments-calls"
+        "--clang-tidy-checks=-*,clang*,llvm*,bugprone*,cpp*,portability*,readability*"
     ],
     "lldb.executable": "c:/program files/llvm/bin/lldb.exe",
     "C_Cpp.autocomplete": "Disabled",
