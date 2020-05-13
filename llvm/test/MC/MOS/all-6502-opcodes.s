@@ -1,4 +1,4 @@
-; RUN: llvm-mc -triple mos -mcpu=mos-generic -show-encoding < %s | FileCheck %s
+; RUN: llvm-mc -triple mos -show-encoding < %s | FileCheck %s
 	brk                           ; CHECK: encoding: [0x00]
 	ora	($12,x)                 ; CHECK: encoding: [0x01,0x12]
 	.byte	$02
