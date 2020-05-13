@@ -65,7 +65,6 @@ def FamilySWEET16
 class ELFArch<string name>  : SubtargetFeature<"", "ELFArch",
                                     !strconcat("ELF::",name), "">;
 // ELF e_flags architecture values
-def ELFArchMOSGeneric : ELFArch<"EF_MOS_ARCH_GENERIC">;
 def ELFArchMOS6502 : ELFArch<"EF_MOS_ARCH_6502">;
 def ELFArchMOS6502X : ELFArch<"EF_MOS_ARCH_6502X">;
 def ELFArchMOS65SC02 : ELFArch<"EF_MOS_ARCH_65SC02">;
@@ -80,7 +79,6 @@ class Device<string Name, Family Fam, ELFArch Arch,
              list<SubtargetFeature> ExtraFeatures = []>
   : Processor<Name, NoItineraries, !listconcat([Fam,Arch],ExtraFeatures)>;
 
-def : Device<"mos-generic", Family6502, ELFArchMOSGeneric>;
 def : Device<"mos-6502",  Family6502, ELFArchMOS6502>;
 def : Device<"mos-6502x", Family6502X, ELFArchMOS6502X>;
 def : Device<"mos-65c02", Family65C02, ELFArchMOS65C02>;
