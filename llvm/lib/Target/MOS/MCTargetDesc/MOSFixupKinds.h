@@ -25,11 +25,11 @@ namespace MOS {
 ///       MCFixupKindInfo Infos[MOS::NumTargetFixupKinds]
 ///       in `MOSAsmBackend.cpp`.
 enum Fixups {
-  Imm8 = FirstTargetFixupKind,
-  Imm16,
-  PCRel8,
-  Addr8,
-  Addr16,
+  Imm8 = FirstTargetFixupKind, // An 8 bit immediate value.
+  Imm16, // A 16 bit immediate value.
+  PCRel8, // An 8-bit PC relative value.
+  Addr8, // An 8-bit (zero page) address.
+  Addr16, // A 16-bit address.
   LastTargetFixupKind,
   NumTargetFixupKinds = LastTargetFixupKind - FirstTargetFixupKind
 };
