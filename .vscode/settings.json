@@ -35,7 +35,7 @@
     "clangd.arguments": [
         "--compile-commands-dir=${workspaceRoot}/build",
         "--clang-tidy",
-        "--clang-tidy-checks=-*,clang*,llvm*,bugprone*,cpp*,portability*,readability*"
+        "--clang-tidy-checks=*,-modernize-use-trailing-return-type,-google-runtime-references,-fuchsia-default-arguments-calls"
     ],
     "lldb.executable": "c:/program files/llvm/bin/lldb.exe",
     "C_Cpp.autocomplete": "Disabled",
@@ -45,4 +45,5 @@
     "C_Cpp.clang_format_fallbackStyle": "LLVM",
     "C_Cpp.clang_format_style": "LLVM",
     "C_Cpp.workspaceParsingPriority": "low",
-} 
+    "cmake.parallelJobs": 4,
+}
