@@ -221,6 +221,7 @@ void ScalarEnumerationTraits<ELFYAML::ELF_EM>::enumeration(
   ECase(EM_RISCV);
   ECase(EM_LANAI);
   ECase(EM_BPF);
+  ECase(EM_MOS);
 #undef ECase
   IO.enumFallback<Hex16>(Value);
 }
@@ -661,6 +662,9 @@ void ScalarEnumerationTraits<ELFYAML::ELF_REL>::enumeration(
     break;
   case ELF::EM_PPC64:
 #include "llvm/BinaryFormat/ELFRelocs/PowerPC64.def"
+    break;
+  case ELF::EM_MOS:
+#include "llvm/BinaryFormat/ELFRelocs/MOS.def"
     break;
   default:
     // Nothing to do.

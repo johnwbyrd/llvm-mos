@@ -1,4 +1,4 @@
-; RUN: llvm-mc -triple mos -mcpu=mos-generic -show-encoding < %s | FileCheck %s
+; RUN: llvm-mc -triple mos -show-encoding < %s | FileCheck %s
 
 foo:
 ;	lda foo,y

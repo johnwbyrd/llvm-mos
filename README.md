@@ -1,130 +1,14 @@
 # Experimental LLVM backend for MOS 6502 and variants
 
 This is an experimental effort to create a MOS 6502 backend for the LLVM
-compiler suite.  As of this writing, **this effort is incomplete**, so don't 
-get all excited and try to compile C code with it just yet.
+compiler suite.  This effort is *incomplete* and does not compile C code yet.
 
-The approach taken with this backend is slightly different from the 
-one recommended in the documentation.  Since there is a large base of 
-existing 6502 code, early stages of the bringup is focused on getting LLVM
-to cleanly interoperate with existing 6502 assembly code.
+**This repository will be rebased!**  Do not fork this repository without
+coordinating with [me](mailto:johnwbyrd-at-gmail-dot-com).  Otherwise your
+work may be lost!
 
-Do not fork this repository yet without co-ordinating with me personally.  This
-is not just arrogance talking: the contents of this repository may be rebased
-randomly at any time.  I will probably get this working to proof of concept
-stage, before collapsing all my work into one clean mega-commit on the
-then-current LLVM stable release.  Then you can fork to your heart's content.
-
-## Current status
-
-A backend for MOS architectures has been added to `llvm/lib/Target/MC/MOS` . 
-Using the triple 'mos' will cause llvm-mc to use the new MOS backend.
-
-Tablegen recognizes all valid 6502 assembly mnemonics and spits out correct
-opcodes for all legal 6502 instructions. An operand parser exists that can
-handle at least all the instruction format variants in MOS.  This means that
-you can do simple 6502 assembly programming with llvm-mc now, so long as you
-stick with constant values and expressions.
-
-For some examples of what the backend can do as of this writing, see the 
-`llvm/test/MC/MOS` directory for some functional assembler tests.  Building the 
-`check-llvm-mc-mos` target, confirms just these tests for MOS.
-
-The standard LLVM lexer has been modified to permit recognizing the dollar sign
-`$` as a prefix for a hexadecimal constant, which tons of existing 6502 code
-depends on.  The lexer now queries whatever the current MCAsmInfo structure
-to see whether the target wants the dollar sign to be a hex prefix.  So,
-everything that depends on the lexer (which is almost everything in LLVM) can
-now recognize 6502 format hexadecimal constants, if the corresponding MCAsmInfo
-asks for it.
-
-LLVM's assembler backend depends on a lot of MCAsm-level features, such as
-[relaxation](https://eli.thegreenplace.net/2013/01/03/assembler-relaxation),
-and I don't want to mess with high-level code compilation until the base is
-rock-solid.  So, no work on clang until all assembler features are functional.
-First learn stand, then learn fly.
-
-To keep all the work honest, I'm using Github's new support for actions to 
-build the check-all target for *every* checkin in this repository.  As a neat
-side-effect of this property, you can get access to extremely fresh builds of 
-llvm-mos on Windows, MacOS and Ubuntu, by downloading the 
-[corresponding release build](https://github.com/johnwbyrd/llvm-mos/releases) 
-for the branch that you're interested in. Since each published release has
-passed check-llvm testing, the resultant builds might not be *too* broken.
-
-## Future work
-
-Stubs have been added for supporting assembler-specific commands in LLVM.
-Out of the gate, I hope to add support for at least some of the assembler
-directives in ca65 and in xa65, again because so much code seems to depend 
-on them.  However, I see this as a worthwhile, but not as a required, goal.
-ca65 in particular treats its macros as a simple programming language, and
-leans on them much more heavily than gas and llvm-mc do.  Since LLVM tries
-to emulate gas's behavior when compiling assembly code, it is unclear what
-size this undertaking might be.
-
-Remaining to be done at the assembly level: more things related to symbol
-handling, including relaxation.  The assembler seems to be emitting fixups 
-more or less correctly.
-
-Linker script formats in ca65 are sufficiently different from the GNU linker
-script format, that I will probably just rewrite some cl65 linker scripts
-in an LLVM-compatible format.  We can probably copy the linker sections and
-meanings from cc65 though, since they've put a lot of work into getting cc65
-compatible with tons of existing 6502 platforms.  The 6502's 8-bit relative
-branching instructions should play very nicely with LLVM's relaxation logic,
-as every B** instruction can be substituted for a slightly more expensive
-opposite B** instruction, plus an absolute JMP.
-
-The LLVM codegen functions are all stubbed.  Current strategy for codegen
-is to choose 32 or 64 consecutive zero-page locations, and treat them all
-as LLVM registers.  At least in the first compiler pass, this will mean that 
-all read-modify-write operations move all memory to zero page before doing 
-stuff to it.  I'm hoping that LLVM's register allocator, the smaller code size,
-and the smaller cycle count on register operations, offset the cost of
-constantly moving everything to and from zero page.
-
-I intend to get assembly and disassembly stable and moderately compatible with
-other assemblers, before moving on to codegen.  I'll probably give the user a
-choice of calling conventions: an uber-slow stack-only parameter passing mode,
-a cc65 compatible mode, and a fastcall mode.
-
-Wozniak correctly observed that 6502 code that works on 16 bit values, takes
-twice as much code space as it should.  Therefore, it's likely that LLVM
-will include an implicit SWEET16 interpreter, or something very much like
-SWEET16.  This could be thought of as premature optimization, but it's 
-going to be a necessary step for machines with less than 64KB of memory.
-
-I see LLVM codegen depending on a set of 16-bit virtual registers that map to 
-zero-page locations.  Exact locations will be decided at the link step, so the
-same core code will work regardless of your particular zero page layout.  These
-virtual registers can be represented as 8-bit or 32-bit registers by normal LLVM 
-register aliasing.
-
-I foresee the fastcall convention as a SWEET16-compatible convention that
-roughly follows ARM calling conventions.  That is, r0-r3 are temporaries, r4-r11
-are locals, r12 is an interprocedural call register, r13 is a stack pointer, r14
-is a link register, and r15 is the pc.  Locals would be allocated from r11 
-leftwards.  This would mean that saving and restoring the callstack would
-just be copying a contiguous range of zero page to and from the parameter
-stack.  It would also mean that 6502 and SWEET16 code could play nicely 
-together.  For certain limited cases, the fastcall convention could use
-6502 real registers.  If a function accepts an unsigned char and returns an
-unsigned character (e.g. isspace()), then that function could send and receive
-values in the 6502 accummulator only.  But I think passing parameters globally
-in A, X and Y may be overrated, since the very first thing you will have to 
-do is store those values in temporary memory before you work on them.  Let's
-see what LLVM's register allocator can come up with.
-
-I can foresee building up a 32-bit virtual machine in 6502 code (SOUR32?)
-This would be a SWEET16-like architecture with 32-bit registers and 32-bit
-virtual addresses.  The 32-bit memory could be backed by one of the many RAM
-expansion chips for 6502.  Since we can restrict which opcodes read and write
-memory, we can intercept these in interpreted code, and read and write
-pages in 16-bit memory that get swapped in and out to RAM expansion devices.
-It'll be slow as molasses in winter at 1 MHz, but it would actually work, and
-might even permit running modern software (albeit at a geological pace) on
-a 6502.
+For important information and current status of this fork, please see
+[the Wiki](https://github.com/johnwbyrd/llvm-mos/wiki).
 
 ------------
 

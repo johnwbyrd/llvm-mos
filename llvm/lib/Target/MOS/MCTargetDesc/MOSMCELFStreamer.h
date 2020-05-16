@@ -20,9 +20,6 @@
 
 namespace llvm {
 
-const int SIZE_LONG = 4;
-const int SIZE_WORD = 2;
-
 class MOSMCELFStreamer : public MCELFStreamer {
   std::unique_ptr<MCInstrInfo> MCII;
 
@@ -47,10 +44,11 @@ public:
       MOSMCExpr::VariantKind ModifierKind = MOSMCExpr::VK_MOS_None);
 };
 
-MCStreamer *createMOSELFStreamer(Triple const &TT, MCContext &Context,
-                                 std::unique_ptr<MCAsmBackend> MAB,
-                                 std::unique_ptr<MCObjectWriter> OW,
-                                 std::unique_ptr<MCCodeEmitter> CE);
+MCStreamer *createMOSMCELFStreamer(const Triple &T, MCContext &Ctx,
+                                 std::unique_ptr<MCAsmBackend> &&TAB,
+                                 std::unique_ptr<MCObjectWriter> &&OW,
+                                 std::unique_ptr<MCCodeEmitter> &&Emitter,
+                                 bool RelaxAll);
 
 } // end namespace llvm
 

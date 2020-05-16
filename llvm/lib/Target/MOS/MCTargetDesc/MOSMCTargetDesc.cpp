@@ -12,12 +12,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "MOSMCTargetDesc.h"
-#include "MOSInstPrinter.h"
 #include "MOSELFStreamer.h"
+#include "MOSInstPrinter.h"
 #include "MOSMCAsmInfo.h"
 #include "MOSMCELFStreamer.h"
 #include "MOSTargetStreamer.h"
-
 
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCCodeEmitter.h"
@@ -26,7 +25,6 @@
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/Support/TargetRegistry.h"
-
 
 #define GET_INSTRINFO_MC_DESC
 #include "MOSGenInstrInfo.inc"
@@ -56,8 +54,9 @@ static MCRegisterInfo *createMOSMCRegisterInfo(const Triple &TT) {
 static MCSubtargetInfo *createMOSMCSubtargetInfo(const Triple &TT,
                                                  StringRef CPU, StringRef FS) {
   // If we've received no advice on which CPU to use, let's use our own default.
-  if (CPU.empty())
-    CPU = "mos-generic";
+  if (CPU.empty()) {
+    CPU = "mos6502";
+  }
   return createMOSMCSubtargetInfoImpl(TT, CPU, FS);
 }
 
@@ -79,15 +78,6 @@ static MCInstPrinter *createMOSMCInstPrinter(const Triple &T,
   default:
     return nullptr;
   }
-}
-
-static MCStreamer *createMCStreamer(const Triple &T, MCContext &Context,
-                                    std::unique_ptr<MCAsmBackend> &&MAB,
-                                    std::unique_ptr<MCObjectWriter> &&OW,
-                                    std::unique_ptr<MCCodeEmitter> &&Emitter,
-                                    bool RelaxAll) {
-  return createELFStreamer(Context, std::move(MAB), std::move(OW),
-                           std::move(Emitter), RelaxAll);
 }
 
 static MCTargetStreamer *
@@ -125,7 +115,8 @@ extern "C" void LLVMInitializeMOSTargetMC() {
                                         createMOSMCCodeEmitter);
 
   // Register the obj streamer
-  TargetRegistry::RegisterELFStreamer(getTheMOSTarget(), createMCStreamer);
+  TargetRegistry::RegisterELFStreamer(getTheMOSTarget(),
+                                      createMOSMCELFStreamer);
 
   // Register the obj target streamer.
   TargetRegistry::RegisterObjectTargetStreamer(getTheMOSTarget(),
