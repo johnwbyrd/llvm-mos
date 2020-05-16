@@ -12,13 +12,8 @@
             "cppStandard": "c++17",
             "configurationProvider": "vector-of-bool.cmake-tools",
             "intelliSenseMode": "clang-x64",
-            "includePath": [
-                "C:/git/llvm-project/llvm/include",
-                "C:/git/llvm-project/build/cmake/include",
-                "C:/git/llvm-project/build/cmake/**"
-            ],
             "compilerPath": "c:/Program Files/LLVM/bin/clang.exe",
-            "compileCommands": "c:/git/llvm-project/build/cmake/compile_commands.json"
+            "compileCommands": "${workspaceFolder}/build/compile_commands.json"
         }
     ],
     "version": 4
