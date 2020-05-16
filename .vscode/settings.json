@@ -1,6 +1,6 @@
 {
-    "cmake.buildDirectory": "${workspaceRoot}/build/cmake",
-    "cmake.installPrefix": "${workspaceRoot}/build/cmake/install",
+    "cmake.buildDirectory": "${workspaceRoot}/build",
+    "cmake.installPrefix": "${workspaceRoot}/build/install",
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.generator": "Ninja",
     "cmake.configureSettings": {
@@ -32,7 +32,7 @@
     "restructuredtext.confPath": "${workspaceFolder}\\llvm\\docs",
     "clangd.path": "C:/Program Files/LLVM/bin/clangd.exe",
     "clangd.arguments": [
-        "--compile-commands-dir=c:/git/llvm-project/build/cmake",
+        "--compile-commands-dir=c:/git/llvm-project/build",
         "--clang-tidy",
         "--clang-tidy-checks=-*,clang*,llvm*,bugprone*,cpp*,portability*,readability*"
     ],
@@ -43,5 +43,5 @@
     "C_Cpp.intelliSenseEngine": "Disabled",
     "C_Cpp.clang_format_fallbackStyle": "LLVM",
     "C_Cpp.clang_format_style": "LLVM",
-    "C_Cpp.workspaceParsingPriority": "low"
+    "C_Cpp.workspaceParsingPriority": "low",
 } 
