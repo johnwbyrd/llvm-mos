@@ -4,7 +4,6 @@
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.generator": "Ninja",
     "cmake.configureSettings": {
-    
         "LLVM_TARGETS_TO_BUILD": "all",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
         "CMAKE_INSTALL_PREFIX": "${workspaceRoot}/build/install",
@@ -47,4 +46,4 @@
     "C_Cpp.clang_format_style": "LLVM",
     "C_Cpp.workspaceParsingPriority": "low",
     "cmake.parallelJobs": 4,
-} 
+}
