@@ -205,6 +205,10 @@ public:
   // #define GET_REGISTER_MATCHER
   // #include "MOSGenAsmMatcher.inc"
 
+  bool parsePrimaryExpr(const MCExpr *&Res, SMLoc &EndLoc) override {
+    return MCTargetAsmParser::parsePrimaryExpr(Res, EndLoc);
+  }
+
   bool invalidOperand(SMLoc const &Loc, OperandVector const &Operands,
                       uint64_t const &ErrorInfo) {
     SMLoc ErrorLoc = Loc;
