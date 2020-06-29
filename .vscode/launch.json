@@ -22,89 +22,15 @@
             "externalConsole": false,
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
-        {
-            "name": "Debug inst-brk.s",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
-            "args": [
-                "-triple",
-                "mos-generic",
-                "-debug",
-                "-show-encoding",
-                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\inst-brk.s"
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/bin",
-            "environment": [],
-            "externalConsole": false,
-            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
-        },
-        {
-            "name": "Debug inst-asl.s",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
-            "args": [
-                "-triple",
-                "mos-generic",
-                "-debug",
-                "-show-encoding",
-                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\inst-asl.s"
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/bin",
-            "environment": [],
-            "externalConsole": false,
-            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
-        },
-        {
-            "name": "Debug inst-lda.s",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
-            "args": [
-                "-arch=mos",
-                "-mcpu=mos-generic",
-                "-print-imm-hex",
-                "-show-encoding",
-                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\inst-lda.s"
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/bin",
-            "environment": [],
-            "externalConsole": false,
-            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
-        },
-        {
-            "name": "Debug objfile inst-lda.s",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
-            "args": [
-                "--triple",
-                "mos",
-                "-mcpu=mos-generic",
-                "-debug",
-                "-print-imm-hex",
-                "-show-encoding",
-                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\inst-lda.s",
-                "--filetype=obj"
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/bin",
-            "environment": [],
-            "externalConsole": false,
-            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
-        },
+
         {
             "name": "Debug all-6502-opcodes.s",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
             "args": [
-                "-arch=mos",
-                "-mcpu=mos-generic",
+                "-triple",
+                "mos",
                 "-print-imm-hex",
                 "-show-encoding",
                 "${workspaceFolder}\\llvm\\test\\MC\\MOS\\all-6502-opcodes.s"
@@ -116,16 +42,16 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug ophis-hello-world.s",
+            "name": "Debug current assembly file with llvm-mc",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
             "args": [
-                "-arch=mos",
-                "-mcpu=mos-generic",
+                "-triple",
+                "mos",
                 "-print-imm-hex",
                 "-show-encoding",
-                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\ophis-hello-world.s"
+                "${file}"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/bin",
@@ -134,19 +60,18 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug ophis-hello-world.s filetype=obj",
+            "name": "Debug hello-world.s",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
             "args": [
-                "-arch=mos",
-                "-mcpu=mos-generic",
+                "-triple",
+                "mos",
                 "-print-imm-hex",
                 "-show-encoding",
-                "-filetype=obj",
-                "-o",
-                "${workspaceFolder}/build/ophis-hello-world.o"
-                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\ophis-hello-world.s"
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\hello-world.s",
+                "-I",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\Inputs"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/bin",
@@ -155,15 +80,90 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "llvm-objdump ophis-hello-world.o",
+            "name": "Debug hello-world.s --filetype=obj",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llvm-objdump.exe",
+            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
             "args": [
-                "--triple=mos-generic",
+                "-triple",
+                "mos",
+                "--filetype=obj",
+                "-o=${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.obj"
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\hello-world.s",
+                "-I",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\Inputs"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },
+        {
+            "name": "Debug hello-world.s to obj",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
+            "args": [
+                "-triple",
+                "mos",
+                "--filetype=obj",
+                "-o=${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.obj",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\hello-world.s"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        }
+        {
+            "name": "Debug low-high-bytes.s",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
+            "args": [
+                "-triple",
+                "mos",
                 "-print-imm-hex",
-                "-D",
-                "${workspaceFolder}/build/ophis-hello-world.o"
+                "-show-encoding",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\low-high-bytes.s"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },
+        {
+            "name": "Link low-high-bytes.s",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/lld.exe",
+            "args": [
+                "-flavor",
+                "gnu", 
+                "${workspaceFolder}/build/test/MC/MOS/Output/low-high-bytes.s.tmp.obj",
+                "-o", 
+                "${workspaceFolder}/build/test/MC/MOS/Output/low-high-bytes.s.tmp.elf"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },
+        {
+            "name": "Debug modifiers.s",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
+            "args": [
+                "-triple",
+                "avr",
+                "-show-encoding",
+                "-debug"
+                "${workspaceFolder}\\llvm\\test\\MC\\AVR\\modifiers.s"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/bin",
@@ -189,32 +189,15 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug AVR inst-or.s",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
-            "args": [
-                "--triple",
-                "avr",
-                "-show-encoding",
-                "${workspaceFolder}\\llvm\\test\\MC\\AVR\\inst-or.s"
-            ],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}/build/bin",
-            "environment": [],
-            "externalConsole": false,
-            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
-        },
-        {
-            "name": "Debug llvm-objdump.exe",
+            "name": "llvm-objdump hello-world.s.tmp.obj",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/llvm-objdump.exe",
             "args": [
-                "--disassemble",
-                "-arch=mos",
-                "-mcpu=mos-generic",
-                "brk.o"
+                "-D",
+                "--all-headers",
+                "--print-imm-hex",
+                "${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.obj"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/bin",
@@ -223,33 +206,43 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug llvm-mc.exe",
+            "name": "lld hello-world.s.tmp.obj",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
+            "program": "${workspaceFolder}/build/bin/lld.exe",
             "args": [
-                "--disassemble",
-                "-arch=mos",
-                "-mcpu=mos-generic",
-                "brk.o"
+                "-flavor",
+                "gnu",
+                "${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.obj",
+                "-o",
+                "${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.elf",
+                "-L",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\Inputs",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\Inputs\\c64.ld"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/build/bin",
             "environment": [],
             "externalConsole": false,
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug llc.exe",
+            "name": "llvm-objcopy hello-world.s.tmp.obj",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/bin/llc.exe",
-            "args": [],
+            "program": "${workspaceFolder}/build/bin/llvm-objcopy.exe",
+            "args": [
+                "--output-target",
+                "binary",
+                "--strip-unneeded",
+                "${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.elf",
+                "${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.bin",
+            ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/build/bin",
             "environment": [],
             "externalConsole": false,
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
-        }
-    ]
+        },
+   ]
 }
