@@ -1,4 +1,9 @@
-; RUN: llvm-mc -triple mos -show-encoding < %s | FileCheck %s
+; RUN: llvm-mc -triple mos --filetype=obj -o=%t.obj %s 
+; IGNORE: llvm-objdump --all-headers --print-imm-hex -D %t.obj 
+; IGNORE: lld -flavor gnu %t.obj -o %t.elf
+; IGNORE: llvm-readelf --all %t.elf 
+; IGNORE: llvm-objcopy --output-target binary --strip-unneeded %t.elf %t.bin
+_start:
 	ldx	#$0                     ; CHECK: encoding: [0xa2,0x00]
 loop:
 	lda	hello,x                 ; CHECK: encoding: [0xb5,A]

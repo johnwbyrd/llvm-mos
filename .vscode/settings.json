@@ -4,11 +4,17 @@
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.generator": "Ninja",
     "cmake.configureSettings": {
-        "LLVM_TARGETS_TO_BUILD": "all",
+        "LLVM_TARGETS_TO_BUILD": "X86",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
         "CMAKE_INSTALL_PREFIX": "${workspaceRoot}/build/install",
         "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": "MOS",
-        "LLVM_ENABLE_PROJECTS": "clang;lld"
+        "LLVM_ENABLE_PROJECTS": ["clang", "lld"],
+        "LIBXML2_LIBRARIES": "IGNORE",
+        "CMAKE_AR": "C:/Progra~1/LLVM/bin/llvm-ar",
+        "CMAKE_RANLIB": "C:/Progra~1/LLVM/bin/llvm-ranlib",
+        "CMAKE_C_COMPILER": "C:/Progra~1/LLVM/bin/clang-cl.exe",
+        "CMAKE_CXX_COMPILER": "C:/Progra~1/LLVM/bin/clang-cl.exe",
+        "CMAKE_LINKER": "C:/Progra~1/LLVM/bin/lld-link.exe",
     },
     "cmake.autoRestartBuild": true,
     "cmake.buildBeforeRun": false,
@@ -46,4 +52,7 @@
     "C_Cpp.clang_format_style": "LLVM",
     "C_Cpp.workspaceParsingPriority": "low",
     "cmake.parallelJobs": 4,
+    "cmake.buildEnvironment": {
+    
+    },
 }
