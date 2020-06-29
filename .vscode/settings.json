@@ -3,12 +3,19 @@
     "cmake.installPrefix": "${workspaceRoot}/build/install",
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.generator": "Ninja",
-    "cmake.configureSettings": {
-        "LLVM_TARGETS_TO_BUILD": "all",
+    "cmake.configureSettings": { 
+        "LLVM_TARGETS_TO_BUILD": "X86",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
         "CMAKE_INSTALL_PREFIX": "${workspaceRoot}/build/install",
-        "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": "MOS",
-        "LLVM_ENABLE_PROJECTS": "clang;lld"
+        "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": ["MOS"],
+        "LLVM_ENABLE_PROJECTS": ["clang", "lld"],
+        "LIBXML2_LIBRARIES": "IGNORE",
+        "CMAKE_AR": "C:/Program Files/LLVM/bin/llvm-ar.exe",
+        "CMAKE_RANLIB": "C:/Program Files/LLVM/bin/llvm-ranlib.exe",
+        "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
+        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
+        "CMAKE_LINKER": "C:/Program Files/LLVM/bin/lld-link.exe",
+        "LLVM_LIT_TOOLS_DIR": "c:/Program Files/Git/usr/bin/"
     },
     "cmake.autoRestartBuild": true,
     "cmake.buildBeforeRun": false,
@@ -23,9 +30,7 @@
         "algorithm": "cpp"
     },
     "cmake.clearOutputBeforeBuild": true,
-    "restructuredtext.sphinxBuildPath": "c:/Anaconda3/Scripts/sphinx-build.exe",
-    "python.condaPath": "c:/Anaconda3/Scripts/conda.exe",
-    "python.pythonPath": "c:/anaconda3/envs/varantic/python.exe",
+    "python.pythonPath": "C:\\Python38\\python.exe",
     "editor.rulers": [
         80,
         120
@@ -46,4 +51,8 @@
     "C_Cpp.clang_format_style": "LLVM",
     "C_Cpp.workspaceParsingPriority": "low",
     "cmake.parallelJobs": 4,
+    "cmake.buildEnvironment": {
+    
+    },
+    "cmake.configureOnOpen": false,
 }
