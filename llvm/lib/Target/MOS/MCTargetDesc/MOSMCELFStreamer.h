@@ -31,17 +31,9 @@ public:
                       std::move(Emitter)),
         MCII(createMOSMCInstrInfo()) {}
 
-  MOSMCELFStreamer(MCContext &Context, std::unique_ptr<MCAsmBackend> TAB,
-                   std::unique_ptr<MCObjectWriter> OW,
-                   std::unique_ptr<MCCodeEmitter> Emitter,
-                   MCAssembler *Assembler)
-      : MCELFStreamer(Context, std::move(TAB), std::move(OW),
-                      std::move(Emitter)),
-        MCII(createMOSMCInstrInfo()) {}
-
-  void EmitValueForModiferKind(
+  void emitValueForModiferKind(
       const MCSymbol *Sym, unsigned SizeInBytes, SMLoc Loc = SMLoc(),
-      MOSMCExpr::VariantKind ModifierKind = MOSMCExpr::VK_MOS_None);
+      MOSMCExpr::VariantKind ModifierKind = MOSMCExpr::VK_MOS_NONE);
 };
 
 MCStreamer *createMOSMCELFStreamer(const Triple &T, MCContext &Ctx,

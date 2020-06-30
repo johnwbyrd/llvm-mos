@@ -60,7 +60,7 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug low-high-bytes.s",
+            "name": "Debug hello-world.s",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
@@ -69,7 +69,62 @@
                 "mos",
                 "-print-imm-hex",
                 "-show-encoding",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\hello-world.s"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },
+        {
+            "name": "Debug low-high-bytes.s",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
+            "args": [
+                "-triple",
+                "mos",
+                "-print-imm-hex",
+                "-debug",
+                "-show-encoding",
                 "${workspaceFolder}\\llvm\\test\\MC\\MOS\\low-high-bytes.s"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },
+        {
+            "name": "Link low-high-bytes.s",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/lld.exe",
+            "args": [
+                "-flavor",
+                "gnu", 
+                "${workspaceFolder}/build/test/MC/MOS/Output/low-high-bytes.s.tmp.obj",
+                "-o", 
+                "${workspaceFolder}/build/test/MC/MOS/Output/low-high-bytes.s.tmp.elf"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },
+        {
+            "name": "Debug modifiers.s",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
+            "args": [
+                "-triple",
+                "avr",
+                "-show-encoding",
+                "-debug"
+                "${workspaceFolder}\\llvm\\test\\MC\\AVR\\modifiers.s"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/bin",

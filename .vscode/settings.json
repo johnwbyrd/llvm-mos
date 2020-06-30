@@ -7,7 +7,7 @@
         "LLVM_TARGETS_TO_BUILD": "X86",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
         "CMAKE_INSTALL_PREFIX": "${workspaceRoot}/build/install",
-        "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": "MOS",
+        "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": ["MOS", "AVR"],
         "LLVM_ENABLE_PROJECTS": ["clang", "lld"],
         "LIBXML2_LIBRARIES": "IGNORE",
         "CMAKE_AR": "C:/Progra~1/LLVM/bin/llvm-ar",

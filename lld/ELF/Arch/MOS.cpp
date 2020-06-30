@@ -44,16 +44,18 @@ void MOS::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
   switch (rel.type) {
   case R_MOS_IMM8:
   case R_MOS_ADDR8:
-  case R_MOS_ADDR16_HIGH:
-  case R_MOS_ADDR16_LOW:
+  case R_MOS_ADDR16_HI:
+  case R_MOS_ADDR16_LO:
   case R_MOS_PCREL_8:
   case R_MOS_ADDR24_SEGMENT:
+  case R_MOS_ADDR24_BANK_HI:
+  case R_MOS_ADDR24_BANK_LO:
     *loc = static_cast<unsigned char>(val);
     break;
-  case R_MOS_ADDR16: {
+  case R_MOS_ADDR16: 
+  case R_MOS_ADDR24_BANK:
     write16le(loc, static_cast<unsigned short>(val));
     break;
-  }
   default:
     error(getErrorLocation(loc) + "unrecognized relocation " +
           toString(rel.type));

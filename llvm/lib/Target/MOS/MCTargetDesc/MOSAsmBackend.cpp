@@ -61,6 +61,65 @@ MCAsmBackend *createMOSAsmBackend(const Target &T, const MCSubtargetInfo &STI,
   return new MOSAsmBackend(STI.getTargetTriple().getOS());
 }
 
+void MOSAsmBackend::adjustFixupValue(const MCFixup &Fixup,
+                                     const MCValue &Target, uint64_t &Value,
+                                     MCContext *Ctx) const {
+  // The size of the fixup in bits.
+  uint64_t Size = MOSAsmBackend::getFixupKindInfo(Fixup.getKind()).TargetSize;
+
+  unsigned Kind = Fixup.getKind();
+
+  // Parsed LLVM-generated temporary labels are already
+  // adjusted for instruction size, but normal labels aren't.
+  //
+  // To handle both cases, we simply un-adjust the temporary label
+  // case so it acts like all other labels.
+  if (const MCSymbolRefExpr *A = Target.getSymA()) {
+    if (A->getSymbol().isTemporary()) {
+      switch (Kind) {
+      case FK_Data_1:
+      case FK_Data_2:
+      case FK_Data_4:
+      case FK_Data_8:
+        // Don't shift value for absolute addresses.
+        break;
+      default:
+        Value += 2;
+      }
+    }
+  }
+
+  switch (Kind) {
+  default:
+    llvm_unreachable("unhandled fixup");
+  case MOS::Addr16_Low:
+  case MOS::Addr24_Bank_Low:
+    Value = Value & 0xff;
+    break;
+  case MOS::Addr16_High:
+  case MOS::Addr24_Bank_High:
+    Value = (Value >> 8) & 0xff;
+    break;
+  case MOS::Addr24_Bank:
+    Value = Value & 0xffff;
+    break;
+  case MOS::Addr24_Segment:
+    Value = (Value >> 16) & 0xff;
+    break;
+
+  // Fixups which do not require adjustments.
+  case FK_Data_1:
+  case FK_Data_2:
+  case FK_Data_4:
+  case FK_Data_8:
+    break;
+
+  case FK_GPRel_4:
+    llvm_unreachable("don't know how to adjust this fixup");
+    break;
+  }
+}
+
 void MOSAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
                                const MCValue &Target,
                                MutableArrayRef<char> Data, uint64_t Value,
@@ -130,7 +189,7 @@ bool MOSAsmBackend::fixupNeedsRelaxationAdvanced(const MCFixup &Fixup,
     if (FixupName == SymbolName) {
       const auto &Section = Symbol.getSection();
       const auto *ELFSection = dyn_cast_or_null<MCSectionELF>(&Section);
-      /// If we're not writing to ELF, punt on this whole idea, just do the 
+      /// If we're not writing to ELF, punt on this whole idea, just do the
       /// relaxation for safety's sake
       if (ELFSection == nullptr) {
         return true;
@@ -160,15 +219,17 @@ MCFixupKindInfo const &MOSAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
       // MOSFixupKinds.h.
       //
       // name, offset, bits, flags
-      {"Imm8", 0, 8, 0},           // An 8 bit immediate value.
-      {"Addr8", 0, 8, 0},          // An 8 bit zero page address.
-      {"Addr16", 0, 16, 0},        // A 16-bit address.
-      {"Addr16_Low", 0, 8, 0},     // The low byte of a 16-bit address.
-      {"Addr16_High", 0, 8, 0},    // The high byte of a 16-bit address.
-      {"Addr24", 0, 24, 0},        // A 24-bit 65816 address.
-      {"Addr24_Segment", 0, 8, 0}, // The segment byte of a 24-bit address.
+      {"Imm8", 0, 8, 0},            // An 8 bit immediate value.
+      {"Addr8", 0, 8, 0},           // An 8 bit zero page address.
+      {"Addr16", 0, 16, 0},         // A 16-bit address.
+      {"Addr16_Low", 0, 8, 0},      // The low byte of a 16-bit address.
+      {"Addr16_High", 0, 8, 0},     // The high byte of a 16-bit address.
+      {"Addr24", 0, 24, 0},         // A 24-bit 65816 address.
+      {"Addr24_Segment", 0, 8, 0},  // The segment byte of a 24-bit address.
+      {"Addr24_Bank", 0, 16, 0},    // The bank of a 24-byte address.
+      {"Addr24_Bank_Low", 0, 8, 0}, // The low byte of the bank of a 24-bit addr
+      {"Addr24_Bank_High", 8, 8, 0}, // The hi byte of the bank of a 24-bit addr
       {"PCRel8", 0, 8, MCFixupKindInfo::FKF_IsPCRel}};
-
   if (Kind < FirstTargetFixupKind)
     return MCAsmBackend::getFixupKindInfo(Kind);
   assert(unsigned(Kind - FirstTargetFixupKind) < getNumFixupKinds() &&

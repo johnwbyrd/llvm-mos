@@ -11,6 +11,7 @@
 // instructions on to the real streamer.
 //
 //===----------------------------------------------------------------------===//
+#include "llvm/BinaryFormat/ELF.h"
 #define DEBUG_TYPE "mosmcelfstreamer"
 
 #include "MCTargetDesc/MOSMCELFStreamer.h"
@@ -22,6 +23,40 @@
 using namespace llvm;
 
 namespace llvm {
+
+void MOSMCELFStreamer::emitValueForModiferKind(
+    const MCSymbol *Sym, unsigned SizeInBytes, SMLoc Loc,
+    MOSMCExpr::VariantKind ModifierKind) {
+  MCSymbolRefExpr::VariantKind Kind = MCSymbolRefExpr::VK_MOS_NONE;
+  if (ModifierKind == MOSMCExpr::VK_MOS_ADDR16_LO)
+  {
+    Kind = MCSymbolRefExpr::VK_MOS_ADDR16_LO;
+  }
+  else if (ModifierKind == MOSMCExpr::VK_MOS_ADDR16_HI)
+  {
+    Kind = MCSymbolRefExpr::VK_MOS_ADDR16_HI;
+  }
+  else if (ModifierKind == MOSMCExpr::VK_MOS_ADDR24_SEGMENT)
+  {
+    Kind = MCSymbolRefExpr::VK_MOS_ADDR24_SEGMENT;
+  }
+  else if (ModifierKind == MOSMCExpr::VK_MOS_ADDR24_BANK)
+  {
+    Kind = MCSymbolRefExpr::VK_MOS_ADDR24_BANK;
+  }
+  else if (ModifierKind == MOSMCExpr::VK_MOS_ADDR24_BANK_LO)
+  {
+    Kind = MCSymbolRefExpr::VK_MOS_ADDR24_BANK_LO;
+  }
+  else if (ModifierKind == MOSMCExpr::VK_MOS_ADDR24_BANK_HI)
+  {
+    Kind = MCSymbolRefExpr::VK_MOS_ADDR24_BANK_HI;
+  }
+  MCELFStreamer::emitValue(MCSymbolRefExpr::create(Sym, Kind, getContext()),
+                           SizeInBytes, Loc);
+}
+
+
 MCStreamer *createMOSMCELFStreamer(
     const Triple & /*T*/, MCContext &Ctx, std::unique_ptr<MCAsmBackend> &&TAB,
     std::unique_ptr<MCObjectWriter> &&OW,

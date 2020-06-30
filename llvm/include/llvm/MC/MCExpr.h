@@ -310,7 +310,15 @@ public:
     VK_AMDGPU_ABS32_HI,      // symbol@abs32@hi
 
     VK_TPREL,
-    VK_DTPREL
+    VK_DTPREL,
+
+    VK_MOS_NONE,
+    VK_MOS_ADDR16_LO,
+    VK_MOS_ADDR16_HI,
+    VK_MOS_ADDR24_BANK,
+    VK_MOS_ADDR24_SEGMENT,
+    VK_MOS_ADDR24_BANK_LO,
+    VK_MOS_ADDR24_BANK_HI
   };
 
 private:
