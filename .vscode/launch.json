@@ -86,7 +86,6 @@
                 "-triple",
                 "mos",
                 "-print-imm-hex",
-                "-debug",
                 "-show-encoding",
                 "${workspaceFolder}\\llvm\\test\\MC\\MOS\\low-high-bytes.s"
             ],

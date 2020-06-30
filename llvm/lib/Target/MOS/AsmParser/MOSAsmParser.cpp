@@ -70,13 +70,6 @@ public:
     if (SRE) {
       return true;
     }
-    const auto *TE = dyn_cast<MCTargetExpr>(getImm());
-    if (TE)
-    {
-      // it's a target specific expression
-      llvm_unreachable("need to handle target-specific expressions in parser");
-      return false;
-    }
     // if it's an immediate but not castable to one, it must be a label
     const auto *CE = dyn_cast<MCConstantExpr>(getImm());
     if (!CE) {
