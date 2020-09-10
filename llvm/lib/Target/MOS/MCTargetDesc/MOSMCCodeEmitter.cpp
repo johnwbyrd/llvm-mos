@@ -86,7 +86,7 @@ unsigned MOSMCCodeEmitter::encodeImm(const MCInst &MI, unsigned OpNo,
 unsigned MOSMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
                                           SmallVectorImpl<MCFixup> &Fixups,
                                           const MCSubtargetInfo &STI,
-                                          unsigned int off ) const {
+                                          unsigned int Offset ) const {
 
   MCExpr::ExprKind Kind = Expr->getKind();
 
@@ -103,7 +103,7 @@ unsigned MOSMCCodeEmitter::getExprOpValue(const MCExpr *Expr,
     }
 
     MCFixupKind FixupKind = static_cast<MCFixupKind>(MOSExpr->getFixupKind());
-    Fixups.push_back(MCFixup::create(off, MOSExpr, FixupKind));
+    Fixups.push_back(MCFixup::create(Offset, MOSExpr, FixupKind));
     return 0;
   }
 
