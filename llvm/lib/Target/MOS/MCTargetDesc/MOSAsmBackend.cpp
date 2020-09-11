@@ -231,6 +231,11 @@ bool MOSAsmBackend::fixupNeedsRelaxationAdvanced(const MCFixup &Fixup,
       if (ELFSection == nullptr) {
         return true;
       }
+      /// If the section of the symbol is marked with special zero-page flag
+      /// then this is an 8 bit instruction and it doesn't need relaxation.
+      if ( ( ELFSection->getFlags() & ELF::SHF_MOS_ZEROPAGE ) != 0 ) {
+        return false;
+      }
       const auto &ELFSectionName = ELFSection->getSectionName();
       /// If the section of the symbol is one of the prenamed zero page
       /// sections, then this is an 8 bit instruction and it doesn't need
