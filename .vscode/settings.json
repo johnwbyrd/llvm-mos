@@ -10,11 +10,6 @@
         "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": ["MOS"],
         "LLVM_ENABLE_PROJECTS": ["clang", "lld"],
         "LIBXML2_LIBRARIES": "IGNORE",
-        "CMAKE_AR": "C:/Program Files/LLVM/bin/llvm-ar.exe",
-        "CMAKE_RANLIB": "C:/Program Files/LLVM/bin/llvm-ranlib.exe",
-        "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
-        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang-cl.exe",
-        "CMAKE_LINKER": "C:/Program Files/LLVM/bin/lld-link.exe",
         "LLVM_LIT_TOOLS_DIR": "c:/Program Files/Git/usr/bin/"
     },
     "cmake.autoRestartBuild": true,
@@ -50,7 +45,6 @@
     "C_Cpp.clang_format_fallbackStyle": "LLVM",
     "C_Cpp.clang_format_style": "LLVM",
     "C_Cpp.workspaceParsingPriority": "low",
-    "cmake.parallelJobs": 4,
     "cmake.buildEnvironment": {
     
     },
