@@ -1551,6 +1551,9 @@ static const EnumEntry<unsigned> ElfMipsSectionFlags[] = {
   ENUM_ENT(SHF_MIPS_STRING,  "")
 };
 
+static const EnumEntry<unsigned> ElfMOSSectionFlags[] = {
+    ENUM_ENT(SHF_MOS_ZEROPAGE, "z")};
+
 static const EnumEntry<unsigned> ElfX86_64SectionFlags[] = {
   ENUM_ENT(SHF_X86_64_LARGE, "l")
 };
@@ -1579,6 +1582,10 @@ getSectionFlagsForTarget(unsigned EMachine) {
   case EM_XCORE:
     Ret.insert(Ret.end(), std::begin(ElfXCoreSectionFlags),
                std::end(ElfXCoreSectionFlags));
+    break;
+  case EM_MOS:
+    Ret.insert(Ret.end(), std::begin(ElfMOSSectionFlags),
+               std::end(ElfMOSSectionFlags));
     break;
   default:
     break;
@@ -3814,6 +3821,8 @@ static void printSectionDescription(formatted_raw_ostream &OS,
     OS << "  l (large), ";
   else if (EMachine == EM_ARM)
     OS << "  y (purecode), ";
+  else if (EMachine == EM_MOS)
+    OS << "  z (zeropage), ";
   else
     OS << "  ";
 
