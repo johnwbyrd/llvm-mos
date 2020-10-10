@@ -48,3 +48,4 @@ _start:
                           ; CHECK: R_MOS_ADDR8	.directpage
   lda adrnotzeropage      ; CHECK: ad 00 00
                           ; CHECK: R_MOS_ADDR16	.notzeropage
+                          
