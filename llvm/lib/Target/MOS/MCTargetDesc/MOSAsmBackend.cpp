@@ -318,7 +318,7 @@ bool MOSAsmBackend::mayNeedRelaxation(const MCInst &Inst,
   }
   int64_t Imm;
   Operand.evaluateAsConstantImm(Imm);
-  if ((Imm >= 0x00) && (Imm <= 0xff)) {
+  if ((Imm >= 0x01) && (Imm <= 0xff)) {
     // If the expression evaluates cleanly to an 8-bit value, then it doesn't
     // need relaxation.
     return false;
