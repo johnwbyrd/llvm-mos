@@ -88,7 +88,7 @@
                 "-triple",
                 "mos",
                 "--filetype=obj",
-                "-o=${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.obj"
+                "-o=${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\hello-world.s.tmp.obj",
                 "${workspaceFolder}\\llvm\\test\\MC\\MOS\\hello-world.s",
                 "-I",
                 "${workspaceFolder}\\llvm\\test\\MC\\MOS\\Inputs"
@@ -116,7 +116,7 @@
             "environment": [],
             "externalConsole": false,
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
-        }
+        },
         {
             "name": "Debug low-high-bytes.s",
             "type": "cppvsdbg",
@@ -154,16 +154,16 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug modifiers.s",
+            "name": "Debug zeropage.s",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
             "args": [
+                "--filetype=obj",
+                "-o=${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\zeropage.s.tmp.obj",
                 "-triple",
-                "avr",
-                "-show-encoding",
-                "-debug"
-                "${workspaceFolder}\\llvm\\test\\MC\\AVR\\modifiers.s"
+                "mos",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\zeropage.s"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/bin",
@@ -172,21 +172,22 @@
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
-            "name": "Debug inst-ora.s",
-            "type": "cppvsdbg",
+            "name": "Debug modifiers.s",
+            "type": "lldb",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/llvm-mc.exe",
             "args": [
-                "-arch=mos",
-                "-mcpu=mos-generic",
-                "-show-encoding",
-                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\inst-ora.s"
+                "--filetype=obj",
+                "-o=${workspaceFolder}\\build\\test\\MC\\MOS\\Output\\modifiers.s.tmp.obj",
+                "-triple",
+                "mos",
+                "${workspaceFolder}\\llvm\\test\\MC\\MOS\\modifiers.s"
             ],
-            "stopAtEntry": false,
+            "stopOnEntry": false,
             "cwd": "${workspaceFolder}/build/bin",
-            "environment": [],
-            "externalConsole": false,
-            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+            // "environment": [],
+            // "externalConsole": false,
+            // "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
         {
             "name": "llvm-objdump hello-world.s.tmp.obj",

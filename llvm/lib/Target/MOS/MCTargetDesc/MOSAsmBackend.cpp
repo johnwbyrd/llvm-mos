@@ -37,7 +37,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <memory>
-#include <stdint.h>
+#include <cstdint>
 #include <string>
 
 namespace llvm {
@@ -96,17 +96,17 @@ void MOSAsmBackend::adjustFixupValue(const MCFixup &Fixup,
     Value = (Value - 1) & 0xff;
     break;
   case MOS::Addr16_Low:
-  case MOS::Addr24_Bank_Low:
+  case MOS::Addr24_Segment_Low:
     Value = Value & 0xff;
     break;
   case MOS::Addr16_High:
-  case MOS::Addr24_Bank_High:
+  case MOS::Addr24_Segment_High:
     Value = (Value >> 8) & 0xff;
     break;
-  case MOS::Addr24_Bank:
+  case MOS::Addr24_Segment:
     Value = Value & 0xffff;
     break;
-  case MOS::Addr24_Segment:
+  case MOS::Addr24_Bank:
     Value = (Value >> 16) & 0xff;
     break;
 
@@ -135,18 +135,24 @@ void MOSAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
   case MOS::Addr8:
   case MOS::Addr16_High:
   case MOS::Addr16_Low:
-  case MOS::Addr24_Segment:
+  case MOS::Addr24_Bank:
+  case MOS::Addr24_Segment_Low:
+  case MOS::Addr24_Segment_High:
   case MOS::PCRel8:
   case FK_Data_1:
     Bytes = 1;
     break;
+
   case FK_Data_2:
   case MOS::Addr16:
+  case MOS::Addr24_Segment:
     Bytes = 2;
     break;
+
   case MOS::Addr24:
     Bytes = 3;
     break;
+
   case FK_Data_4:
     Bytes = 4;
     break;
@@ -201,11 +207,27 @@ bool MOSAsmBackend::fixupNeedsRelaxationAdvanced(const MCFixup &Fixup,
                                                  const MCRelaxableFragment *DF,
                                                  const MCAsmLayout &Layout,
                                                  const bool WasForced) const {
+  // Before doing a deeper analysis based on the name of the fixup: if the
+  // fixup kind requires more than 8 bits to render, we will require relaxation.
+  auto Info = getFixupKindInfo(Fixup.getKind());
+  if (Info.TargetSize > 8)
+  {
+    return true;
+  }
+  if (Info.TargetSize == 8) {
+    return false;
+  }
   // In order to resolve an eight to sixteen bit possible relaxation, we need to
   // figure out whether the symbol in question is in zero page or not.  If it is
   // in zero page, then we don't need to do anything.  If not, we need to relax
   // the instruction to 16 bits.
   const char *FixupNameStart = Fixup.getValue()->getLoc().getPointer();
+  // If there's no symbol name, and if the fixup does not have a known size,
+  // then  we can't assume it lives in zero page.
+  if (FixupNameStart == nullptr)
+  {
+    return true;
+  }
   size_t FixupLength = 0;
   bool Finished = false;
   do {

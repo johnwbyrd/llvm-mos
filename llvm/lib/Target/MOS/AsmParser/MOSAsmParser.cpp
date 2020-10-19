@@ -364,50 +364,72 @@ public:
       }
     }
 
-    // Check if we have a target specific modifier (lo8, hi8, &c)
-    if (Parser.getTok().getKind() != AsmToken::Identifier ||
-        Parser.getLexer().peekTok().getKind() != AsmToken::LParen) {
-      // Not a reloc expr
-      return true;
-    }
-    StringRef ModifierName = Parser.getTok().getString();
-    ModifierKind = MOSMCExpr::getKindByName(ModifierName.str());
-
-    if (ModifierKind != MOSMCExpr::VK_MOS_NONE) {
-      Parser.Lex();
-      Parser.Lex(); // Eat modifier name and parenthesis
-      if (Parser.getTok().getString() == GENERATE_STUBS &&
-          Parser.getTok().getKind() == AsmToken::Identifier) {
-        std::string GSModName = ModifierName.str() + "_" + GENERATE_STUBS;
-        ModifierKind = MOSMCExpr::getKindByName(GSModName);
-        if (ModifierKind != MOSMCExpr::VK_MOS_NONE) {
-          Parser.Lex(); // Eat gs modifier name
-        }
-      }
-    } else {
-      return Error(Parser.getTok().getLoc(), "unknown modifier");
-    }
-
-    if (tokens[1].getKind() == AsmToken::Minus ||
-        tokens[1].getKind() == AsmToken::Plus) {
-      Parser.Lex();
-      assert(Parser.getTok().getKind() == AsmToken::LParen);
-      Parser.Lex(); // Eat the sign and parenthesis
-    }
-
     MCExpr const *InnerExpression;
-    if (getParser().parseExpression(InnerExpression))
-      return true;
+    if (Parser.getTok().getKind() == AsmToken::Less ||
+        Parser.getTok().getKind() == AsmToken::Greater) {
 
-    if (tokens[1].getKind() == AsmToken::Minus ||
-        tokens[1].getKind() == AsmToken::Plus) {
+      switch ( Parser.getTok().getKind() )
+      {
+      case AsmToken::Less:
+        ModifierKind = MOSMCExpr::VK_MOS_ADDR16_LO;
+        break;
+      case AsmToken::Greater:
+        ModifierKind = MOSMCExpr::VK_MOS_ADDR16_HI;
+        break;
+      default:
+        assert(false);
+      }
+
+      Parser.Lex();
+    
+      if (getParser().parseExpression(InnerExpression))
+        return true;
+
+    } else {
+      // Check if we have a target specific modifier (lo8, hi8, &c)
+      if (Parser.getTok().getKind() != AsmToken::Identifier ||
+          Parser.getLexer().peekTok().getKind() != AsmToken::LParen) {
+        // Not a reloc expr
+        return true;
+      }
+      StringRef ModifierName = Parser.getTok().getString();
+      ModifierKind = MOSMCExpr::getKindByName(ModifierName.str());
+
+      if (ModifierKind != MOSMCExpr::VK_MOS_NONE) {
+        Parser.Lex();
+        Parser.Lex(); // Eat modifier name and parenthesis
+        if (Parser.getTok().getString() == GENERATE_STUBS &&
+            Parser.getTok().getKind() == AsmToken::Identifier) {
+          std::string GSModName = ModifierName.str() + "_" + GENERATE_STUBS;
+          ModifierKind = MOSMCExpr::getKindByName(GSModName);
+          if (ModifierKind != MOSMCExpr::VK_MOS_NONE) {
+            Parser.Lex(); // Eat gs modifier name
+          }
+        }
+      } else {
+        return Error(Parser.getTok().getLoc(), "unknown modifier");
+      }
+
+      if (tokens[1].getKind() == AsmToken::Minus ||
+          tokens[1].getKind() == AsmToken::Plus) {
+        Parser.Lex();
+        assert(Parser.getTok().getKind() == AsmToken::LParen);
+        Parser.Lex(); // Eat the sign and parenthesis
+      }
+
+      if (getParser().parseExpression(InnerExpression))
+        return true;
+
+      if (tokens[1].getKind() == AsmToken::Minus ||
+          tokens[1].getKind() == AsmToken::Plus) {
+        assert(Parser.getTok().getKind() == AsmToken::RParen);
+        Parser.Lex(); // Eat closing parenthesis
+      }
+
+      // If we have a modifier wrap the inner expression
       assert(Parser.getTok().getKind() == AsmToken::RParen);
       Parser.Lex(); // Eat closing parenthesis
     }
-
-    // If we have a modifier wrap the inner expression
-    assert(Parser.getTok().getKind() == AsmToken::RParen);
-    Parser.Lex(); // Eat closing parenthesis
 
     MCExpr const *Expression = MOSMCExpr::create(ModifierKind, InnerExpression,
                                                  IsNegated, getContext());
