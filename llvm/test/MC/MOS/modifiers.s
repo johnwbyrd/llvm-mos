@@ -8,13 +8,19 @@ val16 = 0x0202
 val24 = 0x030303
 
 . = 0x01
-addr8: .ds.b 0
+addr8: 
+.ds.b 0
 
 . = 0x0202
-addr16: .ds.b 0
+addr16: 
+.ds.b 0
+.ds.b 0
 
 . = 0x0303
-addr24: .ds.b 0
+addr24: 
+.ds.b 0
+.ds.b 0
+.ds.b 0
 
 _start:
     lda mos16lo(addr8)          ; CHECK: a5 00

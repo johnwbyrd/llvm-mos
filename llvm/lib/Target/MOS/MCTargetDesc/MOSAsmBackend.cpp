@@ -161,6 +161,9 @@ void MOSAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
     return;
   }
   auto Offset = Fixup.getOffset();
+  assert(((Bytes + Offset) <= Data.size()) && 
+    "Invalid offset within MOS instruction for modifier!");
+
   for (unsigned int T = Offset; T < (Bytes + Offset); T++) {
     Data[T] = Value & 0xff;
     Value = Value >> 8;
@@ -284,10 +287,11 @@ MCFixupKindInfo const &MOSAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
       {"Addr16_Low", 0, 8, 0},      // The low byte of a 16-bit address.
       {"Addr16_High", 0, 8, 0},     // The high byte of a 16-bit address.
       {"Addr24", 0, 24, 0},         // A 24-bit 65816 address.
-      {"Addr24_Segment", 0, 8, 0},  // The segment byte of a 24-bit address.
-      {"Addr24_Bank", 0, 16, 0},    // The bank of a 24-byte address.
-      {"Addr24_Bank_Low", 0, 8, 0}, // The low byte of the bank of a 24-bit addr
-      {"Addr24_Bank_High", 8, 8, 0}, // The hi byte of the bank of a 24-bit addr
+      {"Addr24_Bank", 0, 8, 0},     // The bank byte of a 24-bit address.
+      {"Addr24_Segment", 0, 16, 0},    // The segment 16-bits of a 24-byte address.
+      {"Addr24_Segment_Low", 0, 8, 0}, // The low byte of the segment of a 24-bit addr
+      {"Addr24_Segment_High", 8, 8, 0}, // The high byte of the segment of a 24-bit addr
+      // PCRel8 is pc-relative and requires target specific handling
       {"PCRel8", 0, 8,
        MCFixupKindInfo::FKF_IsPCRel | MCFixupKindInfo::FKF_IsTarget}};
   if (Kind < FirstTargetFixupKind)
