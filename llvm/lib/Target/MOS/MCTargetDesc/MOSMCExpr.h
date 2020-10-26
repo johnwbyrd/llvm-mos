@@ -11,7 +11,6 @@
 #define LLVM_MOS_MCEXPR_H
 
 #include "llvm/MC/MCExpr.h"
-
 #include "MCTargetDesc/MOSFixupKinds.h"
 
 namespace llvm {
@@ -38,10 +37,10 @@ public:
   /// Gets the type of the expression.
   VariantKind getKind() const { return Kind; }
   /// Gets the name of the expression.
+  MOS::Fixups getFixupKind() const;
   const char *getName() const;
   const MCExpr *getSubExpr() const { return SubExpr; }
   /// Gets the fixup which corresponds to the expression.
-  MOS::Fixups getFixupKind() const;
   /// Evaluates the fixup as a constant value.
   bool evaluateAsConstant(int64_t &Result) const;
 

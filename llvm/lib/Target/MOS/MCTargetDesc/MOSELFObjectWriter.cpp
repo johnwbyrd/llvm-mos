@@ -55,7 +55,6 @@ unsigned MOSELFObjectWriter::getRelocType(MCContext &Ctx,
   case MOS::Addr16_High:
     return ELF::R_MOS_ADDR16_HI;
   case MOS::Addr24:
-  case FK_Data_4:
     return ELF::R_MOS_ADDR24;
   case MOS::Addr24_Bank:
     return ELF::R_MOS_ADDR24_BANK;

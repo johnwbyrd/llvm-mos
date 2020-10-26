@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "MCTargetDesc/MOSFixupKinds.h"
 #include "MCTargetDesc/MOSMCELFStreamer.h"
 #include "MCTargetDesc/MOSMCExpr.h"
 #include "MCTargetDesc/MOSMCTargetDesc.h"
@@ -65,6 +66,28 @@ public:
     if (!isImm()) {
       return false;
     }
+
+    // if it's a MOS-specific modifier, we need to figure out the size based
+    // on the type of expression.  If the largest value that the modifier
+    // can produce is larger than the expression that this immediate can hold,
+    // we have to refuse to match it, so that we don't inadvertently match
+    // zero-page addresses against 16-bit modifiers.
+    const auto *MME = dyn_cast<MOSMCExpr>(getImm());
+    if (MME) {
+      const MOS::Fixups Kind = MME->getFixupKind();
+      const MCFixupKindInfo &Info =
+          MOSFixupKinds::getFixupKindInfo(Kind, nullptr);
+      int64_t MaxValue = (1 << Info.TargetSize) - 1;
+      bool Evaluated = false;
+      int64_t Constant = 0;
+      Evaluated = MME->evaluateAsConstant(Constant);
+      // if the constant is non-zero, evaluate for size now
+      if (Evaluated && Constant > 0) {
+        return (Constant <= MaxValue);
+      }
+      return (MaxValue <= High);
+    }
+
     // if it's a symbol ref, we'll replace it later
     const auto *SRE = dyn_cast<MCSymbolRefExpr>(getImm());
     if (SRE) {
@@ -368,8 +391,7 @@ public:
     if (Parser.getTok().getKind() == AsmToken::Less ||
         Parser.getTok().getKind() == AsmToken::Greater) {
 
-      switch ( Parser.getTok().getKind() )
-      {
+      switch (Parser.getTok().getKind()) {
       case AsmToken::Less:
         ModifierKind = MOSMCExpr::VK_MOS_ADDR16_LO;
         break;
@@ -381,7 +403,7 @@ public:
       }
 
       Parser.Lex();
-    
+
       if (getParser().parseExpression(InnerExpression))
         return true;
 

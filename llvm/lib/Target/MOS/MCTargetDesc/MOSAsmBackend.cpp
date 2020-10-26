@@ -39,6 +39,7 @@
 #include <memory>
 #include <cstdint>
 #include <string>
+#include <iostream>
 
 namespace llvm {
 namespace MOS {
@@ -163,7 +164,6 @@ void MOSAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
   auto Offset = Fixup.getOffset();
   assert(((Bytes + Offset) <= Data.size()) && 
     "Invalid offset within MOS instruction for modifier!");
-
   for (unsigned int T = Offset; T < (Bytes + Offset); T++) {
     Data[T] = Value & 0xff;
     Value = Value >> 8;
@@ -274,31 +274,11 @@ bool MOSAsmBackend::fixupNeedsRelaxationAdvanced(const MCFixup &Fixup,
 }
 
 MCFixupKindInfo const &MOSAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
-  // NOTE: Many AVR fixups work on sets of non-contignous bits. We work around
-  // this by saying that the fixup is the size of the entire instruction.
-  const static MCFixupKindInfo Infos[MOS::NumTargetFixupKinds] = {
-      // This table *must* be in same the order of fixup_* kinds in
-      // MOSFixupKinds.h.
-      //
-      // name, offset, bits, flags
-      {"Imm8", 0, 8, 0},            // An 8 bit immediate value.
-      {"Addr8", 0, 8, 0},           // An 8 bit zero page address.
-      {"Addr16", 0, 16, 0},         // A 16-bit address.
-      {"Addr16_Low", 0, 8, 0},      // The low byte of a 16-bit address.
-      {"Addr16_High", 0, 8, 0},     // The high byte of a 16-bit address.
-      {"Addr24", 0, 24, 0},         // A 24-bit 65816 address.
-      {"Addr24_Bank", 0, 8, 0},     // The bank byte of a 24-bit address.
-      {"Addr24_Segment", 0, 16, 0},    // The segment 16-bits of a 24-byte address.
-      {"Addr24_Segment_Low", 0, 8, 0}, // The low byte of the segment of a 24-bit addr
-      {"Addr24_Segment_High", 8, 8, 0}, // The high byte of the segment of a 24-bit addr
-      // PCRel8 is pc-relative and requires target specific handling
-      {"PCRel8", 0, 8,
-       MCFixupKindInfo::FKF_IsPCRel | MCFixupKindInfo::FKF_IsTarget}};
-  if (Kind < FirstTargetFixupKind)
+  if (Kind < FirstTargetFixupKind) {
     return MCAsmBackend::getFixupKindInfo(Kind);
-  assert(unsigned(Kind - FirstTargetFixupKind) < getNumFixupKinds() &&
-         "Invalid kind!");
-  return Infos[Kind - FirstTargetFixupKind];
+  }
+  
+  return MOSFixupKinds::getFixupKindInfo(static_cast<MOS::Fixups>(Kind), this);
 }
 
 unsigned MOSAsmBackend::getNumFixupKinds() const {
