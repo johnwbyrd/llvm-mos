@@ -1,16 +1,20 @@
 {
-    "cmake.buildDirectory": "${workspaceRoot}/build",
+    "cmake.buildDirectory": "${workspaceRoot}/build/stage2",
     "cmake.installPrefix": "${workspaceRoot}/build/install",
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.generator": "Ninja",
-    "cmake.configureSettings": { 
+    "cmake.configureSettings": {
+
+
         "LLVM_TARGETS_TO_BUILD": "X86",
         "LLVM_OPTIMIZED_TABLEGEN": "1",
         "CMAKE_INSTALL_PREFIX": "${workspaceRoot}/build/install",
         "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": ["MOS"],
         "LLVM_ENABLE_PROJECTS": ["clang", "lld"],
         "LIBXML2_LIBRARIES": "IGNORE",
-        "LLVM_LIT_TOOLS_DIR": "c:/Program Files/Git/usr/bin/"
+        "LLVM_LIT_TOOLS_DIR": "c:/Program Files/Git/usr/bin/",
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
     },
     "cmake.autoRestartBuild": true,
     "cmake.buildBeforeRun": false,
@@ -33,9 +37,9 @@
     "restructuredtext.confPath": "${workspaceFolder}\\llvm\\docs",
     "clangd.path": "C:/Program Files/LLVM/bin/clangd.exe",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceRoot}/build",
+        "--compile-commands-dir=${workspaceRoot}/build/stage2",
         "--clang-tidy",
-        "--clang-tidy-checks=*,-modernize-use-trailing-return-type,-google-runtime-references,-fuchsia-default-arguments-calls"
+        "--clang-tidy-checks=*,-modernize-use-trailing-return-type,-google-runtime-references"
     ],
     "lldb.executable": "c:/program files/llvm/bin/lldb.exe",
     "C_Cpp.autocomplete": "Disabled",
