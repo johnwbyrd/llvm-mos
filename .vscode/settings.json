@@ -1,21 +1,13 @@
 {
-    "cmake.buildDirectory": "${workspaceRoot}/build/stage2",
+    "cmake.buildDirectory": "${workspaceRoot}/build/build",
     "cmake.installPrefix": "${workspaceRoot}/build/install",
     "cmake.sourceDirectory": "${workspaceRoot}/llvm",
     "cmake.generator": "Ninja",
     "cmake.configureSettings": {
-
-
-        "LLVM_TARGETS_TO_BUILD": "X86",
-        "LLVM_OPTIMIZED_TABLEGEN": "1",
-        "CMAKE_INSTALL_PREFIX": "${workspaceRoot}/build/install",
-        "LLVM_EXPERIMENTAL_TARGETS_TO_BUILD": ["MOS"],
-        "LLVM_ENABLE_PROJECTS": ["clang", "lld"],
-        "LIBXML2_LIBRARIES": "IGNORE",
         "LLVM_LIT_TOOLS_DIR": "c:/Program Files/Git/usr/bin/",
         "CMAKE_C_COMPILER_LAUNCHER": "sccache",
         "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
-    },
+        },
     "cmake.autoRestartBuild": true,
     "cmake.buildBeforeRun": false,
     "files.associations": {
@@ -37,7 +29,7 @@
     "restructuredtext.confPath": "${workspaceFolder}\\llvm\\docs",
     "clangd.path": "C:/Program Files/LLVM/bin/clangd.exe",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceRoot}/build/stage2",
+        "--compile-commands-dir=${workspaceRoot}/build/build",
         "--clang-tidy",
         "--clang-tidy-checks=*,-modernize-use-trailing-return-type,-google-runtime-references"
     ],
@@ -49,9 +41,7 @@
     "C_Cpp.clang_format_fallbackStyle": "LLVM",
     "C_Cpp.clang_format_style": "LLVM",
     "C_Cpp.workspaceParsingPriority": "low",
-    "cmake.buildEnvironment": {
-    
-    },
     "cmake.configureOnOpen": false,
-    "files.eol": "\n"
+    "files.eol": "\n", 
+    "cmake.cacheInit": "../.vscode/llvm-mos.cmake"
 }
