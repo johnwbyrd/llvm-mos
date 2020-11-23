@@ -39,15 +39,20 @@ def sub_32hi      : MOSSubRegIndex<32, 32>;
 def sub_mask_0    : MOSSubRegIndex<-1>;
 def sub_mask_1    : MOSSubRegIndex<-1, -1>;
 
-
-defvar MaxVirt8Regs = 0x40;
-defvar Virt8RegsOffset = 0x10;
-defvar MaxVirt16Regs = !sra(MaxVirt8Regs, 1);
-defvar Virt16RegsOffset = !add(Virt8RegsOffset, MaxVirt8Regs);
-defvar MaxVirt32Regs = !sra(MaxVirt16Regs, 1);
-defvar Virt32RegsOffset = !add(Virt16RegsOffset, MaxVirt16Regs);
-defvar MaxVirt64Regs = !sra(MaxVirt32Regs, 1);
-defvar Virt64RegsOffset = !add(Virt32RegsOffset, MaxVirt32Regs);
+// This section describes the dimension of the imaginary registers for the MOS
+// targets.  We call them imaginary, because LLVM has a different meaning for
+// virtual.  Imaginary registers are a bank of continuous memory in MOS
+// zero page, that llvm can treat as physical registers for the purpose of
+// register allocation.  This puts llvm in the position of managing a large
+// chunk of zero page memory.
+defvar MaxImag8Regs = 0x40;
+defvar Imag8RegsOffset = 0x10;
+defvar MaxImag16Regs = !sra(MaxImag8Regs, 1);
+defvar Imag16RegsOffset = !add(Imag8RegsOffset, MaxImag8Regs);
+defvar MaxImag32Regs = !sra(MaxImag16Regs, 1);
+defvar Imag32RegsOffset = !add(Imag16RegsOffset, MaxImag16Regs);
+defvar MaxImag64Regs = !sra(MaxImag32Regs, 1);
+defvar Imag64RegsOffset = !add(Imag32RegsOffset, MaxImag32Regs);
 
 class MOSReg<bits<16> num,
              string name,
@@ -73,13 +78,13 @@ class MOSRegWithSubRegs<bits<16> num,
   let CoveredBySubRegs = 1;
 }
 
-class MOSVirtReg8<bits<16> num,
+class MOSImagReg8<bits<16> num,
             string name,
             list<Register> subregs = [],
             list<string> altNames = []> 
         : MOSReg< num, name, subregs, altNames >;
 
-class MOSVirtReg16<bits<16> num,
+class MOSImagReg16<bits<16> num,
             string name,
             list<Register> subregs = [],
             list<string> altNames = []>
@@ -88,7 +93,7 @@ class MOSVirtReg16<bits<16> num,
   let SubRegIndices = [sub_8lo, sub_8hi];
 }
 
-class MOSVirtReg32<bits<16> num,
+class MOSImagReg32<bits<16> num,
             string name,
             list<Register> subregs = [],
             list<string> altNames = []>
@@ -97,7 +102,7 @@ class MOSVirtReg32<bits<16> num,
   let SubRegIndices = [sub_16lo, sub_16hi];
 }
 
-class MOSVirtReg64<bits<16> num,
+class MOSImagReg64<bits<16> num,
             string name,
             list<Register> subregs = [],
             list<string> altNames = []>
@@ -119,53 +124,47 @@ def PC : MOSReg< 5, "pc">;
 def RealReg8Class : MOSReg8Class<(add A, X, Y, P, SP)>;
 def RealReg16Class : MOSReg16Class<(add PC)>;
 
-foreach I = 0...!add(MaxVirt8Regs, -1) in 
+// Imaginary 8-bit registers, starting with the prefix rc
+foreach I = 0...!add(MaxImag8Regs, -1) in 
 {
   def RC#I: 
-    MOSVirtReg8< !add(I, Virt8RegsOffset), "rc"#!cast<string>(I) >;
+    MOSImagReg8< !add(I, Imag8RegsOffset), "rc"#!cast<string>(I) >;
  }
+def MOSImagReg8Class : 
+  RegisterClass<"MOS", [i8], 8, (sequence "RC%u", 0, !add(MaxImag8Regs, -1))>;
 
- foreach I = 0...!add(MaxVirt16Regs, -1) in
- {
-   def RS#I:
-    MOSVirtReg16< !add(I, Virt16RegsOffset), "rs"#!cast<string>(I), 
-      [!cast<Register>("RC"#!shl(I, 1)),
-       !cast<Register>("RC"#!add(!shl(I,1),1))]>;
- }
+// Imagual 16-bit registers, starting with the prefix rs
+foreach I = 0...!add(MaxImag16Regs, -1) in
+{
+  def RS#I:
+  MOSImagReg16< !add(I, Imag16RegsOffset), "rs"#!cast<string>(I), 
+    [!cast<Register>("RC"#!shl(I, 1)),
+      !cast<Register>("RC"#!add(!shl(I,1),1))]>;
+}
+def MOSImagReg16Class : 
+  RegisterClass<"MOS", [i16], 16, 
+    (sequence "RS%u", 0, !add(MaxImag16Regs, -1))>;
 
- foreach I = 0...!add(MaxVirt32Regs, -1) in
- {
-   def RL#I:
-    MOSVirtReg32< !add(I, Virt32RegsOffset), "rl"#!cast<string>(I), 
-      [!cast<Register>("RS"#!shl(I, 1)),
-       !cast<Register>("RS"#!add(!shl(I,1),1))]>;
- }
+// Imagual 32-bit registers, starting with the prefix rl
+foreach I = 0...!add(MaxImag32Regs, -1) in
+{
+  def RL#I:
+  MOSImagReg32< !add(I, Imag32RegsOffset), "rl"#!cast<string>(I), 
+    [!cast<Register>("RS"#!shl(I, 1)),
+      !cast<Register>("RS"#!add(!shl(I,1),1))]>;
+}
+def MOSImagReg32Class : 
+  RegisterClass<"MOS", [i32], 32, 
+    (sequence "RL%u", 0, !add(MaxImag32Regs, -1))>;
 
-foreach I = 0...!add(MaxVirt64Regs, -1) in
+// Imagual 64-bit registers, starting with the prefix rq
+foreach I = 0...!add(MaxImag64Regs, -1) in
  {
    def RQ#I:
-    MOSVirtReg64< !add(I, Virt64RegsOffset), "rq"#!cast<string>(I), 
+    MOSImagReg64< !add(I, Imag64RegsOffset), "rq"#!cast<string>(I), 
       [!cast<Register>("RL"#!shl(I, 1)),
        !cast<Register>("RL"#!add(!shl(I,1),1))]>;
  }
-
-#ifdef FOO
-
-!cast<string>(!shl(I, 1)))
-def RS0 : MOSVirtReg16<0x90, "rs0", [RC0, RC1]>;
-def RS1 : MOSVirtReg16<0x91, "rs1", [RC2, RC3]>;
-def RS2 : MOSVirtReg16<0x92, "rs2", [RC4, RC5]>;
-def RS3 : MOSVirtReg16<0x93, "rs3", [RC6, RC7]>;
-def RS4 : MOSVirtReg16<0x94, "rs4", [RC8, RC9]>;
-def RS5 : MOSVirtReg16<0x95, "rs5", [RC10, RC11]>;
-def RS6 : MOSVirtReg16<0x96, "rs6", [RC12, RC13]>;
-def RS7 : MOSVirtReg16<0x97, "rs7", [RC14, RC15]>;
-#endif
-
-def RCClass : RegisterClass<"MOS", [i8],  8,
-                        (add RC0, RC1, RC2, RC3, RC4, RC5, RC6, RC7,
-                        RC8, RC9, RC10, RC11, RC12, RC13, RC14, RC15)> {
-}
-
-def RSClass: RegisterClass<"MOS", [i16], 16, 
-                        (add RS0, RS1, RS2, RS3, RS4, RS5, RS6, RS7)>;
+def MOSImagReg64Class : 
+  RegisterClass<"MOS", [i64], 64, 
+    (sequence "RQ%u", 0, !add(MaxImag64Regs, -1))>;
