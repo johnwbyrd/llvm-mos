@@ -33,6 +33,7 @@
                 "-print-imm-hex",
                 "-show-encoding",
                 "${workspaceFolder}\\llvm\\test\\MC\\MOS\\hello-world.s",
+                "-mattr=+mos-long-register-names"
                 "-I",
                 "${workspaceFolder}\\llvm\\test\\MC\\MOS\\Inputs",
                 "-debug-only=asm-matcher"
@@ -43,6 +44,23 @@
             "externalConsole": false,
             "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
         },
+        {
+            "name": "llvm-objdump hello-world.s",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/build/bin/llvm-objdump.exe",
+            "args": [
+                "--all-headers",
+                "--print-imm-hex",
+                "-D",
+                "${workspaceFolder}/build/build/test/MC/MOS/Output/hello-world.s.tmp.obj"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/build/build/bin",
+            "environment": [],
+            "externalConsole": false,
+            "visualizerFile": "${workspaceFolder}/llvm/utils/LLVMVisualizers/llvm.natvis",
+        },        
         {
             "name": "Debug hello-world.s --filetype=obj",
             "type": "cppvsdbg",
