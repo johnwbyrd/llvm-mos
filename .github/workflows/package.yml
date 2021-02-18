@@ -1,11 +1,16 @@
-name: package
 on: [push]
 jobs:
   package:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-self-hosted, macos-self-hosted]
+        os: [windows-self-hosted, macos-self-hosted, ubuntu-latest]
+        include:
+        - os: [windows-self-hosted, ubuntu-latest]
+          target: ship
+        include:
+        - os: [macos-self-hosted]
+          target: package
     env:
       GH_REPO: llvm-mos/llvm-mos
     steps:
@@ -32,10 +37,9 @@ jobs:
           -G Ninja
           -S . 
           -B build
-      - name: Build with cmake
+      - name: Build and optionally ship with cmake
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           cd build
-          cmake --build . --target ship
-
+          cmake --build . --target ${{ matrix.target }}
