@@ -72,5 +72,6 @@ add_llvm_component_library(LLVMMC
   DebugInfoCodeView
   )
 
-add_subdirectory(MCParser)
 add_subdirectory(MCDisassembler)
+add_subdirectory(MCEmulator)
+add_subdirectory(MCParser)

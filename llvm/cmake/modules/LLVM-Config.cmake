@@ -58,6 +58,7 @@ function(is_llvm_target_specifier library return_var)
     if( capitalized_lib STREQUAL "ALLTARGETSASMPARSERS" OR
         capitalized_lib STREQUAL "ALLTARGETSDESCS" OR
         capitalized_lib STREQUAL "ALLTARGETSDISASSEMBLERS" OR
+        capitalized_lib STREQUAL "ALLTARGETSEMULATORS" OR
         capitalized_lib STREQUAL "ALLTARGETSINFOS" OR
         capitalized_lib STREQUAL "NATIVE" OR
         capitalized_lib STREQUAL "NATIVECODEGEN" )
@@ -150,6 +151,9 @@ function(llvm_expand_pseudo_components out_components)
       if( TARGET LLVM${c}Disassembler )
         list(APPEND expanded_components "${c}Disassembler")
       endif()
+      if( TARGET LLVM${c}Emulator )
+        list(APPEND expanded_components "${c}Emulator")
+      endif()
       if( TARGET LLVM${c}Info )
         list(APPEND expanded_components "${c}Info")
       endif()
@@ -199,6 +203,13 @@ function(llvm_expand_pseudo_components out_components)
       foreach(t ${LLVM_TARGETS_TO_BUILD})
         if( TARGET LLVM${t}Info )
           list(APPEND expanded_components "${t}Info")
+        endif()
+      endforeach(t)
+    elseif( c STREQUAL "AllTargetsEmulators" )
+      # Link all the infos from all the targets
+      foreach(t ${LLVM_TARGETS_TO_BUILD})
+        if( TARGET LLVM${t}Emulator )
+          list(APPEND expanded_components "${t}Emulator")
         endif()
       endforeach(t)
     else()

@@ -62,6 +62,7 @@ set(LLVM_MOS_TOOLCHAIN_TOOLS
     llvm-cat
     llvm-cov
     llvm-diff
+    llvm-emu
     llvm-dwarfdump
     llvm-profdata
     llvm-lib
