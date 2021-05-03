@@ -704,6 +704,7 @@ set(LLVM_ENUM_TARGETS "")
 set(LLVM_ENUM_ASM_PRINTERS "")
 set(LLVM_ENUM_ASM_PARSERS "")
 set(LLVM_ENUM_DISASSEMBLERS "")
+set(LLVM_ENUM_EMULATORS "")
 foreach(t ${LLVM_TARGETS_TO_BUILD})
   set( td ${LLVM_MAIN_SRC_DIR}/lib/Target/${t} )
 
@@ -733,6 +734,10 @@ foreach(t ${LLVM_TARGETS_TO_BUILD})
     set(LLVM_ENUM_DISASSEMBLERS
       "${LLVM_ENUM_DISASSEMBLERS}LLVM_DISASSEMBLER(${t})\n")
   endif()
+  if( EXISTS ${td}/Emulator/CMakeLists.txt )
+    set(LLVM_ENUM_EMULATORS
+      "${LLVM_ENUM_EMULATORS}LLVM_EMULATOR(${t})\n")
+  endif()
 endforeach(t)
 
 # Produce the target definition files, which provide a way for clients to easily
@@ -748,6 +753,10 @@ configure_file(
 configure_file(
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Config/Disassemblers.def.in
   ${LLVM_INCLUDE_DIR}/llvm/Config/Disassemblers.def
+  )
+configure_file(
+  ${LLVM_MAIN_INCLUDE_DIR}/llvm/Config/Emulators.def.in
+  ${LLVM_INCLUDE_DIR}/llvm/Config/Emulators.def
   )
 configure_file(
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Config/Targets.def.in
