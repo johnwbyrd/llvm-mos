@@ -1,6 +1,7 @@
 add_llvm_component_library(LLVMMCEmulator
-  MCEmulator.cpp
-  MCEmulatorState.cpp
+  Emulator.cpp
+  State.cpp
+  Event.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/MC/MCEmulator

@@ -1,4 +1,4 @@
-//===- MCEmulator.cpp -----------------------------------------------------===//
+//===- llvm/MC/MCEmulator/Memory.h - Emulator registers ---------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,16 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/MC/MCEmulator/MCEmulator.h"
+#ifndef LLVM_MC_MCEMULATOR_MEMORY_H
+#define LLVM_MC_MCEMULATOR_MEMORY_H
 
 namespace llvm {
+namespace emu {
 
-int it = 0;
+class Memory {};
 
-void MCEmulator::test()
-{
-    int i = 1;
-    assert(i == 1);
-}
+} // end namespace emu
+} // end namespace llvm
 
-} // namespace llvm
+#endif // LLVM_MC_MCEMULATOR_MEMORY_H

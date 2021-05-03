@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/MC/MCEmulator/MCEmulatorState.h"
+#include "llvm/MC/MCEmulator/State.h"
 
 namespace llvm {
 
