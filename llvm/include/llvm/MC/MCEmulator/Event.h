@@ -40,7 +40,7 @@ public:
 protected:
     typedef SmallVector<std::unique_ptr<Event>, 2> EventsTy;
     EventsTy Events;
-}
+};
 
 
 } // end namespace emu

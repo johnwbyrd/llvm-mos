@@ -70,6 +70,12 @@ typedef struct LLVMOpaqueTargetLibraryInfotData *LLVMTargetLibraryInfoRef;
 #include "llvm/Config/Disassemblers.def"
 #undef LLVM_DISASSEMBLER  /* Explicit undef to make SWIG happier */
 
+/* Declare all of the available emulator initialization functions. */
+#define LLVM_EMULATOR(TargetName) \
+  void LLVMInitialize##TargetName##Emulator(void);
+#include "llvm/Config/Emulators.def"
+#undef LLVM_EMULATOR  /* Explicit undef to make SWIG happier */
+
 /** LLVMInitializeAllTargetInfos - The main program should call this function if
     it wants access to all available targets that LLVM is configured to
     support. */
@@ -123,6 +129,16 @@ static inline void LLVMInitializeAllDisassemblers(void) {
   LLVMInitialize##TargetName##Disassembler();
 #include "llvm/Config/Disassemblers.def"
 #undef LLVM_DISASSEMBLER  /* Explicit undef to make SWIG happier */
+}
+
+/** LLVMInitializeAllEmulators - The main program should call this function
+    if it wants all emulators that LLVM is configured to support, to make
+    them available via the TargetRegistry. */
+static inline void LLVMInitializeAllEmulators(void) {
+#define LLVM_EMULATOR(TargetName) \
+  LLVMInitialize##TargetName##Emulator();
+#include "llvm/Config/Emulators.def"
+#undef LLVM_EMULATOR  /* Explicit undef to make SWIG happier */
 }
 
 /** LLVMInitializeNativeTarget - The main program should call this function to
