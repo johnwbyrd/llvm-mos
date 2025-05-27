@@ -9,7 +9,11 @@
 #ifndef LLDB_SOURCE_PLUGINS_ABI_MOS_ABISYSV_MOS_H
 #define LLDB_SOURCE_PLUGINS_ABI_MOS_ABISYSV_MOS_H
 
+#include "Plugins/Process/gdb-remote/GDBRemoteRegisterContext.h"
+#include "Plugins/Process/gdb-remote/ThreadGDBRemote.h"
 #include "lldb/Target/ABI.h"
+#include "lldb/Target/RegisterContext.h"
+#include "lldb/Target/Thread.h"
 #include "lldb/lldb-private.h"
 
 class ABISysV_mos : public lldb_private::RegInfoBasedABI {
@@ -76,6 +80,10 @@ public:
 
   // PluginInterface protocol
   llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
+
+  lldb::RegisterContextSP
+  CreateRegisterContextForThread(lldb_private::Thread &thread,
+                                 uint32_t concrete_frame_idx) const override;
 
 protected:
   void CreateRegisterMapIfNeeded();
