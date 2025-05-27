@@ -32,6 +32,12 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/TargetParser/Triple.h"
 
+// Placeholder for MOSGDBRemoteRegisterContext
+#include "MOSGDBRemoteRegisterContext.h"
+
+// Include for ThreadGDBRemote
+#include "Plugins/Process/gdb-remote/ThreadGDBRemote.h"
+
 using namespace lldb;
 using namespace lldb_private;
 
@@ -176,7 +182,7 @@ UnwindPlanSP ABISysV_mos::CreateFunctionEntryUnwindPlan() {
   plan_sp->SetUnwindPlanValidAtAllInstructions(eLazyBoolYes);
   plan_sp->SetUnwindPlanForSignalTrap(eLazyBoolNo);
   plan_sp->SetReturnAddressRegister(LLDB_INVALID_REGNUM);
-  
+
   // Don't add any rows - let LLDB use the current register values as-is
   return plan_sp;
 }
@@ -328,3 +334,18 @@ void ABISysV_mos::Terminate() {
   PluginManager::UnregisterPlugin(CreateInstance);
 }
 
+lldb::RegisterContextSP
+ABISysV_mos::CreateRegisterContextForThread(lldb_private::Thread &thread,
+                                            uint32_t concrete_frame_idx) const {
+  // Downcast to ThreadGDBRemote; safe in this context
+  auto *gdb_thread =
+      static_cast<lldb_private::process_gdb_remote::ThreadGDBRemote *>(&thread);
+  assert(gdb_thread && "Expected ThreadGDBRemote for MOS ABI");
+  // Use the same register info as the thread
+  auto reg_info_sp = gdb_thread->GetRegisterInfoSP();
+  bool read_all_registers_at_once = false; // Could be improved
+  bool write_all_registers_at_once = false;
+  return std::make_shared<MOSGDBRemoteRegisterContext>(
+      *gdb_thread, concrete_frame_idx, reg_info_sp, read_all_registers_at_once,
+      write_all_registers_at_once);
+}
