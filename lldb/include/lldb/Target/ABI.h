@@ -152,6 +152,14 @@ public:
 
   static lldb::ABISP FindPlugin(lldb::ProcessSP process_sp, const ArchSpec &arch);
 
+  virtual lldb::RegisterContextSP
+  CreateRegisterContextForThread(
+      lldb_private::Thread &thread,
+      uint32_t concrete_frame_idx) const {
+    // Default: return nullptr, meaning use the default RegisterContext
+    return nullptr;
+  }
+
 protected:
   ABI(lldb::ProcessSP process_sp, std::unique_ptr<llvm::MCRegisterInfo> info_up)
       : m_process_wp(process_sp), m_mc_register_info_up(std::move(info_up)) {
