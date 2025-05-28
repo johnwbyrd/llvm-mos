@@ -34,6 +34,8 @@ MOSGDBRemoteRegisterContext::MOSGDBRemoteRegisterContext(
                             : std::string()));
       }
     }
+    // Dump the full register info table to stdout for debugging
+    reg_info_sp->Dump();
   }
 }
 
@@ -139,10 +141,18 @@ bool MOSGDBRemoteRegisterContext::ReadRegister(
     lldb_private::RegisterValue &value) {
   const char *reg_name = reg_info->name;
   uint32_t regnum = reg_info->kinds[lldb::eRegisterKindLLDB];
+  uint32_t dwarfnum = reg_info->kinds[lldb::eRegisterKindDWARF];
+  // Print the index in the register info array
+  size_t reginfo_index = 0;
+  for (size_t i = 0; i < m_reg_info_sp->GetNumRegisters(); ++i) {
+    if (m_reg_info_sp->GetRegisterInfoAtIndex(i) == reg_info) {
+      reginfo_index = i;
+      break;
+    }
+  }
   LLDB_MOS_LOG_REG(
-      "ReadRegister: name={0}, lldb_regnum={1}, generic_kind={2}, dwarf={3}",
-      reg_name, regnum, reg_info->kinds[lldb::eRegisterKindGeneric],
-      reg_info->kinds[lldb::eRegisterKindDWARF]);
+      "DEBUG: ReadRegister: name={0}, LLDB regnum={1}, DWARF={2}, index={3}",
+      reg_name, regnum, dwarfnum, reginfo_index);
   if (!IsProcessReady()) {
     LLDB_MOS_LOG_REG("ReadRegister: process not ready, returning false for {0}",
                      reg_name);

@@ -85,6 +85,10 @@ public:
   CreateRegisterContextForThread(lldb_private::Thread &thread,
                                  uint32_t concrete_frame_idx) const override;
 
+  bool ProvidesRegisterInfoOverride() const override;
+  std::optional<lldb_private::DynamicRegisterInfo::Register>
+  GetCanonicalRegisterInfo(llvm::StringRef name) const override;
+
 protected:
   void CreateRegisterMapIfNeeded();
 
