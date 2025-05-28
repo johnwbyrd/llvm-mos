@@ -160,6 +160,13 @@ public:
     return nullptr;
   }
 
+  // Returns true if the ABI is prepared to provide authoritative register info for override.
+  virtual bool ProvidesRegisterInfoOverride() const { return false; }
+
+  // If opted in, returns a fully-populated Register for the given name, or std::nullopt if not recognized.
+  virtual std::optional<lldb_private::DynamicRegisterInfo::Register>
+  GetCanonicalRegisterInfo(llvm::StringRef name) const { return std::nullopt; }
+
 protected:
   ABI(lldb::ProcessSP process_sp, std::unique_ptr<llvm::MCRegisterInfo> info_up)
       : m_process_wp(process_sp), m_mc_register_info_up(std::move(info_up)) {

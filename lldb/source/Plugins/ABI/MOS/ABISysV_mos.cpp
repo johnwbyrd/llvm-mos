@@ -78,7 +78,7 @@ static const RegisterInfo g_register_infos[] = {
         "x",
         "",
         1,
-        0,
+        1,
         eEncodingUint,
         eFormatHex,
         {dwarf_x, dwarf_x, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM,
@@ -91,7 +91,7 @@ static const RegisterInfo g_register_infos[] = {
         "y",
         "",
         1,
-        0,
+        2,
         eEncodingUint,
         eFormatHex,
         {dwarf_y, dwarf_y, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM,
@@ -104,7 +104,7 @@ static const RegisterInfo g_register_infos[] = {
         "s",
         "sp",
         1,
-        0,
+        3,
         eEncodingUint,
         eFormatHex,
         {dwarf_s, dwarf_s, LLDB_REGNUM_GENERIC_SP, LLDB_INVALID_REGNUM,
@@ -117,7 +117,7 @@ static const RegisterInfo g_register_infos[] = {
         "p",
         "status",
         1,
-        0,
+        4,
         eEncodingUint,
         eFormatHex,
         {dwarf_p, dwarf_p, LLDB_REGNUM_GENERIC_FLAGS, LLDB_INVALID_REGNUM,
@@ -350,4 +350,39 @@ ABISysV_mos::CreateRegisterContextForThread(lldb_private::Thread &thread,
   return std::make_shared<MOSGDBRemoteRegisterContext>(
       *gdb_thread, concrete_frame_idx, reg_info_sp, read_all_registers_at_once,
       write_all_registers_at_once);
+}
+
+bool ABISysV_mos::ProvidesRegisterInfoOverride() const {
+  return true;
+}
+
+static lldb_private::DynamicRegisterInfo::Register ConvertToDynamicRegisterInfoRegister(const RegisterInfo &reg) {
+  lldb_private::DynamicRegisterInfo::Register dyn_reg;
+  dyn_reg.name = ConstString(reg.name);
+  dyn_reg.alt_name = ConstString(reg.alt_name ? reg.alt_name : "");
+  dyn_reg.set_name = ConstString("general"); // or use actual set if available
+  dyn_reg.byte_size = reg.byte_size;
+  dyn_reg.byte_offset = reg.byte_offset;
+  dyn_reg.encoding = reg.encoding;
+  dyn_reg.format = reg.format;
+  dyn_reg.regnum_dwarf = reg.kinds[eRegisterKindDWARF];
+  dyn_reg.regnum_ehframe = reg.kinds[eRegisterKindEHFrame];
+  dyn_reg.regnum_generic = reg.kinds[eRegisterKindGeneric];
+  dyn_reg.regnum_remote = reg.kinds[eRegisterKindProcessPlugin];
+  // value_regs, invalidate_regs, flags_type left default/empty
+  return dyn_reg;
+}
+
+std::optional<lldb_private::DynamicRegisterInfo::Register>
+ABISysV_mos::GetCanonicalRegisterInfo(llvm::StringRef name) const {
+  for (size_t i = 0; i < std::size(g_register_infos); ++i) {
+    const auto &reg = g_register_infos[i];
+    if (name == reg.name) {
+      auto dyn_reg = ConvertToDynamicRegisterInfoRegister(reg);
+      dyn_reg.regnum_remote = i; // Set to index in static table
+      return dyn_reg;
+    }
+  }
+  // TODO: handle imaginary registers if needed
+  return std::nullopt;
 }
