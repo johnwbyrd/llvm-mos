@@ -89,6 +89,15 @@ public:
   std::optional<lldb_private::DynamicRegisterInfo::Register>
   GetCanonicalRegisterInfo(llvm::StringRef name) const override;
 
+  // Single source of truth: map from rc* register name to address, built from ELF symbols
+  static std::unordered_map<std::string, lldb::addr_t> imaginary_register_map_;
+
+  // Accessor for the imaginary register map
+  const std::unordered_map<std::string, lldb::addr_t> &GetImaginaryRegisterMap() const;
+
+  // Log the contents of the imaginary register map for debugging
+  void LogImaginaryRegisterMap() const;
+
 protected:
   void CreateRegisterMapIfNeeded();
 
