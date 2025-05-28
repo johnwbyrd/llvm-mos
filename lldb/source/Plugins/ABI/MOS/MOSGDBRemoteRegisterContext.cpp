@@ -1,12 +1,11 @@
 #include "MOSGDBRemoteRegisterContext.h"
+#include "LLDBMOSLog.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/Symtab.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/ConstString.h"
-#include "lldb/Utility/LLDBLog.h"
-#include "lldb/Utility/Log.h"
 #include "lldb/Utility/RegisterValue.h"
 #include "lldb/lldb-enumerations.h"
 #include <cstring>
@@ -23,35 +22,24 @@ MOSGDBRemoteRegisterContext::MOSGDBRemoteRegisterContext(
   InitializeImaginaryRegisterMap();
   // Debug print all register names and sizes
   if (reg_info_sp) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] RegisterInfo dump:");
-    }
+    LLDB_MOS_LOG_REG("RegisterInfo dump:");
     for (size_t i = 0; i < reg_info_sp->GetNumRegisters(); ++i) {
       const lldb_private::RegisterInfo *info =
           reg_info_sp->GetRegisterInfoAtIndex(i);
       if (info) {
-        if (lldb_private::Log *log =
-                lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-          LLDB_LOG(log, "  name='{0}', size={1}",
-                   (info->name ? info->name : "(null)"), info->byte_size);
-          if (info->alt_name)
-            LLDB_LOG(log, ", alt_name='{0}'", info->alt_name);
-        }
+        LLDB_MOS_LOG_REG(
+            "  name='{0}', size={1}{2}", (info->name ? info->name : "(null)"),
+            info->byte_size,
+            (info->alt_name ? std::string(", alt_name='") + info->alt_name + "'"
+                            : std::string()));
       }
     }
   }
 }
 
 void MOSGDBRemoteRegisterContext::InitializeImaginaryRegisterMap() {
-  // Reference: llvm/lib/Target/MOS/MOSRegisterInfo.td
-  // RC (8-bit) DWARF regnum: 0x10 + (N * 2)
-  // RS (16-bit) DWARF regnum: 0x210 + N
-  // Only __rc* symbols exist; RS registers are synthesized from RC pairs.
-
   m_imaginary_reg_addr.clear();
-  m_fallback_to_hardware_sp =
-      true; // Assume fallback unless we find imaginary regs
+  m_fallback_to_hardware_sp = true;
 
   lldb::ProcessSP process_sp = m_thread.GetProcess();
   if (!process_sp)
@@ -61,24 +49,15 @@ void MOSGDBRemoteRegisterContext::InitializeImaginaryRegisterMap() {
     return;
   lldb_private::ModuleList &modules = target_sp->GetImages();
 
-  // Map: rc index -> zero page address
   std::map<uint32_t, lldb::addr_t> rc_addr_map;
   constexpr uint32_t kMaxRC = 255;
-  if (lldb_private::Log *log =
-          lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-    LLDB_LOG(
-        log,
-        "[MOSGDBRemoteRegisterContext] Scanning for imaginary registers...");
-  }
+  LLDB_MOS_LOG_SYM("Scanning for imaginary registers...");
   for (size_t i = 0; i < modules.GetSize(); ++i) {
     lldb::ModuleSP module_sp = modules.GetModuleAtIndex(i);
     if (!module_sp)
       continue;
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "  Scanning module: {0}",
-               module_sp->GetFileSpec().GetFilename().AsCString());
-    }
+    LLDB_MOS_LOG_SYM("  Scanning module: {0}",
+                     module_sp->GetFileSpec().GetFilename().AsCString());
     lldb_private::Symtab *symtab = module_sp->GetSymtab();
     if (!symtab)
       continue;
@@ -90,30 +69,22 @@ void MOSGDBRemoteRegisterContext::InitializeImaginaryRegisterMap() {
           lldb_private::Symtab::eVisibilityAny);
       if (symbol) {
         lldb::addr_t raw_addr = symbol->GetRawValue();
-        if (lldb_private::Log *log =
-                lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-          LLDB_LOG(log, "    Found {0} with raw value 0x{1:x}", symbol_name,
-                   raw_addr);
-        }
+        LLDB_MOS_LOG_SYM("    Found {0} with raw value 0x{1:x}", symbol_name,
+                         raw_addr);
         if (raw_addr != LLDB_INVALID_ADDRESS)
           rc_addr_map[rc_num] = raw_addr;
       }
     }
   }
-  if (lldb_private::Log *log =
-          lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-    LLDB_LOG(log, "Total rc* symbols found: {0}", rc_addr_map.size());
-  }
+  LLDB_MOS_LOG_SYM("Total rc* symbols found: {0}", rc_addr_map.size());
 
-  // Map RC registers (DWARF regnum 0x10 + N*2)
   for (const auto &pair : rc_addr_map) {
     uint32_t rc_num = pair.first;
     lldb::addr_t addr = pair.second;
-    uint32_t dwarf_num = 0x10 + (rc_num * 2); // See MOSRegisterInfo.td
+    uint32_t dwarf_num = 0x10 + (rc_num * 2);
     m_imaginary_reg_addr[dwarf_num] = addr;
   }
 
-  // Map RS registers (DWARF regnum 0x210 + N)
   constexpr uint32_t kMaxRS = kMaxRC / 2;
   for (uint32_t rs_num = 0; rs_num <= kMaxRS; ++rs_num) {
     uint32_t rc_lo = rs_num * 2;
@@ -121,21 +92,17 @@ void MOSGDBRemoteRegisterContext::InitializeImaginaryRegisterMap() {
     auto it_lo = rc_addr_map.find(rc_lo);
     auto it_hi = rc_addr_map.find(rc_hi);
     if (it_lo != rc_addr_map.end() && it_hi != rc_addr_map.end()) {
-      uint32_t dwarf_num = 0x210 + rs_num;             // See MOSRegisterInfo.td
-      m_imaginary_reg_addr[dwarf_num] = it_lo->second; // low byte address
+      uint32_t dwarf_num = 0x210 + rs_num;
+      m_imaginary_reg_addr[dwarf_num] = it_lo->second;
     }
   }
 
-  // If we found any imaginary registers, disable fallback
   if (!rc_addr_map.empty()) {
     m_fallback_to_hardware_sp = false;
   } else {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] Warning: No imaginary "
-                    "registers found. Falling back to hardware S as 'sp'. "
-                    "Source-level stack traces may not work.");
-    }
+    LLDB_MOS_LOG_ABI(
+        "Warning: No imaginary registers found. Falling back to hardware S as "
+        "'sp'. Source-level stack traces may not work.");
   }
 }
 
@@ -148,35 +115,20 @@ bool MOSGDBRemoteRegisterContext::IsImaginaryRegister(
 bool MOSGDBRemoteRegisterContext::IsProcessReady() const {
   lldb::ProcessSP process_sp = m_thread.GetProcess();
   if (!process_sp) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] Not ready: no process");
-    }
+    LLDB_MOS_LOG_ABI("Not ready: no process");
     return false;
   }
   if (!process_sp->IsAlive()) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log,
-               "[MOSGDBRemoteRegisterContext] Not ready: process is not alive");
-    }
+    LLDB_MOS_LOG_ABI("Not ready: process is not alive");
     return false;
   }
   lldb::StateType state = process_sp->GetState();
   if (state != lldb::eStateStopped && state != lldb::eStateSuspended) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log,
-               "[MOSGDBRemoteRegisterContext] Not ready: process state is {0}",
-               state);
-    }
+    LLDB_MOS_LOG_ABI("Not ready: process state is {0}", state);
     return false;
   }
   if (process_sp->GetThreadList().GetSize() == 0) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] Not ready: no threads");
-    }
+    LLDB_MOS_LOG_ABI("Not ready: no threads");
     return false;
   }
   return true;
@@ -185,23 +137,15 @@ bool MOSGDBRemoteRegisterContext::IsProcessReady() const {
 bool MOSGDBRemoteRegisterContext::ReadRegister(
     const lldb_private::RegisterInfo *reg_info,
     lldb_private::RegisterValue &value) {
-  lldb_private::Log *log = lldb_private::GetLog(lldb_private::LLDBLog::Process);
   const char *reg_name = reg_info->name;
   uint32_t regnum = reg_info->kinds[lldb::eRegisterKindLLDB];
-  if (log) {
-    LLDB_LOG(log,
-             "[MOSGDBRemoteRegisterContext] ReadRegister: name={0}, "
-             "lldb_regnum={1}, generic_kind={2}, dwarf={3}",
-             reg_name, regnum, reg_info->kinds[lldb::eRegisterKindGeneric],
-             reg_info->kinds[lldb::eRegisterKindDWARF]);
-  }
+  LLDB_MOS_LOG_REG(
+      "ReadRegister: name={0}, lldb_regnum={1}, generic_kind={2}, dwarf={3}",
+      reg_name, regnum, reg_info->kinds[lldb::eRegisterKindGeneric],
+      reg_info->kinds[lldb::eRegisterKindDWARF]);
   if (!IsProcessReady()) {
-    if (log) {
-      LLDB_LOG(log,
-               "[MOSGDBRemoteRegisterContext] ReadRegister: process not ready, "
-               "returning false for {0}",
-               reg_name);
-    }
+    LLDB_MOS_LOG_REG("ReadRegister: process not ready, returning false for {0}",
+                     reg_name);
     return false;
   }
   // Handle 'sp' (soft stack pointer)
@@ -216,26 +160,17 @@ bool MOSGDBRemoteRegisterContext::ReadRegister(
         uint8_t buf[2] = {0};
         size_t bytes_read =
             m_thread.GetProcess()->ReadMemory(it->second, buf, 2, error);
-        if (log) {
-          LLDB_LOG(log,
-                   "[MOSGDBRemoteRegisterContext] ReadRegister: reading sp "
-                   "(RS0) from addr=0x{0:x}, bytes_read={1}, error={2}",
-                   it->second, bytes_read,
-                   error.Success() ? "none" : error.AsCString());
-        }
+        LLDB_MOS_LOG_REG("ReadRegister: reading sp (RS0) from addr=0x{0:x}, "
+                         "bytes_read={1}, error={2}",
+                         it->second, bytes_read,
+                         error.Success() ? "none" : error.AsCString());
         if (bytes_read == 2 && error.Success()) {
           value.SetFromMemoryData(*reg_info, buf, 2, lldb::eByteOrderLittle,
                                   error);
-          if (log) {
-            LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] ReadRegister: handled "
-                          "sp (RS0) successfully");
-          }
+          LLDB_MOS_LOG_REG("ReadRegister: handled sp (RS0) successfully");
           return true;
         } else {
-          if (log) {
-            LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] ReadRegister: failed "
-                          "to read sp (RS0) from memory");
-          }
+          LLDB_MOS_LOG_REG("ReadRegister: failed to read sp (RS0) from memory");
           return false;
         }
       }
@@ -251,26 +186,17 @@ bool MOSGDBRemoteRegisterContext::ReadRegister(
       uint8_t buf[2] = {0};
       size_t bytes_read =
           m_thread.GetProcess()->ReadMemory(it->second, buf, 2, error);
-      if (log) {
-        LLDB_LOG(log,
-                 "[MOSGDBRemoteRegisterContext] ReadRegister: reading fp "
-                 "(RS15) from addr=0x{0:x}, bytes_read={1}, error={2}",
-                 it->second, bytes_read,
-                 error.Success() ? "none" : error.AsCString());
-      }
+      LLDB_MOS_LOG_REG("ReadRegister: reading fp (RS15) from addr=0x{0:x}, "
+                       "bytes_read={1}, error={2}",
+                       it->second, bytes_read,
+                       error.Success() ? "none" : error.AsCString());
       if (bytes_read == 2 && error.Success()) {
         value.SetFromMemoryData(*reg_info, buf, 2, lldb::eByteOrderLittle,
                                 error);
-        if (log) {
-          LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] ReadRegister: handled "
-                        "fp (RS15) successfully");
-        }
+        LLDB_MOS_LOG_REG("ReadRegister: handled fp (RS15) successfully");
         return true;
       } else {
-        if (log) {
-          LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] ReadRegister: failed to "
-                        "read fp (RS15) from memory");
-        }
+        LLDB_MOS_LOG_REG("ReadRegister: failed to read fp (RS15) from memory");
         return false;
       }
     }
@@ -285,49 +211,29 @@ bool MOSGDBRemoteRegisterContext::ReadRegister(
       uint8_t buf[2] = {0};
       size_t bytes_read =
           m_thread.GetProcess()->ReadMemory(it->second, buf, size, error);
-      if (log) {
-        LLDB_LOG(
-            log,
-            "[MOSGDBRemoteRegisterContext] ReadRegister: reading imaginary reg "
-            "{0} from addr=0x{1:x}, bytes_read={2}, error={3}",
-            reg_name, it->second, bytes_read,
-            error.Success() ? "none" : error.AsCString());
-      }
+      LLDB_MOS_LOG_REG("ReadRegister: reading imaginary reg {0} from "
+                       "addr=0x{1:x}, bytes_read={2}, error={3}",
+                       reg_name, it->second, bytes_read,
+                       error.Success() ? "none" : error.AsCString());
       if (bytes_read == size && error.Success()) {
         value.SetFromMemoryData(*reg_info, buf, size, lldb::eByteOrderLittle,
                                 error);
-        if (log) {
-          LLDB_LOG(log,
-                   "[MOSGDBRemoteRegisterContext] ReadRegister: handled "
-                   "imaginary reg {0} successfully",
-                   reg_name);
-        }
+        LLDB_MOS_LOG_REG("ReadRegister: handled imaginary reg {0} successfully",
+                         reg_name);
         return true;
       } else {
-        if (log) {
-          LLDB_LOG(log,
-                   "[MOSGDBRemoteRegisterContext] ReadRegister: failed to read "
-                   "imaginary reg {0} from memory",
-                   reg_name);
-        }
+        LLDB_MOS_LOG_REG(
+            "ReadRegister: failed to read imaginary reg {0} from memory",
+            reg_name);
         return false;
       }
     }
   }
   // Fallback to base class
-  if (log) {
-    LLDB_LOG(log,
-             "[MOSGDBRemoteRegisterContext] ReadRegister: falling back to base "
-             "for {0}",
-             reg_name);
-  }
+  LLDB_MOS_LOG_REG("ReadRegister: falling back to base for {0}", reg_name);
   bool result = GDBRemoteRegisterContext::ReadRegister(reg_info, value);
-  if (log) {
-    LLDB_LOG(log,
-             "[MOSGDBRemoteRegisterContext] ReadRegister: base class returned "
-             "{0} for {1}",
-             result, reg_name);
-  }
+  LLDB_MOS_LOG_REG("ReadRegister: base class returned {0} for {1}", result,
+                   reg_name);
   return result;
 }
 
@@ -335,28 +241,16 @@ bool MOSGDBRemoteRegisterContext::WriteRegister(
     const lldb_private::RegisterInfo *reg_info,
     const lldb_private::RegisterValue &value) {
   if (!IsProcessReady()) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] Warning: WriteRegister "
-                    "called when process is not ready");
-    }
+    LLDB_MOS_LOG_ABI("Warning: WriteRegister called when process is not ready");
     return false;
   }
   lldb::ProcessSP process_sp = m_thread.GetProcess();
   if (!process_sp) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] Error: Null process pointer "
-                    "in WriteRegister");
-    }
+    LLDB_MOS_LOG_ABI("Error: Null process pointer in WriteRegister");
     return false;
   }
   if (!process_sp->IsAlive()) {
-    if (lldb_private::Log *log =
-            lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-      LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] Error: Process is not alive "
-                    "in WriteRegister");
-    }
+    LLDB_MOS_LOG_ABI("Error: Process is not alive in WriteRegister");
     return false;
   }
   uint32_t dwarf_regnum = reg_info->kinds[lldb::eRegisterKindDWARF];
@@ -425,11 +319,8 @@ bool MOSGDBRemoteRegisterContext::WriteRegister(
       }
       return false;
     } else {
-      if (lldb_private::Log *log =
-              lldb_private::GetLog(lldb_private::LLDBLog::Process)) {
-        LLDB_LOG(log, "[MOSGDBRemoteRegisterContext] Warning: No imaginary "
-                      "registers; 'fp' is not available.");
-      }
+      LLDB_MOS_LOG_ABI(
+          "Warning: No imaginary registers; 'fp' is not available.");
       return false;
     }
   }

@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ABISysV_mos.h"
+#include "LLDBMOSLog.h"
 
 #include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
@@ -326,6 +327,7 @@ void ABISysV_mos::AugmentRegisterInfo(
 }
 
 void ABISysV_mos::Initialize() {
+  RegisterLLDBMOSLogChannel();
   PluginManager::RegisterPlugin(GetPluginNameStatic(),
                                 "System V ABI for MOS targets", CreateInstance);
 }
