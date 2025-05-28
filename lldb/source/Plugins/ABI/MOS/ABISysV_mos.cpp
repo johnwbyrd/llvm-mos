@@ -215,9 +215,32 @@ ABISysV_mos::GetReturnValueObjectSimple(Thread &thread,
   return ValueObjectSP();
 }
 
-// MOS-specific imaginary register detection
+// Helper to get the address of an imaginary register symbol.
+// NOTE: This is the ONLY valid way to get an imaginary register's address.
+// Always use GetRawValue() for these symbols, as GetLoadAddress() and others may be incorrect for absolute symbols.
+static lldb::addr_t GetImaginaryRegisterAddress(Symbol *symbol) {
+  return symbol ? symbol->GetRawValue() : LLDB_INVALID_ADDRESS;
+}
+
+// Define the static member
+std::unordered_map<std::string, lldb::addr_t> ABISysV_mos::imaginary_register_map_;
+
 ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
   ImaginaryRegisterConfig config;
+
+  // Only populate if the map is empty
+  if (!imaginary_register_map_.empty()) {
+    config.has_imaginary_regs = true;
+    // Compute max_rc_register from the map
+    for (const auto& pair : imaginary_register_map_) {
+      if (pair.first.size() > 2 && pair.first.substr(0,2) == "rc") {
+        int rc_num = std::atoi(pair.first.c_str() + 2);
+        config.max_rc_register = std::max(config.max_rc_register, static_cast<uint32_t>(rc_num));
+      }
+    }
+    config.max_rs_register = config.max_rc_register / 2;
+    return config;
+  }
 
   ProcessSP process_sp = GetProcessSP();
   if (!process_sp)
@@ -246,7 +269,11 @@ ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
           Symtab::eVisibilityAny);
       if (symbol) {
         config.has_imaginary_regs = true;
-        config.max_rc_register = std::max(config.max_rc_register, rc_num);
+        config.max_rc_register = std::max(config.max_rc_register, static_cast<uint32_t>(rc_num));
+        std::string map_key = "rc" + std::to_string(rc_num);
+        lldb::addr_t addr = GetImaginaryRegisterAddress(symbol);
+        LLDB_MOS_LOG_REG("Populating imaginary_register_map_: key='{}', value=0x{:x} (from symbol '{}')", map_key, addr, symbol_name);
+        imaginary_register_map_[map_key] = addr;
       }
     }
 
@@ -255,6 +282,9 @@ ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
     config.max_rs_register = config.max_rc_register / 2;
   }
 
+  // Log the map after population
+  // LogImaginaryRegisterMap();
+  // LLDB_MOS_LOG_REG("[DetectImaginaryRegisters] ABI this={0}, map addr={1}, map size={2}", (void*)this, (void*)&imaginary_register_map_, imaginary_register_map_.size());
   return config;
 }
 
@@ -265,6 +295,16 @@ void ABISysV_mos::AddImaginaryRegistersToList(
   ConstString empty_alt_name;
   ConstString reg_set{"imaginary registers"};
 
+  // Find the next available offset and regnum
+  uint32_t next_offset = 0;
+  uint32_t next_regnum = 0;
+  for (const auto &reg : regs) {
+    if (reg.byte_offset != LLDB_INVALID_INDEX32)
+      next_offset = std::max(next_offset, reg.byte_offset + reg.byte_size);
+    if (reg.regnum_remote != LLDB_INVALID_REGNUM)
+      next_regnum = std::max(next_regnum, reg.regnum_remote + 1);
+  }
+
   // Add RC registers (8-bit imaginary registers)
   for (uint32_t i = 0; i <= config.max_rc_register; ++i) {
     uint32_t dwarf_num = dwarf_imag_8bit_start + (i * 2);
@@ -274,7 +314,7 @@ void ABISysV_mos::AddImaginaryRegistersToList(
                                       empty_alt_name,
                                       reg_set,
                                       1,
-                                      LLDB_INVALID_INDEX32,
+                                      next_offset,
                                       lldb::eEncodingUint,
                                       lldb::eFormatHex,
                                       LLDB_INVALID_REGNUM,
@@ -283,6 +323,8 @@ void ABISysV_mos::AddImaginaryRegistersToList(
                                       LLDB_INVALID_REGNUM,
                                       {},
                                       {}};
+    reg.regnum_remote = next_regnum++;
+    next_offset += 1;
     regs.push_back(reg);
   }
 
@@ -292,7 +334,6 @@ void ABISysV_mos::AddImaginaryRegistersToList(
     std::string name = "rs" + std::to_string(i);
 
     uint32_t generic_reg = LLDB_INVALID_REGNUM;
-    // RS15 is the frame pointer
     if (i == 15) {
       generic_reg = LLDB_REGNUM_GENERIC_FP;
     }
@@ -301,7 +342,7 @@ void ABISysV_mos::AddImaginaryRegistersToList(
                                       empty_alt_name,
                                       reg_set,
                                       2,
-                                      LLDB_INVALID_INDEX32,
+                                      next_offset,
                                       lldb::eEncodingUint,
                                       lldb::eFormatHex,
                                       LLDB_INVALID_REGNUM,
@@ -310,6 +351,8 @@ void ABISysV_mos::AddImaginaryRegistersToList(
                                       generic_reg,
                                       {},
                                       {}};
+    reg.regnum_remote = next_regnum++;
+    next_offset += 2;
     regs.push_back(reg);
   }
 }
@@ -339,6 +382,7 @@ void ABISysV_mos::Terminate() {
 lldb::RegisterContextSP
 ABISysV_mos::CreateRegisterContextForThread(lldb_private::Thread &thread,
                                             uint32_t concrete_frame_idx) const {
+  LLDB_MOS_LOG_REG("[CreateRegisterContextForThread] ABI this={0}, map addr={1}, map size={2}", (void*)this, (void*)&imaginary_register_map_, imaginary_register_map_.size());
   // Downcast to ThreadGDBRemote; safe in this context
   auto *gdb_thread =
       static_cast<lldb_private::process_gdb_remote::ThreadGDBRemote *>(&thread);
@@ -349,7 +393,7 @@ ABISysV_mos::CreateRegisterContextForThread(lldb_private::Thread &thread,
   bool write_all_registers_at_once = false;
   return std::make_shared<MOSGDBRemoteRegisterContext>(
       *gdb_thread, concrete_frame_idx, reg_info_sp, read_all_registers_at_once,
-      write_all_registers_at_once);
+      write_all_registers_at_once, GetImaginaryRegisterMap());
 }
 
 bool ABISysV_mos::ProvidesRegisterInfoOverride() const {
@@ -385,4 +429,15 @@ ABISysV_mos::GetCanonicalRegisterInfo(llvm::StringRef name) const {
   }
   // TODO: handle imaginary registers if needed
   return std::nullopt;
+}
+
+const std::unordered_map<std::string, lldb::addr_t> &ABISysV_mos::GetImaginaryRegisterMap() const {
+  return imaginary_register_map_;
+}
+
+// Log the contents of the imaginary register map for debugging
+void ABISysV_mos::LogImaginaryRegisterMap() const {
+  for (const auto &pair : imaginary_register_map_) {
+    LLDB_MOS_LOG_REG("Imaginary register: {0} at address 0x{1:x}", pair.first, pair.second);
+  }
 }
