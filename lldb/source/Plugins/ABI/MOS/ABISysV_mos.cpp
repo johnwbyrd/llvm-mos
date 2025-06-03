@@ -293,7 +293,7 @@ void ABISysV_mos::AddImaginaryRegistersToList(
     const ImaginaryRegisterConfig &config) {
 
   ConstString empty_alt_name;
-  ConstString reg_set{"imaginary registers"};
+  ConstString reg_set{"imaginary"};
 
   // Find the next available offset and regnum
   uint32_t next_offset = 0;
