@@ -36,19 +36,20 @@ static const Log::Category g_lldb_mos_log_categories[] = {
     {"sym", "Symbol operations", LLDB_MOS_LOG_SYM},
     {"abi", "ABI/fallback logic", LLDB_MOS_LOG_ABI},
 };
-constexpr size_t kNumCategories = sizeof(g_lldb_mos_log_categories) / sizeof(g_lldb_mos_log_categories[0]);
-}
+constexpr size_t kNumCategories =
+    sizeof(g_lldb_mos_log_categories) / sizeof(g_lldb_mos_log_categories[0]);
+} // namespace
 
 static Log::Channel g_lldb_mos_log_channel(
     llvm::ArrayRef<Log::Category>(g_lldb_mos_log_categories, kNumCategories),
     LLDB_MOS_LOG_NONE);
 
 Log::Channel &lldb_private::GetLLDBMOSLogChannel() {
-    return g_lldb_mos_log_channel;
+  return g_lldb_mos_log_channel;
 }
 
 namespace lldb_private {
 void RegisterLLDBMOSLogChannel() {
-    Log::Register("target-mos", g_lldb_mos_log_channel);
+  Log::Register("target-mos", g_lldb_mos_log_channel);
 }
-} 
+} // namespace lldb_private

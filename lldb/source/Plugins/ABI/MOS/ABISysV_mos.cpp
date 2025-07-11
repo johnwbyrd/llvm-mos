@@ -217,13 +217,15 @@ ABISysV_mos::GetReturnValueObjectSimple(Thread &thread,
 
 // Helper to get the address of an imaginary register symbol.
 // NOTE: This is the ONLY valid way to get an imaginary register's address.
-// Always use GetRawValue() for these symbols, as GetLoadAddress() and others may be incorrect for absolute symbols.
+// Always use GetRawValue() for these symbols, as GetLoadAddress() and others
+// may be incorrect for absolute symbols.
 static lldb::addr_t GetImaginaryRegisterAddress(Symbol *symbol) {
   return symbol ? symbol->GetRawValue() : LLDB_INVALID_ADDRESS;
 }
 
 // Define the static member
-std::unordered_map<std::string, lldb::addr_t> ABISysV_mos::imaginary_register_map_;
+std::unordered_map<std::string, lldb::addr_t>
+    ABISysV_mos::imaginary_register_map_;
 
 ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
   ImaginaryRegisterConfig config;
@@ -232,10 +234,11 @@ ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
   if (!imaginary_register_map_.empty()) {
     config.has_imaginary_regs = true;
     // Compute max_rc_register from the map
-    for (const auto& pair : imaginary_register_map_) {
-      if (pair.first.size() > 2 && pair.first.substr(0,2) == "rc") {
+    for (const auto &pair : imaginary_register_map_) {
+      if (pair.first.size() > 2 && pair.first.substr(0, 2) == "rc") {
         int rc_num = std::atoi(pair.first.c_str() + 2);
-        config.max_rc_register = std::max(config.max_rc_register, static_cast<uint32_t>(rc_num));
+        config.max_rc_register =
+            std::max(config.max_rc_register, static_cast<uint32_t>(rc_num));
       }
     }
     config.max_rs_register = config.max_rc_register / 2;
@@ -269,10 +272,13 @@ ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
           Symtab::eVisibilityAny);
       if (symbol) {
         config.has_imaginary_regs = true;
-        config.max_rc_register = std::max(config.max_rc_register, static_cast<uint32_t>(rc_num));
+        config.max_rc_register =
+            std::max(config.max_rc_register, static_cast<uint32_t>(rc_num));
         std::string map_key = "rc" + std::to_string(rc_num);
         lldb::addr_t addr = GetImaginaryRegisterAddress(symbol);
-        LLDB_MOS_LOG_REG("Populating imaginary_register_map_: key='{}', value=0x{:x} (from symbol '{}')", map_key, addr, symbol_name);
+        LLDB_MOS_LOG_REG("Populating imaginary_register_map_: key='{}', "
+                         "value=0x{:x} (from symbol '{}')",
+                         map_key, addr, symbol_name);
         imaginary_register_map_[map_key] = addr;
       }
     }
@@ -284,7 +290,9 @@ ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
 
   // Log the map after population
   // LogImaginaryRegisterMap();
-  // LLDB_MOS_LOG_REG("[DetectImaginaryRegisters] ABI this={0}, map addr={1}, map size={2}", (void*)this, (void*)&imaginary_register_map_, imaginary_register_map_.size());
+  // LLDB_MOS_LOG_REG("[DetectImaginaryRegisters] ABI this={0}, map addr={1},
+  // map size={2}", (void*)this, (void*)&imaginary_register_map_,
+  // imaginary_register_map_.size());
   return config;
 }
 
@@ -367,6 +375,21 @@ void ABISysV_mos::AugmentRegisterInfo(
   if (config.has_imaginary_regs) {
     AddImaginaryRegistersToList(regs, config);
   }
+
+  // --- BEGIN LOGGING PATCH ---
+  LLDB_MOS_LOG_REG(
+      "[AugmentRegisterInfo] Dumping register info after augmentation:");
+  int idx = 0;
+  for (const auto &reg : regs) {
+    LLDB_MOS_LOG_REG(
+        "  [{0:2}] name='{1}', size={2}, offset={3}, encoding={4}, format={5}, "
+        "generic={6}, dwarf={7}, ehframe={8}, set='{9}'",
+        idx++, reg.name ? reg.name.AsCString() : "<null>", reg.byte_size,
+        reg.byte_offset, reg.encoding, reg.format, reg.regnum_generic,
+        reg.regnum_dwarf, reg.regnum_ehframe,
+        reg.set_name ? reg.set_name.AsCString() : "<null>");
+  }
+  // --- END LOGGING PATCH ---
 }
 
 void ABISysV_mos::Initialize() {
@@ -382,7 +405,10 @@ void ABISysV_mos::Terminate() {
 lldb::RegisterContextSP
 ABISysV_mos::CreateRegisterContextForThread(lldb_private::Thread &thread,
                                             uint32_t concrete_frame_idx) const {
-  LLDB_MOS_LOG_REG("[CreateRegisterContextForThread] ABI this={0}, map addr={1}, map size={2}", (void*)this, (void*)&imaginary_register_map_, imaginary_register_map_.size());
+  LLDB_MOS_LOG_REG("[CreateRegisterContextForThread] ABI this={0}, map "
+                   "addr={1}, map size={2}",
+                   (void *)this, (void *)&imaginary_register_map_,
+                   imaginary_register_map_.size());
   // Downcast to ThreadGDBRemote; safe in this context
   auto *gdb_thread =
       static_cast<lldb_private::process_gdb_remote::ThreadGDBRemote *>(&thread);
@@ -396,11 +422,10 @@ ABISysV_mos::CreateRegisterContextForThread(lldb_private::Thread &thread,
       write_all_registers_at_once, GetImaginaryRegisterMap());
 }
 
-bool ABISysV_mos::ProvidesRegisterInfoOverride() const {
-  return true;
-}
+bool ABISysV_mos::ProvidesRegisterInfoOverride() const { return true; }
 
-static lldb_private::DynamicRegisterInfo::Register ConvertToDynamicRegisterInfoRegister(const RegisterInfo &reg) {
+static lldb_private::DynamicRegisterInfo::Register
+ConvertToDynamicRegisterInfoRegister(const RegisterInfo &reg) {
   lldb_private::DynamicRegisterInfo::Register dyn_reg;
   dyn_reg.name = ConstString(reg.name);
   dyn_reg.alt_name = ConstString(reg.alt_name ? reg.alt_name : "");
@@ -431,13 +456,15 @@ ABISysV_mos::GetCanonicalRegisterInfo(llvm::StringRef name) const {
   return std::nullopt;
 }
 
-const std::unordered_map<std::string, lldb::addr_t> &ABISysV_mos::GetImaginaryRegisterMap() const {
+const std::unordered_map<std::string, lldb::addr_t> &
+ABISysV_mos::GetImaginaryRegisterMap() const {
   return imaginary_register_map_;
 }
 
 // Log the contents of the imaginary register map for debugging
 void ABISysV_mos::LogImaginaryRegisterMap() const {
   for (const auto &pair : imaginary_register_map_) {
-    LLDB_MOS_LOG_REG("Imaginary register: {0} at address 0x{1:x}", pair.first, pair.second);
+    LLDB_MOS_LOG_REG("Imaginary register: {0} at address 0x{1:x}", pair.first,
+                     pair.second);
   }
 }
