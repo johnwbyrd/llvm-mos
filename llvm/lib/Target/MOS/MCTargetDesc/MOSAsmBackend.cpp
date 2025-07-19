@@ -102,6 +102,7 @@ bool isBasedOnZeroPageSymbol(const MCExpr *E) {
         static_cast<const MOSMCExpr *>(E)->getSubExpr());
 
   case MCExpr::Constant:
+  case MCExpr::Specifier:
     return false;
 
   case MCExpr::SymbolRef:

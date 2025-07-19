@@ -27,7 +27,7 @@ set(LLVM_DEFAULT_TARGET_TRIPLE "mos-unknown-unknown" CACHE STRING "")
 # already over 1GB without them on most platforms, and the compilers don't seem
 # to be slow on MOS-sized projects.  If you have more disk space, you may not
 # need them.
-set(CMAKE_BUILD_TYPE Debug CACHE STRING "CMake build type")
+set(CMAKE_BUILD_TYPE MinSizeRel CACHE STRING "CMake build type")
 
 # disable lldb testing until the lldb tests stabilize
 set(LLDB_INCLUDE_TESTS OFF CACHE BOOL "Include lldb tests")

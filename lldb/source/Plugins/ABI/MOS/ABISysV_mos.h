@@ -91,7 +91,7 @@ public:
 
   // Single source of truth: map from rc* register name to address, built from
   // ELF symbols
-  static std::unordered_map<std::string, lldb::addr_t> imaginary_register_map_;
+  static std::unordered_map<std::string, lldb::addr_t> imaginary_register_map;
 
   // Accessor for the imaginary register map
   const std::unordered_map<std::string, lldb::addr_t> &
