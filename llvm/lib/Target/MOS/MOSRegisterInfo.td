@@ -67,6 +67,9 @@ multiclass MOSReg8<bits<16> num, string name> {
   }
 }
 
+// DWARF numbering starts here.  This information is currently duplicated in
+// a non-DRY manner in ABISysV_mos.cpp.  Strangely, no lldb target reuses
+// this information, so some minor non-DRY coding is involved.
 defm A : MOSReg8<0, "a">;
 defm X : MOSReg8<2, "x">;
 defm Y : MOSReg8<4, "y">;
@@ -85,6 +88,8 @@ def NZ : MOSReg<11, "NZ"> {
   let CoveredBySubRegs = true;
 }
 
+// The processor status register, known occasionally as P and occasionally
+// as SR
 def P : MOSReg<12, "P"> {
   let SubRegs = [C, NZ, V];
   let SubRegIndices = [subcarry, subnz, subv];
