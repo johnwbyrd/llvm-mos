@@ -38,6 +38,8 @@
 
 // Include for ThreadGDBRemote
 #include "Plugins/Process/gdb-remote/ThreadGDBRemote.h"
+#include "lldb/lldb-defines.h"
+#include "lldb/lldb-enumerations.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -46,15 +48,17 @@ LLDB_PLUGIN_DEFINE_ADV(ABISysV_mos, ArchitectureMOS)
 
 // DWARF register numbers for MOS (from MOSRegisterInfo.td)
 enum dwarf_regnums {
-  dwarf_a = 0,  // Accumulator
-  dwarf_x = 2,  // X index register
-  dwarf_y = 4,  // Y index register
-  dwarf_s = 6,  // Stack pointer
-  dwarf_c = 7,  // Carry flag
-  dwarf_n = 8,  // Negative flag
-  dwarf_v = 9,  // Overflow flag
-  dwarf_z = 10, // Zero flag
-  dwarf_p = 12, // Processor status
+  dwarf_a = 0,   // Accumulator
+  dwarf_x = 2,   // X index register
+  dwarf_y = 4,   // Y index register
+  dwarf_s = 6,   // Stack pointer
+  dwarf_c = 7,   // Carry flag
+  dwarf_n = 8,   // Negative flag
+  dwarf_v = 9,   // Overflow flag
+  dwarf_z = 10,  // Zero flag
+  dwarf_p = 12,  // Processor status (SR)
+  dwarf_pc = 14, // Processor status (SR)
+
   // Imaginary registers start at 16 (0x10)
   dwarf_imag_8bit_start = 16,
   dwarf_imag_16bit_start = 16 + (256 * 2), // 528
@@ -68,8 +72,19 @@ static const RegisterInfo g_register_infos[] = {
         0,
         eEncodingUint,
         eFormatHex,
-        {dwarf_a, dwarf_a, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM,
-         LLDB_INVALID_REGNUM},
+        /* As a reminder about the meanings of the following elements:
+         * eRegisterKindEHFrame = 0, ///< the register numbers seen in eh_frame
+         * eRegisterKindDWARF,       ///< the register numbers seen DWARF
+         * eRegisterKindGeneric,     ///< insn ptr reg, stack ptr reg, etc not
+                                     ///< specific to
+                                     ///< any particular target
+         * eRegisterKindProcessPlugin, ///< num used by the process plugin -
+                                       ///< e.g. by the remote gdb-protocol
+                                       ///< stub program
+         * eRegisterKindLLDB,         ///< lldb's internal register numbers
+         * kNumRegisterKinds
+         */
+        {dwarf_a, dwarf_a, LLDB_INVALID_REGNUM, 0, 0},
         nullptr,
         nullptr,
         nullptr,
@@ -81,8 +96,7 @@ static const RegisterInfo g_register_infos[] = {
         1,
         eEncodingUint,
         eFormatHex,
-        {dwarf_x, dwarf_x, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM,
-         LLDB_INVALID_REGNUM},
+        {dwarf_x, dwarf_x, LLDB_INVALID_REGNUM, 1, 1},
         nullptr,
         nullptr,
         nullptr,
@@ -94,39 +108,53 @@ static const RegisterInfo g_register_infos[] = {
         2,
         eEncodingUint,
         eFormatHex,
-        {dwarf_y, dwarf_y, LLDB_INVALID_REGNUM, LLDB_INVALID_REGNUM,
-         LLDB_INVALID_REGNUM},
-        nullptr,
-        nullptr,
-        nullptr,
-    },
-    {
-        "s",
-        "sp",
-        1,
-        3,
-        eEncodingUint,
-        eFormatHex,
-        {dwarf_s, dwarf_s, LLDB_REGNUM_GENERIC_SP, LLDB_INVALID_REGNUM,
-         LLDB_INVALID_REGNUM},
+        {dwarf_y, dwarf_y, LLDB_INVALID_REGNUM, 2, 2},
         nullptr,
         nullptr,
         nullptr,
     },
     {
         "p",
-        "status",
+        "sr",
         1,
-        4,
+        3,
         eEncodingUint,
         eFormatHex,
-        {dwarf_p, dwarf_p, LLDB_REGNUM_GENERIC_FLAGS, LLDB_INVALID_REGNUM,
-         LLDB_INVALID_REGNUM},
+        {dwarf_p, dwarf_p, LLDB_REGNUM_GENERIC_FLAGS, 3, 3},
         nullptr,
         nullptr,
         nullptr,
     },
-};
+    /* In MAME, the 6502 stack register is considered to be a two-byte register,
+     * even though it is only 1 byte in size.  We'll roll with that for now */
+    /* The status register */
+    {
+        "sp",
+        "s",
+        2,
+        4,
+        eEncodingUint,
+        eFormatHex,
+        {dwarf_s, dwarf_s, LLDB_REGNUM_GENERIC_SP, 4, 4},
+        nullptr,
+        nullptr,
+        nullptr,
+    },
+    /* In MAME, the 6502 stack register is considered to be a two-byte register,
+     * even though it is only 1 byte in size.  We'll roll with that for now */
+    /* The status register */
+    {
+        "pc",
+        "",
+        2,
+        6,
+        eEncodingUint,
+        eFormatHex,
+        {dwarf_pc, dwarf_pc, LLDB_REGNUM_GENERIC_PC, 5, 5},
+        nullptr,
+        nullptr,
+        nullptr,
+    }};
 
 const RegisterInfo *ABISysV_mos::GetRegisterInfoArray(uint32_t &count) {
   count = std::size(g_register_infos);
@@ -177,7 +205,7 @@ ValueObjectSP ABISysV_mos::GetReturnValueObjectImpl(Thread &thread,
 UnwindPlanSP ABISysV_mos::CreateFunctionEntryUnwindPlan() {
   // 6502 has no traditional call frames - create a minimal unwind plan
   // that just preserves the current register state
-  auto plan_sp = std::make_shared<UnwindPlan>(eRegisterKindDWARF);
+  auto plan_sp = std::make_shared<UnwindPlan>(eRegisterKindGeneric);
   plan_sp->SetSourceName("mos function-entry unwind plan");
   plan_sp->SetSourcedFromCompiler(eLazyBoolNo);
   plan_sp->SetUnwindPlanValidAtAllInstructions(eLazyBoolYes);
@@ -194,14 +222,7 @@ UnwindPlanSP ABISysV_mos::CreateDefaultUnwindPlan() {
 }
 
 bool ABISysV_mos::RegisterIsVolatile(const RegisterInfo *reg_info) {
-  if (reg_info) {
-    const char *name = reg_info->name;
-    // A, X, Y are typically volatile in 6502 calling conventions
-    if (strcmp(name, "a") == 0 || strcmp(name, "x") == 0 ||
-        strcmp(name, "y") == 0 || strcmp(name, "p") == 0) {
-      return true;
-    }
-  }
+  // Nothing ever happens behind your back on MOS, so no volatile registers
   return false;
 }
 
@@ -225,16 +246,16 @@ static lldb::addr_t GetImaginaryRegisterAddress(Symbol *symbol) {
 
 // Define the static member
 std::unordered_map<std::string, lldb::addr_t>
-    ABISysV_mos::imaginary_register_map_;
+    ABISysV_mos::imaginary_register_map;
 
 ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
   ImaginaryRegisterConfig config;
 
   // Only populate if the map is empty
-  if (!imaginary_register_map_.empty()) {
+  if (!imaginary_register_map.empty()) {
     config.has_imaginary_regs = true;
     // Compute max_rc_register from the map
-    for (const auto &pair : imaginary_register_map_) {
+    for (const auto &pair : imaginary_register_map) {
       if (pair.first.size() > 2 && pair.first.substr(0, 2) == "rc") {
         int rc_num = std::atoi(pair.first.c_str() + 2);
         config.max_rc_register =
@@ -279,7 +300,7 @@ ABISysV_mos::ImaginaryRegisterConfig ABISysV_mos::DetectImaginaryRegisters() {
         LLDB_MOS_LOG_REG("Populating imaginary_register_map_: key='{}', "
                          "value=0x{:x} (from symbol '{}')",
                          map_key, addr, symbol_name);
-        imaginary_register_map_[map_key] = addr;
+        imaginary_register_map[map_key] = addr;
       }
     }
 
@@ -325,9 +346,9 @@ void ABISysV_mos::AddImaginaryRegistersToList(
                                       next_offset,
                                       lldb::eEncodingUint,
                                       lldb::eFormatHex,
-                                      LLDB_INVALID_REGNUM,
-                                      LLDB_INVALID_REGNUM,
                                       dwarf_num,
+                                      dwarf_num,
+                                      LLDB_INVALID_REGNUM,
                                       LLDB_INVALID_REGNUM,
                                       {},
                                       {}};
@@ -342,7 +363,8 @@ void ABISysV_mos::AddImaginaryRegistersToList(
     std::string name = "rs" + std::to_string(i);
 
     uint32_t generic_reg = LLDB_INVALID_REGNUM;
-    if (i == 15) {
+    // Should we get this information out of DWARF, instead of assuming?
+    if (i == 0) {
       generic_reg = LLDB_REGNUM_GENERIC_FP;
     }
 
@@ -353,10 +375,10 @@ void ABISysV_mos::AddImaginaryRegistersToList(
                                       next_offset,
                                       lldb::eEncodingUint,
                                       lldb::eFormatHex,
-                                      LLDB_INVALID_REGNUM,
-                                      LLDB_INVALID_REGNUM,
+                                      dwarf_num,
                                       dwarf_num,
                                       generic_reg,
+                                      LLDB_INVALID_REGNUM,
                                       {},
                                       {}};
     reg.regnum_remote = next_regnum++;
@@ -407,8 +429,8 @@ ABISysV_mos::CreateRegisterContextForThread(lldb_private::Thread &thread,
                                             uint32_t concrete_frame_idx) const {
   LLDB_MOS_LOG_REG("[CreateRegisterContextForThread] ABI this={0}, map "
                    "addr={1}, map size={2}",
-                   (void *)this, (void *)&imaginary_register_map_,
-                   imaginary_register_map_.size());
+                   (void *)this, (void *)&imaginary_register_map,
+                   imaginary_register_map.size());
   // Downcast to ThreadGDBRemote; safe in this context
   auto *gdb_thread =
       static_cast<lldb_private::process_gdb_remote::ThreadGDBRemote *>(&thread);
@@ -446,7 +468,7 @@ std::optional<lldb_private::DynamicRegisterInfo::Register>
 ABISysV_mos::GetCanonicalRegisterInfo(llvm::StringRef name) const {
   for (size_t i = 0; i < std::size(g_register_infos); ++i) {
     const auto &reg = g_register_infos[i];
-    if (name == reg.name) {
+    if (name == reg.name || name == reg.alt_name) {
       auto dyn_reg = ConvertToDynamicRegisterInfoRegister(reg);
       dyn_reg.regnum_remote = i; // Set to index in static table
       return dyn_reg;
@@ -458,12 +480,12 @@ ABISysV_mos::GetCanonicalRegisterInfo(llvm::StringRef name) const {
 
 const std::unordered_map<std::string, lldb::addr_t> &
 ABISysV_mos::GetImaginaryRegisterMap() const {
-  return imaginary_register_map_;
+  return imaginary_register_map;
 }
 
 // Log the contents of the imaginary register map for debugging
 void ABISysV_mos::LogImaginaryRegisterMap() const {
-  for (const auto &pair : imaginary_register_map_) {
+  for (const auto &pair : imaginary_register_map) {
     LLDB_MOS_LOG_REG("Imaginary register: {0} at address 0x{1:x}", pair.first,
                      pair.second);
   }
