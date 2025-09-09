@@ -306,6 +306,7 @@ public:
     Callable,
     Mesh,
     Amplification,
+    RootSignature,
     OpenCL,
     OpenHOS,
     Mlibc,
@@ -873,7 +874,7 @@ public:
            Env == Triple::Intersection || Env == Triple::AnyHit ||
            Env == Triple::ClosestHit || Env == Triple::Miss ||
            Env == Triple::Callable || Env == Triple::Mesh ||
-           Env == Triple::Amplification;
+           Env == Triple::Amplification || Env == Triple::RootSignature;
   }
 
   /// Tests whether the target is SPIR (32- or 64-bit).
