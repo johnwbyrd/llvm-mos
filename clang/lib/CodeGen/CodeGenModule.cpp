@@ -3060,9 +3060,12 @@ void CodeGenModule::createFunctionTypeMetadataForIcall(const FunctionDecl *FD,
   if (isa<CXXMethodDecl>(FD) && !cast<CXXMethodDecl>(FD)->isStatic())
     return;
 
-  llvm::Metadata *MD = CreateMetadataIdentifierForType(FD->getType());
+  QualType FnType = FD->getType();
+  llvm::Metadata *MD = CreateMetadataIdentifierForType(FnType);
   F->addTypeMetadata(0, MD);
-  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(FD->getType()));
+
+  QualType GenPtrFnType = GeneralizeFunctionType(getContext(), FD->getType());
+  F->addTypeMetadata(0, CreateMetadataIdentifierGeneralized(GenPtrFnType));
 
   // Emit a hash-based bit set entry for cross-DSO calls.
   if (CodeGenOpts.SanitizeCfiCrossDso)
@@ -7954,8 +7957,10 @@ CodeGenModule::CreateMetadataIdentifierImpl(QualType T, MetadataTypeMap &Map,
 
 llvm::Metadata *CodeGenModule::CreateMetadataIdentifierForFnType(QualType T) {
   assert(isa<FunctionType>(T));
-  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers)
+  if (getCodeGenOpts().SanitizeCfiICallGeneralizePointers) {
+    T = GeneralizeFunctionType(getContext(), T);
     return CreateMetadataIdentifierGeneralized(T);
+  }
   return CreateMetadataIdentifierForType(T);
 }
 
@@ -7969,8 +7974,8 @@ CodeGenModule::CreateMetadataIdentifierForVirtualMemPtrType(QualType T) {
 }
 
 llvm::Metadata *CodeGenModule::CreateMetadataIdentifierGeneralized(QualType T) {
-  return CreateMetadataIdentifierImpl(GeneralizeFunctionType(getContext(), T),
-                                      GeneralizedMetadataIdMap, ".generalized");
+  return CreateMetadataIdentifierImpl(T, GeneralizedMetadataIdMap,
+                                      ".generalized");
 }
 
 /// Returns whether this module needs the "all-vtables" type identifier.
