@@ -6253,6 +6253,11 @@ void llvm::emitFrameOffset(MachineBasicBlock &MBB,
   AArch64InstrInfo::decomposeStackOffsetForFrameOffsets(
       Offset, Bytes, NumPredicateVectors, NumDataVectors);
 
+  // Insert ADDSXri for scalable offset at the end.
+  bool NeedsFinalDefNZCV = SetNZCV && (NumPredicateVectors || NumDataVectors);
+  if (NeedsFinalDefNZCV)
+    SetNZCV = false;
+
   // First emit non-scalable frame offsets, or a simple 'mov'.
   if (Bytes || (!Offset && SrcReg != DestReg)) {
     assert((DestReg != AArch64::SP || Bytes % 8 == 0) &&
@@ -6272,8 +6277,6 @@ void llvm::emitFrameOffset(MachineBasicBlock &MBB,
     FrameReg = DestReg;
   }
 
-  assert(!(SetNZCV && (NumPredicateVectors || NumDataVectors)) &&
-         "SetNZCV not supported with SVE vectors");
   assert(!(NeedsWinCFI && NumPredicateVectors) &&
          "WinCFI can't allocate fractions of an SVE data vector");
 
@@ -6293,6 +6296,12 @@ void llvm::emitFrameOffset(MachineBasicBlock &MBB,
                        Flag, NeedsWinCFI, HasWinCFI, EmitCFAOffset, CFAOffset,
                        FrameReg);
   }
+
+  if (NeedsFinalDefNZCV)
+    BuildMI(MBB, MBBI, DL, TII->get(AArch64::ADDSXri), DestReg)
+        .addReg(DestReg)
+        .addImm(0)
+        .addImm(0);
 }
 
 MachineInstr *AArch64InstrInfo::foldMemoryOperandImpl(
