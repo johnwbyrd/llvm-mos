@@ -3570,6 +3570,7 @@ std::string tools::complexRangeKindToStr(LangOptions::ComplexRangeKind Range) {
     return "none";
     break;
   }
+  llvm_unreachable("Fully covered switch above");
 }
 
 std::string
