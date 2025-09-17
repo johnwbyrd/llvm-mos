@@ -441,6 +441,8 @@ CUDA/HIP Language Changes
 CUDA Support
 ^^^^^^^^^^^^
 
+Support calling `consteval` function between different target.
+
 AIX Support
 ^^^^^^^^^^^
 
