@@ -504,7 +504,6 @@ enum class FormatStringType {
   FreeBSDKPrintf,
   OSTrace,
   OSLog,
-  Syslog,
   Unknown
 };
 
