@@ -45195,6 +45195,7 @@ bool X86TargetLowering::isGuaranteedNotToBeUndefOrPoisonForTargetNode(
   case X86ISD::PSHUFD:
   case X86ISD::UNPCKL:
   case X86ISD::UNPCKH:
+  case X86ISD::VPERMILPV:
   case X86ISD::VPERMILPI:
   case X86ISD::VPERMV:
   case X86ISD::VPERMV3: {
@@ -45263,6 +45264,7 @@ bool X86TargetLowering::canCreateUndefOrPoisonForTargetNode(
   case X86ISD::PSHUFD:
   case X86ISD::UNPCKL:
   case X86ISD::UNPCKH:
+  case X86ISD::VPERMILPV:
   case X86ISD::VPERMILPI:
   case X86ISD::VPERMV:
   case X86ISD::VPERMV3:
