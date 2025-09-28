@@ -6,16 +6,12 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches:
-      - 'main'
     paths:
       - 'lld/**'
       - '.github/workflows/lld-tests.yml'
       - '.github/workflows/llvm-project-tests.yml'
       - '!llvm/**'
   pull_request:
-    branches:
-      - 'main'
     paths:
       - 'lld/**'
       - '.github/workflows/lld-tests.yml'

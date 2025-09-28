@@ -6,16 +6,12 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches:
-      - 'main'
     paths:
       - 'clang/**'
       - '.github/workflows/clang-tests.yml'
       - '.github/workflows/llvm-project-tests.yml'
       - '!llvm/**'
   pull_request:
-    branches:
-      - 'main'
     paths:
       - 'clang/**'
       - '.github/workflows/clang-tests.yml'
