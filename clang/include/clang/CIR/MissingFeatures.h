@@ -208,6 +208,7 @@ struct MissingFeatures {
   static bool dataLayoutTypeAllocSize() { return false; }
   static bool dataLayoutTypeStoreSize() { return false; }
   static bool deferredCXXGlobalInit() { return false; }
+  static bool deleteArray() { return false; }
   static bool devirtualizeMemberFunction() { return false; }
   static bool ehCleanupFlags() { return false; }
   static bool ehCleanupScope() { return false; }
@@ -218,6 +219,7 @@ struct MissingFeatures {
   static bool emitCondLikelihoodViaExpectIntrinsic() { return false; }
   static bool emitLifetimeMarkers() { return false; }
   static bool emitLValueAlignmentAssumption() { return false; }
+  static bool emitNullCheckForDeleteCalls() { return false; }
   static bool emitNullabilityCheck() { return false; }
   static bool emitTypeCheck() { return false; }
   static bool emitTypeMetadataCodeForVCall() { return false; }
