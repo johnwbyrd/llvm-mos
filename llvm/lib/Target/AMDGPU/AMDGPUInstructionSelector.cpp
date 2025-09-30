@@ -4267,14 +4267,6 @@ Register AMDGPUInstructionSelector::copyToVGPRIfSrcFolded(
   return Src;
 }
 
-InstructionSelector::ComplexRendererFns
-AMDGPUInstructionSelector::selectIgnore(MachineOperand &Root) const {
-  // Don't render anything.
-  ComplexRendererFns Renderers;
-  Renderers.emplace();
-  return Renderers;
-}
-
 ///
 /// This will select either an SGPR or VGPR operand and will save us from
 /// having to write an extra tablegen pattern.
