@@ -838,6 +838,8 @@ LValue CIRGenFunction::emitLValue(const Expr *e) {
     return emitCastLValue(cast<CastExpr>(e));
   case Expr::MaterializeTemporaryExprClass:
     return emitMaterializeTemporaryExpr(cast<MaterializeTemporaryExpr>(e));
+  case Expr::ChooseExprClass:
+    return emitLValue(cast<ChooseExpr>(e)->getChosenSubExpr());
   }
 }
 
