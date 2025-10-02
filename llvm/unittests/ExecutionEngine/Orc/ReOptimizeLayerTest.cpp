@@ -40,6 +40,9 @@ protected:
       GTEST_SKIP();
     }
 
+    if (Triple.isOSWindows() && Triple.isArch64Bit())
+      GTEST_SKIP_("Windows x64 JITLink bug (high VAS reloc out of range)");
+
     // COFF-ARM64 is not supported yet
     auto Triple = JTMB->getTargetTriple();
     if (Triple.isOSBinFormatCOFF() && Triple.isAArch64())
