@@ -8526,6 +8526,9 @@ static Instruction *foldFCmpFSubIntoFCmp(FCmpInst &I, Instruction *LHSI,
             DenormalMode::getIEEE()) {
       CI.replaceOperand(I, 0, X);
       CI.replaceOperand(I, 1, Y);
+      I.setHasNoInfs(LHSI->hasNoInfs());
+      if (LHSI->hasNoNaNs())
+        I.setHasNoNaNs(true);
       return &I;
     }
     break;
