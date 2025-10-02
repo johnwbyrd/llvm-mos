@@ -40,9 +40,6 @@ protected:
       GTEST_SKIP();
     }
 
-    if (Triple.isOSWindows() && Triple.isArch64Bit())
-      GTEST_SKIP_("Windows x64 JITLink bug (high VAS reloc out of range)");
-
     // COFF-ARM64 is not supported yet
     auto Triple = JTMB->getTargetTriple();
     if (Triple.isOSBinFormatCOFF() && Triple.isAArch64())
@@ -66,6 +63,10 @@ protected:
     // ARM is not supported yet.
     if (Triple.isARM())
       GTEST_SKIP();
+
+    // llvm-mos: Skip on Windows x64 due to upstream JITLink .pdata relocation overflow in BasicReoptimization.
+    if (Triple.isOSWindows() && Triple.isArch64Bit())
+      GTEST_SKIP_("MOS fork: Windows x64 JITLink bug (high VAS reloc out of range). Upstream issue to report.");
 
     auto EPC = SelfExecutorProcessControl::Create();
     if (!EPC) {
