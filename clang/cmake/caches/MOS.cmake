@@ -37,6 +37,7 @@ set(LLVM_INSTALL_TOOLCHAIN_ONLY ON CACHE BOOL "")
 set(LLVM_TOOLCHAIN_TOOLS
   llvm-addr2line
   llvm-ar
+  llvm-config
   llvm-cxxfilt
   llvm-debuginfo-analyzer
   llvm-dwarfdump
