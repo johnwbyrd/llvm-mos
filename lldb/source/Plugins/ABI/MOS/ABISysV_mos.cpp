@@ -49,19 +49,22 @@ LLDB_PLUGIN_DEFINE_ADV(ABISysV_mos, ArchitectureMOS)
 // DWARF register numbers for MOS (from MOSRegisterInfo.td)
 enum dwarf_regnums {
   dwarf_a = 0,   // Accumulator
-  dwarf_x = 2,   // X index register
-  dwarf_y = 4,   // Y index register
-  dwarf_s = 6,   // Stack pointer
-  dwarf_c = 7,   // Carry flag
-  dwarf_n = 8,   // Negative flag
-  dwarf_v = 9,   // Overflow flag
-  dwarf_z = 10,  // Zero flag
-  dwarf_p = 12,  // Processor status (SR)
-  dwarf_pc = 14, // Processor status (SR)
+  dwarf_x = 1,   // X index register
+  dwarf_y = 2,   // Y index register
+  dwarf_p = 3,   // Processor status (SR)
+  dwarf_s = 4,   // Stack pointer
+  dwarf_pc = 5,  // Program counter
+  dwarf_c = 0x200, // Carry flag
+  dwarf_z = 0x201, // Zero flag
+  dwarf_i = 0x202, // Interrupt flag
+  dwarf_d = 0x203, // Decimal flag
+  dwarf_b = 0x204, // Break flag
+  dwarf_v = 0x205, // Overflow flag
+  dwarf_n = 0x206, // Negative flag
 
-  // Imaginary registers start at 16 (0x10)
-  dwarf_imag_8bit_start = 16,
-  dwarf_imag_16bit_start = 16 + (256 * 2), // 528
+  // Imaginary registers start at 0x20000
+  dwarf_imag_8bit_start = 0x20000,
+  dwarf_imag_16bit_start = 0x30000,
 };
 
 static const RegisterInfo g_register_infos[] = {
@@ -336,7 +339,7 @@ void ABISysV_mos::AddImaginaryRegistersToList(
 
   // Add RC registers (8-bit imaginary registers)
   for (uint32_t i = 0; i <= config.max_rc_register; ++i) {
-    uint32_t dwarf_num = dwarf_imag_8bit_start + (i * 2);
+    uint32_t dwarf_num = dwarf_imag_8bit_start + i;
     std::string name = "rc" + std::to_string(i);
 
     DynamicRegisterInfo::Register reg{ConstString(name),
