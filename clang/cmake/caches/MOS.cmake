@@ -40,6 +40,7 @@ set(LLVM_TOOLCHAIN_TOOLS
   llvm-config
   llvm-cxxfilt
   llvm-debuginfo-analyzer
+  llvm-dis
   llvm-dwarfdump
   llvm-mc
   llvm-mlb
@@ -59,6 +60,7 @@ set(LLVM_DISTRIBUTION_COMPONENTS
   clang
   lld
   lldb
+  lldb-dap
   clang-apply-replacements
   clang-format
   clang-resource-headers
