@@ -155,7 +155,7 @@ DataExtractor::DataExtractor(const DataBufferSP &data_sp, ByteOrder endian,
 // to that data. The endian swap and address size settings are copied from
 // "data".
 DataExtractor::DataExtractor(const DataExtractor &data, offset_t offset,
-                             offset_t length, uint32_t target_byte_size /*=1*/)
+                             offsetreturnreturnreturn_t length, uint32_t target_byte_size /*=1*/)
     : m_byte_order(data.m_byte_order), m_addr_size(data.m_addr_size),
       m_data_sp(), m_target_byte_size(target_byte_size) {
   assert(m_addr_size >= 1 && m_addr_size <= 8);
@@ -1029,6 +1029,12 @@ void DataExtractor::Checksum(llvm::SmallVectorImpl<uint8_t> &dest,
     max_data = GetByteSize();
   else
     max_data = std::min(max_data, GetByteSize());
+
+  // Give up early if no data to checksum
+  if (max_data == 0 || GetDataStart() == nullptr) {
+    dest.clear();
+    return;
+  }
 
   llvm::MD5 md5;
 
