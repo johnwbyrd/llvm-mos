@@ -73,14 +73,30 @@ set(LLVM_DISTRIBUTION_COMPONENTS
   ${LLVM_TOOLCHAIN_TOOLS}
   CACHE STRING "")
 
-# Add clang symlinks prefixed with mos-* to allow distinguishing a llvm-mos
-# directory from a system clang directory.
+# Clang symlinks to create during install.
+#
+# clang++, clang-cpp:
+#   Standard C++ and preprocessor driver names expected by build systems.
+#
+# mos-clang, mos-clang++, mos-clang-cpp:
+#   Allow distinguishing llvm-mos from a system clang in PATH. These extract
+#   "mos" as the target triple from the program name.
+#
+# mos-unknown-unknown-clang, mos-unknown-unknown-clang++, mos-unknown-unknown-clang-cpp:
+#   Full triple variants. Clang extracts the target triple from the program
+#   name prefix, so these produce "-target mos-unknown-unknown". This matches
+#   LLVM_DEFAULT_TARGET_TRIPLE and the compiler-rt install path at
+#   lib/clang/<version>/lib/mos-unknown-unknown/, ensuring --print-libgcc-file-name
+#   returns the correct path.
 set(CLANG_LINKS_TO_CREATE
   clang++
   clang-cpp
   mos-clang
   mos-clang++
-  mos-clang-cpp)
+  mos-clang-cpp
+  mos-unknown-unknown-clang
+  mos-unknown-unknown-clang++
+  mos-unknown-unknown-clang-cpp)
 set(CLANG_LINKS_TO_CREATE ${CLANG_LINKS_TO_CREATE}
   CACHE STRING "Clang symlinks to create during install.")
 
