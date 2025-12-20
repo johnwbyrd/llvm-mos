@@ -20,6 +20,8 @@
 #include "MOSSubtarget.h"
 
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/CodeGen/GlobalISel/CallLowering.h"
 #include "llvm/CodeGen/GlobalISel/MachineIRBuilder.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
@@ -36,6 +38,7 @@
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/LEB128.h"
 
 #define DEBUG_TYPE "mos-framelowering"
 
@@ -315,11 +318,74 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
 
   // Emit CFI for stack adjustment. The CFA is based on the soft stack pointer
   // RS0. After the prologue, CFA = RS0 + StackSize.
+  //
+  // IMPORTANT: MOS 6502 has TWO independent stacks:
+  //   1. Hardware stack (S register, 0x0100-0x01FF) - where JSR pushes return addresses
+  //   2. Soft stack (RS0) - where local variables and callee-saved registers live
+  //
+  // The CIE initial frame state says: CFA=S+3, PC=[CFA-2]=[S+1]
+  // This is correct at function entry before the prologue.
+  //
+  // When we change CFA to soft-stack based (RS0+StackSize), we must ALSO
+  // emit a DW_CFA_expression for PC, because the return address is still
+  // on the HARDWARE stack, not on the soft stack.
+  //
+  // HOWEVER, the prologue also pushes callee-saved registers to the hardware
+  // stack using PHA instructions (up to 4 CSRs). Each PHA decrements S by 1.
+  // So the return address is at S + 1 + HardStackCSRCount, not just S + 1.
+  //
+  // Without this fix, the debugger would look at the wrong stack location
+  // and show garbage addresses in the call stack.
   if (StackSize) {
     // Get the DWARF register number for RS0 (soft stack pointer)
     unsigned DwarfSP = MRI->getDwarfRegNum(MOS::RS0, true);
     BuildCFI(MBB, MBBI, DL,
              MCCFIInstruction::cfiDefCfa(nullptr, DwarfSP, StackSize),
+             MachineInstr::FrameSetup);
+
+    // Count how many callee-saved registers were pushed to the hardware stack.
+    // These are marked as target-spilled but not in CSRZPOffsets.
+    const auto &FuncInfo = MF.getInfo<MOSFunctionInfo>();
+    unsigned HardStackCSRCount = 0;
+    for (const CalleeSavedInfo &CSI : MFI.getCalleeSavedInfo()) {
+      if (FuncInfo->CSRZPOffsets.count(CSI.getReg()))
+        continue;
+      if (CSI.isTargetSpilled())
+        ++HardStackCSRCount;
+    }
+
+    // Emit DW_CFA_expression to tell the debugger that PC (return address)
+    // is on the hardware stack, NOT relative to the soft stack CFA.
+    //
+    // DWARF CFI expression format:
+    //   DW_CFA_expression <register> <length> <DWARF expression>
+    //
+    // Our expression: DW_OP_breg4 +(1 + HardStackCSRCount)
+    //   - DW_OP_breg4 = DW_OP_breg0 + 4 (S register is DWARF reg 4)
+    //   - offset = 1 (base offset for return address) + HardStackCSRCount
+    //
+    // DW_CFA_expression implies the expression yields an ADDRESS from which
+    // the register value is loaded (implicit dereference).
+    unsigned DwarfPC = MRI->getDwarfRegNum(MOS::PC, true);
+    unsigned DwarfS = MRI->getDwarfRegNum(MOS::S, true);
+    int8_t PCOffset = 1 + HardStackCSRCount;
+
+    SmallString<16> CfaExpr;
+    uint8_t Buffer[16];
+
+    // DW_CFA_expression opcode
+    CfaExpr.push_back(dwarf::DW_CFA_expression);
+    // Register number (PC) as ULEB128
+    CfaExpr.append(Buffer, Buffer + encodeULEB128(DwarfPC, Buffer));
+    // Expression length: 2 bytes (DW_OP_bregN + offset)
+    CfaExpr.push_back(2);
+    // DW_OP_breg<S> - read from hardware stack pointer S plus offset
+    CfaExpr.push_back(static_cast<uint8_t>(dwarf::DW_OP_breg0 + DwarfS));
+    // SLEB128 offset: return address is at S + 1 + HardStackCSRCount
+    CfaExpr.push_back(PCOffset);
+
+    BuildCFI(MBB, MBBI, DL,
+             MCCFIInstruction::createEscape(nullptr, CfaExpr.str()),
              MachineInstr::FrameSetup);
   }
 

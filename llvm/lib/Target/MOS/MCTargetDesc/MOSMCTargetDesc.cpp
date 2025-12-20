@@ -59,18 +59,24 @@ static MCAsmInfo *createMOSMCAsmInfo(const MCRegisterInfo &MRI,
   MCAsmInfo *MAI = new MOSMCAsmInfo(TT, Options);
 
   // Initialize initial frame state for hardware stack.
-  // MOS JSR pushes 2 bytes (PC+2) to hardware stack, S decrements twice.
-  // Stack grows downward from 0x01FF.
-  int StackGrowth = -2;
-
-  // Initial CFA is hardware stack pointer S + 2 (pointing past return addr)
+  // 6502 JSR pushes (return_address - 1) onto hardware stack:
+  //   - First pushes high byte to [SP], then decrements SP
+  //   - Then pushes low byte to [SP], then decrements SP
+  // After JSR, SP points to next free slot (two below pushed address).
+  // Stack layout after JSR:
+  //   [SP+1] = low byte of (return_address - 1)
+  //   [SP+2] = high byte of (return_address - 1)
+  //
+  // CFA = SP + 3 (one byte past the 2-byte return address)
+  // This way: CFA - 2 = SP + 1 = address of low byte of return address
+  // This must match ABISysV_mos::CreateFunctionEntryUnwindPlan().
   MCCFIInstruction Inst = MCCFIInstruction::cfiDefCfa(
-      nullptr, MRI.getDwarfRegNum(MOS::S, true), -StackGrowth);
+      nullptr, MRI.getDwarfRegNum(MOS::S, true), 3);
   MAI->addInitialFrameState(Inst);
 
-  // Return address (PC) is at CFA - 2
+  // PC (return address) is the 16-bit value at [CFA - 2]
   MCCFIInstruction Inst2 = MCCFIInstruction::createOffset(
-      nullptr, MRI.getDwarfRegNum(MOS::PC, true), StackGrowth);
+      nullptr, MRI.getDwarfRegNum(MOS::PC, true), -2);
   MAI->addInitialFrameState(Inst2);
 
   return MAI;
