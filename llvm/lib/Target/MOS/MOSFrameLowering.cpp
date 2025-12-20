@@ -32,6 +32,8 @@
 #include "llvm/CodeGen/TargetFrameLowering.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ErrorHandling.h"
 
@@ -283,7 +285,9 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
   const TargetRegisterInfo &TRI = *MF.getRegInfo().getTargetRegisterInfo();
+  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
   MachineIRBuilder Builder(MBB, MBB.begin());
+  DebugLoc DL;
 
   // Stack pointer adjustments need to occur after the CLD in an interrupt
   // handler or the sum might be incorrect.
@@ -303,26 +307,48 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
   if (StackSize)
     offsetSP(Builder, -StackSize);
 
-  if (!hasFP(MF))
-    return;
-
   // Skip the callee-saved push instructions.
   auto MBBI = std::find_if_not(Builder.getInsertPt(), MBB.end(),
                                [](const MachineInstr &MI) {
                                  return MI.getFlag(MachineInstr::FrameSetup);
                                });
 
+  // Emit CFI for stack adjustment. The CFA is based on the soft stack pointer
+  // RS0. After the prologue, CFA = RS0 + StackSize.
+  if (StackSize) {
+    // Get the DWARF register number for RS0 (soft stack pointer)
+    unsigned DwarfSP = MRI->getDwarfRegNum(MOS::RS0, true);
+    BuildCFI(MBB, MBBI, DL,
+             MCCFIInstruction::cfiDefCfa(nullptr, DwarfSP, StackSize),
+             MachineInstr::FrameSetup);
+  }
+
+  // Emit CFI for callee-saved registers saved to the soft stack.
+  emitCalleeSavedFrameMoves(MBB, MBBI, DL, /*IsPrologue=*/true);
+
+  if (!hasFP(MF))
+    return;
+
   // Set the frame pointer to the stack pointer.
   Builder.setInsertPt(MBB, MBBI);
   Builder.setDebugLoc({});
   Builder.buildCopy(TRI.getFrameRegister(MF), Register(MOS::RS0));
+
+  // Emit CFI to indicate CFA is now based on the frame pointer.
+  // After setting FP = SP, CFA = FP + StackSize.
+  unsigned DwarfFP = MRI->getDwarfRegNum(TRI.getFrameRegister(MF), true);
+  BuildCFI(MBB, std::next(Builder.getInsertPt()), DL,
+           MCCFIInstruction::createDefCfaRegister(nullptr, DwarfFP),
+           MachineInstr::FrameSetup);
 }
 
 void MOSFrameLowering::emitEpilogue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
   const MachineFrameInfo &MFI = MF.getFrameInfo();
   const TargetRegisterInfo &TRI = *MF.getRegInfo().getTargetRegisterInfo();
+  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
   MachineIRBuilder Builder(MBB, MBB.getFirstTerminator());
+  DebugLoc DL;
 
   // Restore the stack pointer from the frame pointer.
   if (hasFP(MF)) {
@@ -335,8 +361,24 @@ void MOSFrameLowering::emitEpilogue(MachineFunction &MF,
 
     // Set the stack pointer to the frame pointer.
     Builder.buildCopy(MOS::RS0, TRI.getFrameRegister(MF));
+
+    // Emit CFI to switch CFA back to SP-based.
+    unsigned DwarfSP = MRI->getDwarfRegNum(MOS::RS0, true);
+    int64_t StackSize = MFI.getStackSize();
+    if (isISR(MF))
+      StackSize += 256;
+    BuildCFI(MBB, std::next(Builder.getInsertPt()), DL,
+             MCCFIInstruction::cfiDefCfa(nullptr, DwarfSP, StackSize),
+             MachineInstr::FrameDestroy);
+
     Builder.setInsertPt(MBB, MBB.getFirstTerminator());
   }
+
+  // Find insertion point before the terminator for CFI emissions.
+  auto MBBI = MBB.getFirstTerminator();
+
+  // Emit CFI for callee-saved register restoration.
+  emitCalleeSavedFrameMoves(MBB, MBBI, DL, /*IsPrologue=*/false);
 
   int64_t StackSize = MFI.getStackSize();
 
@@ -428,4 +470,47 @@ StackOffset MOSFrameLowering::getFrameIndexReference(const MachineFunction &MF,
   }
 
   return StackOffset::getFixed(Offset);
+}
+
+void MOSFrameLowering::BuildCFI(MachineBasicBlock &MBB,
+                                MachineBasicBlock::iterator MBBI,
+                                const DebugLoc &DL,
+                                const MCCFIInstruction &CFIInst,
+                                MachineInstr::MIFlag Flag) const {
+  MachineFunction &MF = *MBB.getParent();
+  unsigned CFIIndex = MF.addFrameInst(CFIInst);
+  BuildMI(MBB, MBBI, DL,
+          MF.getSubtarget().getInstrInfo()->get(TargetOpcode::CFI_INSTRUCTION))
+      .addCFIIndex(CFIIndex)
+      .setMIFlag(Flag);
+}
+
+void MOSFrameLowering::emitCalleeSavedFrameMoves(
+    MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
+    const DebugLoc &DL, bool IsPrologue) const {
+  MachineFunction &MF = *MBB.getParent();
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
+  const std::vector<CalleeSavedInfo> &CSI = MFI.getCalleeSavedInfo();
+  const auto &FuncInfo = MF.getInfo<MOSFunctionInfo>();
+
+  for (const CalleeSavedInfo &I : CSI) {
+    // Skip registers saved to zero page or target-spilled to hard stack
+    if (FuncInfo->CSRZPOffsets.count(I.getReg()) || I.isTargetSpilled())
+      continue;
+
+    int64_t Offset = MFI.getObjectOffset(I.getFrameIdx());
+    MCRegister Reg = I.getReg();
+    unsigned DwarfReg = MRI->getDwarfRegNum(Reg, true);
+
+    if (IsPrologue) {
+      BuildCFI(MBB, MBBI, DL,
+               MCCFIInstruction::createOffset(nullptr, DwarfReg, Offset),
+               MachineInstr::FrameSetup);
+    } else {
+      BuildCFI(MBB, MBBI, DL,
+               MCCFIInstruction::createRestore(nullptr, DwarfReg),
+               MachineInstr::FrameDestroy);
+    }
+  }
 }

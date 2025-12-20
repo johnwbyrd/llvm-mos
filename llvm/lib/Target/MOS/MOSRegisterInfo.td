@@ -72,6 +72,10 @@ defm X : MOSReg8<1, "x">;
 defm Y : MOSReg8<2, "y">;
 def S : MOSReg<4, "s">;
 
+// Program counter - not directly accessible but needed for DWARF CFI.
+// DWARF register 5 per MOS DWARF specification.
+def PC : MOSReg<5, "pc">;
+
 def C : MOSReg<0x200, "C">;
 def N : MOSReg<0x206, "N">;
 def V : MOSReg<0x205, "V">;
@@ -222,4 +226,6 @@ def Fake : MOSReg<0x300, "Fake">;
 let isAllocatable = false in {
   def Fakei32 : MOSRegClass<[i32], 8, (add Fake)>;
   def Fakei64 : MOSRegClass<[i64], 8, (add Fake)>;
+  // PC is not directly accessible but needed for DWARF CFI
+  def PCc : MOSReg16Class<(add PC)>;
 }

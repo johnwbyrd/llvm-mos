@@ -206,21 +206,53 @@ ValueObjectSP ABISysV_mos::GetReturnValueObjectImpl(Thread &thread,
 }
 
 UnwindPlanSP ABISysV_mos::CreateFunctionEntryUnwindPlan() {
-  // 6502 has no traditional call frames - create a minimal unwind plan
-  // that just preserves the current register state
-  auto plan_sp = std::make_shared<UnwindPlan>(eRegisterKindGeneric);
+  // 6502 calling convention:
+  // - JSR pushes (return_address - 1) onto hardware stack
+  //   - First pushes high byte to [SP], then decrements SP
+  //   - Then pushes low byte to [SP], then decrements SP
+  // - After JSR, SP points to next free slot (two below pushed address)
+  // - RTS increments SP, reads low byte, increments SP, reads high byte, adds 1
+  //
+  // Stack layout after JSR (SP is a full 16-bit addr like 0x01F7):
+  //   [SP+1] = low byte of (return_address - 1)
+  //   [SP+2] = high byte of (return_address - 1)
+  //
+  // MAME reports SP as full 16-bit address (0x0100-0x01FF), so we can use
+  // it directly for CFA calculations.
+  //
+  // Note: The value on stack is (return_address - 1). LLDB's normal behavior
+  // of decrementing PC by 1 for call-site lookup should handle this correctly.
+
+  auto plan_sp = std::make_shared<UnwindPlan>(eRegisterKindDWARF);
   plan_sp->SetSourceName("mos function-entry unwind plan");
   plan_sp->SetSourcedFromCompiler(eLazyBoolNo);
-  plan_sp->SetUnwindPlanValidAtAllInstructions(eLazyBoolYes);
+  plan_sp->SetUnwindPlanValidAtAllInstructions(eLazyBoolNo);
   plan_sp->SetUnwindPlanForSignalTrap(eLazyBoolNo);
-  plan_sp->SetReturnAddressRegister(LLDB_INVALID_REGNUM);
 
-  // Don't add any rows - let LLDB use the current register values as-is
+  UnwindPlan::Row row;
+
+  // CFA = SP + 3 (one byte past the 2-byte return address)
+  // This way: CFA - 2 = SP + 1 = address of low byte of return address
+  row.GetCFAValue().SetIsRegisterPlusOffset(dwarf_s, 3);
+
+  // PC (return address) is the 16-bit value at [CFA - 2]
+  // On little-endian 6502: reads low byte from [SP+1], high byte from [SP+2]
+  row.SetRegisterLocationToAtCFAPlusOffset(dwarf_pc, -2, true);
+
+  // Previous SP = current SP + 2 (before JSR pushed 2 bytes)
+  // Since CFA = SP + 3, previous SP = CFA - 1
+  row.SetRegisterLocationToIsCFAPlusOffset(dwarf_s, -1, true);
+
+  plan_sp->AppendRow(std::move(row));
+  plan_sp->SetReturnAddressRegister(dwarf_pc);
+
   return plan_sp;
 }
 
 UnwindPlanSP ABISysV_mos::CreateDefaultUnwindPlan() {
-  // For now, return the same as function entry
+  // The default unwind plan is used when we're in the middle of a function.
+  // For 6502, the return address is still on the hardware stack at S+1/S+2.
+  // The soft stack (RS0) may have been modified for local variables.
   return CreateFunctionEntryUnwindPlan();
 }
 

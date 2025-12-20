@@ -21,6 +21,7 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
@@ -48,9 +49,31 @@ MCInstrInfo *llvm::createMOSMCInstrInfo() {
 
 static MCRegisterInfo *createMOSMCRegisterInfo(const Triple &TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitMOSMCRegisterInfo(X, 0);
-
+  InitMOSMCRegisterInfo(X, MOS::PC);
   return X;
+}
+
+static MCAsmInfo *createMOSMCAsmInfo(const MCRegisterInfo &MRI,
+                                      const Triple &TT,
+                                      const MCTargetOptions &Options) {
+  MCAsmInfo *MAI = new MOSMCAsmInfo(TT, Options);
+
+  // Initialize initial frame state for hardware stack.
+  // MOS JSR pushes 2 bytes (PC+2) to hardware stack, S decrements twice.
+  // Stack grows downward from 0x01FF.
+  int StackGrowth = -2;
+
+  // Initial CFA is hardware stack pointer S + 2 (pointing past return addr)
+  MCCFIInstruction Inst = MCCFIInstruction::cfiDefCfa(
+      nullptr, MRI.getDwarfRegNum(MOS::S, true), -StackGrowth);
+  MAI->addInitialFrameState(Inst);
+
+  // Return address (PC) is at CFA - 2
+  MCCFIInstruction Inst2 = MCCFIInstruction::createOffset(
+      nullptr, MRI.getDwarfRegNum(MOS::PC, true), StackGrowth);
+  MAI->addInitialFrameState(Inst2);
+
+  return MAI;
 }
 
 static MCSubtargetInfo *createMOSMCSubtargetInfo(const Triple &TT,
@@ -98,8 +121,8 @@ static MCInstrAnalysis *createMOSMCInstrAnalysis(const MCInstrInfo *Info) {
 }
 
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMOSTargetMC() {
-  // Register the MC asm info.
-  RegisterMCAsmInfo<MOSMCAsmInfo> X(getTheMOSTarget());
+  // Register the MC asm info with initial frame state for CFI.
+  TargetRegistry::RegisterMCAsmInfo(getTheMOSTarget(), createMOSMCAsmInfo);
 
   // Register the MC instruction info.
   TargetRegistry::RegisterMCInstrInfo(getTheMOSTarget(), createMOSMCInstrInfo);
