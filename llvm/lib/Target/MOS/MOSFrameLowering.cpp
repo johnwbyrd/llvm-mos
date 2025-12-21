@@ -343,6 +343,14 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
              MCCFIInstruction::cfiDefCfa(nullptr, DwarfSP, StackSize),
              MachineInstr::FrameSetup);
 
+    // Emit RS0 (soft stack pointer) restoration rule.
+    // The caller's RS0 = CFA (since we defined CFA = RS0 + StackSize).
+    // DW_CFA_val_offset: register's previous value = CFA + offset
+    // With offset 0: caller's RS0 = CFA = RS0 + StackSize
+    BuildCFI(MBB, MBBI, DL,
+             MCCFIInstruction::createValOffset(nullptr, DwarfSP, 0),
+             MachineInstr::FrameSetup);
+
     // Count how many callee-saved registers were pushed to the hardware stack.
     // These are marked as target-spilled but not in CSRZPOffsets.
     const auto &FuncInfo = MF.getInfo<MOSFunctionInfo>();
@@ -387,6 +395,47 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
     BuildCFI(MBB, MBBI, DL,
              MCCFIInstruction::createEscape(nullptr, CfaExpr.str()),
              MachineInstr::FrameSetup);
+
+    // Emit DW_CFA_val_expression for S register restoration.
+    //
+    // The S register is modified by:
+    //   1. The JSR that called this function (decrements S by 2)
+    //   2. PHA instructions in the prologue (each decrements S by 1)
+    //
+    // When LLDB unwinds from this frame to the caller, it needs the caller's
+    // S value so it can correctly evaluate the caller's PC expression.
+    //
+    // The caller's S = current S + HardStackCSRCount + 2
+    //   - HardStackCSRCount: undo the PHAs in this function's prologue
+    //   - 2: undo the JSR that called this function
+    //
+    // Without the +2, LLDB would get the S value at the call site (after JSR),
+    // but it needs S from before the JSR to correctly locate the caller's
+    // return address using the caller's CFI.
+    //
+    // DW_CFA_val_expression means: the previous value of the register
+    // IS the result of the expression (not an address to dereference).
+    {
+      // Total adjustment: undo PHAs + undo JSR
+      int8_t SOffset = HardStackCSRCount + 2;
+
+      SmallString<16> SExpr;
+
+      // DW_CFA_val_expression opcode
+      SExpr.push_back(dwarf::DW_CFA_val_expression);
+      // Register number (S) as ULEB128
+      SExpr.append(Buffer, Buffer + encodeULEB128(DwarfS, Buffer));
+      // Expression length: 2 bytes (DW_OP_bregN + offset)
+      SExpr.push_back(2);
+      // DW_OP_breg<S> - current value of S plus offset
+      SExpr.push_back(static_cast<uint8_t>(dwarf::DW_OP_breg0 + DwarfS));
+      // SLEB128 offset: caller's S = current S + HardStackCSRCount + 2
+      SExpr.push_back(SOffset);
+
+      BuildCFI(MBB, MBBI, DL,
+               MCCFIInstruction::createEscape(nullptr, SExpr.str()),
+               MachineInstr::FrameSetup);
+    }
   }
 
   // Emit CFI for callee-saved registers saved to the soft stack.
