@@ -21,6 +21,7 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrAnalysis.h"
 #include "llvm/MC/MCInstrInfo.h"
@@ -48,9 +49,37 @@ MCInstrInfo *llvm::createMOSMCInstrInfo() {
 
 static MCRegisterInfo *createMOSMCRegisterInfo(const Triple &TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitMOSMCRegisterInfo(X, 0);
-
+  InitMOSMCRegisterInfo(X, MOS::PC);
   return X;
+}
+
+static MCAsmInfo *createMOSMCAsmInfo(const MCRegisterInfo &MRI,
+                                      const Triple &TT,
+                                      const MCTargetOptions &Options) {
+  MCAsmInfo *MAI = new MOSMCAsmInfo(TT, Options);
+
+  // Initialize initial frame state for hardware stack.
+  // 6502 JSR pushes (return_address - 1) onto hardware stack:
+  //   - First pushes high byte to [SP], then decrements SP
+  //   - Then pushes low byte to [SP], then decrements SP
+  // After JSR, SP points to next free slot (two below pushed address).
+  // Stack layout after JSR:
+  //   [SP+1] = low byte of (return_address - 1)
+  //   [SP+2] = high byte of (return_address - 1)
+  //
+  // CFA = SP + 3 (one byte past the 2-byte return address)
+  // This way: CFA - 2 = SP + 1 = address of low byte of return address
+  // This must match ABISysV_mos::CreateFunctionEntryUnwindPlan().
+  MCCFIInstruction Inst = MCCFIInstruction::cfiDefCfa(
+      nullptr, MRI.getDwarfRegNum(MOS::S, true), 3);
+  MAI->addInitialFrameState(Inst);
+
+  // PC (return address) is the 16-bit value at [CFA - 2]
+  MCCFIInstruction Inst2 = MCCFIInstruction::createOffset(
+      nullptr, MRI.getDwarfRegNum(MOS::PC, true), -2);
+  MAI->addInitialFrameState(Inst2);
+
+  return MAI;
 }
 
 static MCSubtargetInfo *createMOSMCSubtargetInfo(const Triple &TT,
@@ -98,8 +127,8 @@ static MCInstrAnalysis *createMOSMCInstrAnalysis(const MCInstrInfo *Info) {
 }
 
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMOSTargetMC() {
-  // Register the MC asm info.
-  RegisterMCAsmInfo<MOSMCAsmInfo> X(getTheMOSTarget());
+  // Register the MC asm info with initial frame state for CFI.
+  TargetRegistry::RegisterMCAsmInfo(getTheMOSTarget(), createMOSMCAsmInfo);
 
   // Register the MC instruction info.
   TargetRegistry::RegisterMCInstrInfo(getTheMOSTarget(), createMOSMCInstrInfo);
