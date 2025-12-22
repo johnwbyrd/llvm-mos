@@ -45,6 +45,10 @@ GetGNUEHPointer(const DataExtractor &DE, lldb::offset_t *offset_ptr,
   uint64_t baseAddress = 0;
   uint64_t addressValue = 0;
   const uint32_t addr_size = DE.GetAddressByteSize();
+
+  // DEBUG
+  fprintf(stderr, "DEBUG GetGNUEHPointer: offset=%llu eh_ptr_enc=0x%x addr_size=%u\n",
+          (unsigned long long)*offset_ptr, eh_ptr_enc, addr_size);
   assert(addr_size == 4 || addr_size == 8);
 
   bool signExtendValue = false;
@@ -146,6 +150,12 @@ GetGNUEHPointer(const DataExtractor &DE, lldb::offset_t *offset_ptr,
       addressValue |= mask;
     }
   }
+
+  // DEBUG
+  fprintf(stderr, "DEBUG GetGNUEHPointer: result base=0x%llx value=0x%llx total=0x%llx\n",
+          (unsigned long long)baseAddress, (unsigned long long)addressValue,
+          (unsigned long long)(baseAddress + addressValue));
+
   return baseAddress + addressValue;
 }
 
@@ -558,6 +568,11 @@ void DWARFCallFrameInfo::GetFDEIndex() {
           m_cfi_data, &offset, cie->ptr_encoding & DW_EH_PE_MASK_ENCODING,
           pc_rel_addr, text_addr, data_addr);
       FDEEntryMap::Entry fde(addr, length, current_entry);
+
+      // DEBUG
+      fprintf(stderr, "DEBUG GetFDEIndex: Adding FDE addr=0x%llx len=0x%llx offset=0x%x\n",
+              (unsigned long long)addr, (unsigned long long)length, current_entry);
+
       m_fde_index.Append(fde);
     } else {
       Debugger::ReportError(llvm::formatv(
@@ -617,9 +632,21 @@ DWARFCallFrameInfo::ParseFDE(dw_offset_t dwarf_offset,
   lldb::addr_t range_len = GetGNUEHPointer(
       m_cfi_data, &offset, cie->ptr_encoding & DW_EH_PE_MASK_ENCODING,
       pc_rel_addr, text_addr, data_addr);
+
+  // DEBUG: Print FDE parsing info
+  fprintf(stderr, "DEBUG ParseFDE: dwarf_offset=0x%x range_base=0x%llx range_len=0x%llx pc_rel_addr=0x%llx ptr_encoding=0x%x\n",
+          dwarf_offset, (unsigned long long)range_base, (unsigned long long)range_len,
+          (unsigned long long)pc_rel_addr, cie->ptr_encoding);
+
   AddressRange range(range_base, m_objfile.GetAddressByteSize(),
                      m_objfile.GetSectionList());
   range.SetByteSize(range_len);
+
+  // DEBUG: Print resolved address range
+  fprintf(stderr, "DEBUG ParseFDE: resolved range base section=%p offset=0x%llx byte_size=0x%llx\n",
+          (void*)range.GetBaseAddress().GetSection().get(),
+          (unsigned long long)range.GetBaseAddress().GetOffset(),
+          (unsigned long long)range.GetByteSize());
 
   // Skip the LSDA, if present.
   if (cie->augmentation[0] == 'z')
