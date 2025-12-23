@@ -21,8 +21,6 @@
 #include "MOSSubtarget.h"
 #include "TargetInfo/MOSTargetInfo.h"
 
-#include "llvm/ADT/StringSet.h"
-#include "llvm/BinaryFormat/MOSFlags.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"

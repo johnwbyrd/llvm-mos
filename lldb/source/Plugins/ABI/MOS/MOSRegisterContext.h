@@ -20,7 +20,7 @@
 
 namespace lldb_private {
 class MOSImaginaryRegisters;
-}
+} // namespace lldb_private
 
 class MOSRegisterContext
     : public lldb_private::process_gdb_remote::GDBRemoteRegisterContext {

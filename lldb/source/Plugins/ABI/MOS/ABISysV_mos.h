@@ -26,7 +26,9 @@ public:
 
   // ABI interface
   size_t GetRedZoneSize() const override { return 0; }
-  uint64_t GetStackFrameSize() override { return 256; } // 6502 stack is 256 bytes
+  uint64_t GetStackFrameSize() override {
+    return 256;
+  } // 6502 stack is 256 bytes
 
   bool PrepareTrivialCall(lldb_private::Thread &thread, lldb::addr_t sp,
                           lldb::addr_t func_addr, lldb::addr_t return_addr,

@@ -18,7 +18,6 @@
 #include "MOSLegalizerInfo.h"
 
 #include "MCTargetDesc/MOSMCTargetDesc.h"
-#include "MOS.h"
 #include "MOSFrameLowering.h"
 #include "MOSInstrInfo.h"
 #include "MOSMachineFunctionInfo.h"
@@ -46,8 +45,6 @@
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
-#include "llvm/Demangle/Demangle.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"

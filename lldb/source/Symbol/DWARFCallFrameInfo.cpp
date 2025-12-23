@@ -11,11 +11,8 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Core/dwarf.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/UnwindPlan.h"
-#include "lldb/Target/RegisterContext.h"
-#include "lldb/Target/Thread.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Log.h"
@@ -23,7 +20,6 @@
 #include "llvm/BinaryFormat/Dwarf.h"
 #include <cstdint>
 #include <cstring>
-#include <list>
 #include <optional>
 
 using namespace lldb;
@@ -46,9 +42,9 @@ GetGNUEHPointer(const DataExtractor &DE, lldb::offset_t *offset_ptr,
   uint64_t addressValue = 0;
   const uint32_t addr_size = DE.GetAddressByteSize();
 
-  // DEBUG
-  fprintf(stderr, "DEBUG GetGNUEHPointer: offset=%llu eh_ptr_enc=0x%x addr_size=%u\n",
-          (unsigned long long)*offset_ptr, eh_ptr_enc, addr_size);
+  LLDB_LOG(GetLog(LLDBLog::Unwind),
+           "GetGNUEHPointer: offset={0} eh_ptr_enc=0x{1:x} addr_size={2}",
+           *offset_ptr, eh_ptr_enc, addr_size);
   assert(addr_size == 4 || addr_size == 8);
 
   bool signExtendValue = false;
@@ -151,10 +147,9 @@ GetGNUEHPointer(const DataExtractor &DE, lldb::offset_t *offset_ptr,
     }
   }
 
-  // DEBUG
-  fprintf(stderr, "DEBUG GetGNUEHPointer: result base=0x%llx value=0x%llx total=0x%llx\n",
-          (unsigned long long)baseAddress, (unsigned long long)addressValue,
-          (unsigned long long)(baseAddress + addressValue));
+  LLDB_LOG(GetLog(LLDBLog::Unwind),
+           "GetGNUEHPointer: result base=0x{0:x} value=0x{1:x} total=0x{2:x}",
+           baseAddress, addressValue, baseAddress + addressValue);
 
   return baseAddress + addressValue;
 }
@@ -569,9 +564,9 @@ void DWARFCallFrameInfo::GetFDEIndex() {
           pc_rel_addr, text_addr, data_addr);
       FDEEntryMap::Entry fde(addr, length, current_entry);
 
-      // DEBUG
-      fprintf(stderr, "DEBUG GetFDEIndex: Adding FDE addr=0x%llx len=0x%llx offset=0x%x\n",
-              (unsigned long long)addr, (unsigned long long)length, current_entry);
+      LLDB_LOG(GetLog(LLDBLog::Unwind),
+               "GetFDEIndex: Adding FDE addr=0x{0:x} len=0x{1:x} offset=0x{2:x}",
+               addr, length, current_entry);
 
       m_fde_index.Append(fde);
     } else {
@@ -633,20 +628,19 @@ DWARFCallFrameInfo::ParseFDE(dw_offset_t dwarf_offset,
       m_cfi_data, &offset, cie->ptr_encoding & DW_EH_PE_MASK_ENCODING,
       pc_rel_addr, text_addr, data_addr);
 
-  // DEBUG: Print FDE parsing info
-  fprintf(stderr, "DEBUG ParseFDE: dwarf_offset=0x%x range_base=0x%llx range_len=0x%llx pc_rel_addr=0x%llx ptr_encoding=0x%x\n",
-          dwarf_offset, (unsigned long long)range_base, (unsigned long long)range_len,
-          (unsigned long long)pc_rel_addr, cie->ptr_encoding);
+  LLDB_LOG(log,
+           "ParseFDE: dwarf_offset=0x{0:x} range_base=0x{1:x} range_len=0x{2:x} "
+           "pc_rel_addr=0x{3:x} ptr_encoding=0x{4:x}",
+           dwarf_offset, range_base, range_len, pc_rel_addr, cie->ptr_encoding);
 
   AddressRange range(range_base, m_objfile.GetAddressByteSize(),
                      m_objfile.GetSectionList());
   range.SetByteSize(range_len);
 
-  // DEBUG: Print resolved address range
-  fprintf(stderr, "DEBUG ParseFDE: resolved range base section=%p offset=0x%llx byte_size=0x%llx\n",
-          (void*)range.GetBaseAddress().GetSection().get(),
-          (unsigned long long)range.GetBaseAddress().GetOffset(),
-          (unsigned long long)range.GetByteSize());
+  LLDB_LOG(log,
+           "ParseFDE: resolved range base section={0} offset=0x{1:x} byte_size=0x{2:x}",
+           static_cast<void*>(range.GetBaseAddress().GetSection().get()),
+           range.GetBaseAddress().GetOffset(), range.GetByteSize());
 
   // Skip the LSDA, if present.
   if (cie->augmentation[0] == 'z')
