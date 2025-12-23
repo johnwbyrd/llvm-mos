@@ -276,10 +276,8 @@ static void salvageDebugInfoForMerge(MachineFunction &MF,
     return; // Only handle scalar pieces for now
 
   unsigned PieceSizeInBits = SrcTy.getSizeInBits();
+  unsigned TotalMergedSizeInBits = NumSrcs * PieceSizeInBits;
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
-
-  // Collect instructions to erase after we're done iterating
-  SmallPtrSet<MachineInstr *, 4> ToErase;
 
   for (MachineOperand *DbgMO : DbgUsers) {
     MachineInstr *OrigDbgMI = DbgMO->getParent();
@@ -293,7 +291,22 @@ static void salvageDebugInfoForMerge(MachineFunction &MF,
     DebugLoc DL = OrigDbgMI->getDebugLoc();
     MachineBasicBlock *MBB = OrigDbgMI->getParent();
 
-    // Create a DBG_VALUE for each source operand with a fragment expression
+    // If the original expression already has a fragment, check that our
+    // sub-fragments will fit within it. createFragmentExpression asserts
+    // that OffsetInBits + SizeInBits <= existing fragment size.
+    if (auto ExistingFrag = OrigExpr->getFragmentInfo()) {
+      if (TotalMergedSizeInBits > ExistingFrag->SizeInBits) {
+        // The merged value is larger than the existing fragment describes.
+        // This can happen during LTO when debug info fragments don't match
+        // the actual value sizes. Skip salvaging this DBG_VALUE.
+        continue;
+      }
+    }
+
+    // Create a DBG_VALUE for each source operand with a fragment expression.
+    // Reuse the original DBG_VALUE for the first fragment (modify in place),
+    // and create new DBG_VALUEs for subsequent fragments.
+    bool FirstFragment = true;
     for (unsigned I = 0; I < NumSrcs; ++I) {
       Register SrcReg = Merge.getOperand(I + 1).getReg();
       unsigned OffsetInBits = I * PieceSizeInBits;
@@ -304,23 +317,24 @@ static void salvageDebugInfoForMerge(MachineFunction &MF,
       if (!FragExpr)
         continue; // Expression can't be fragmented (has incompatible ops)
 
-      // Build new DBG_VALUE with fragment, inserted before the original
-      BuildMI(*MBB, OrigDbgMI, DL, TII.get(TargetOpcode::DBG_VALUE),
-              /*IsIndirect=*/false, SrcReg, Var, *FragExpr);
-
-      LLVM_DEBUG(dbgs() << "SALVAGE MERGE piece " << I << ": "
-                        << "reg=" << printReg(SrcReg, nullptr)
-                        << " offset=" << OffsetInBits
-                        << " size=" << PieceSizeInBits << "\n");
+      if (FirstFragment) {
+        // Modify the original DBG_VALUE in place for the first fragment
+        OrigDbgMI->getDebugOperand(0).setReg(SrcReg);
+        OrigDbgMI->getDebugExpressionOp().setMetadata(*FragExpr);
+        FirstFragment = false;
+        LLVM_DEBUG(dbgs() << "SALVAGE MERGE piece " << I << " (in-place): "
+                          << *OrigDbgMI);
+      } else {
+        // Build new DBG_VALUE for subsequent fragments
+        BuildMI(*MBB, OrigDbgMI, DL, TII.get(TargetOpcode::DBG_VALUE),
+                /*IsIndirect=*/false, SrcReg, Var, *FragExpr);
+        LLVM_DEBUG(dbgs() << "SALVAGE MERGE piece " << I << ": "
+                          << "reg=" << printReg(SrcReg, nullptr)
+                          << " offset=" << OffsetInBits
+                          << " size=" << PieceSizeInBits << "\n");
+      }
     }
-
-    // Mark original for erasure (don't erase while iterating DbgUsers)
-    ToErase.insert(OrigDbgMI);
   }
-
-  // Now safe to erase
-  for (MachineInstr *MI : ToErase)
-    MI->eraseFromParent();
 }
 
 void llvm::salvageDebugInfoForDbgValue(const MachineRegisterInfo &MRI,
