@@ -15,6 +15,8 @@
 #include "llvm/Analysis/BranchProbabilityInfo.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -254,9 +256,82 @@ static MachineOperand *salvageDebugInfoImpl(const MachineRegisterInfo &MRI,
   }
 }
 
+/// Salvage debug info for G_MERGE_VALUES by creating fragment expressions
+/// for each source operand. Unlike other salvage operations, this creates
+/// multiple DBG_VALUE instructions (one per piece) rather than modifying
+/// a single DBG_VALUE in place.
+static void salvageDebugInfoForMerge(MachineFunction &MF,
+                                     const MachineRegisterInfo &MRI,
+                                     MachineInstr &Merge,
+                                     ArrayRef<MachineOperand *> DbgUsers) {
+  assert(Merge.getOpcode() == TargetOpcode::G_MERGE_VALUES);
+
+  const unsigned NumSrcs = Merge.getNumOperands() - 1; // -1 for the def
+  if (NumSrcs == 0)
+    return;
+
+  // Get the size of each source piece
+  LLT SrcTy = MRI.getType(Merge.getOperand(1).getReg());
+  if (!SrcTy.isScalar())
+    return; // Only handle scalar pieces for now
+
+  unsigned PieceSizeInBits = SrcTy.getSizeInBits();
+  const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
+
+  // Collect instructions to erase after we're done iterating
+  SmallPtrSet<MachineInstr *, 4> ToErase;
+
+  for (MachineOperand *DbgMO : DbgUsers) {
+    MachineInstr *OrigDbgMI = DbgMO->getParent();
+    if (OrigDbgMI->getOpcode() != TargetOpcode::DBG_VALUE)
+      continue;
+    if (OrigDbgMI->isIndirectDebugValue())
+      continue;
+
+    const DILocalVariable *Var = OrigDbgMI->getDebugVariable();
+    const DIExpression *OrigExpr = OrigDbgMI->getDebugExpression();
+    DebugLoc DL = OrigDbgMI->getDebugLoc();
+    MachineBasicBlock *MBB = OrigDbgMI->getParent();
+
+    // Create a DBG_VALUE for each source operand with a fragment expression
+    for (unsigned I = 0; I < NumSrcs; ++I) {
+      Register SrcReg = Merge.getOperand(I + 1).getReg();
+      unsigned OffsetInBits = I * PieceSizeInBits;
+
+      // Create fragment expression: DW_OP_LLVM_fragment(offset, size)
+      auto FragExpr = DIExpression::createFragmentExpression(
+          OrigExpr, OffsetInBits, PieceSizeInBits);
+      if (!FragExpr)
+        continue; // Expression can't be fragmented (has incompatible ops)
+
+      // Build new DBG_VALUE with fragment, inserted before the original
+      BuildMI(*MBB, OrigDbgMI, DL, TII.get(TargetOpcode::DBG_VALUE),
+              /*IsIndirect=*/false, SrcReg, Var, *FragExpr);
+
+      LLVM_DEBUG(dbgs() << "SALVAGE MERGE piece " << I << ": "
+                        << "reg=" << printReg(SrcReg, nullptr)
+                        << " offset=" << OffsetInBits
+                        << " size=" << PieceSizeInBits << "\n");
+    }
+
+    // Mark original for erasure (don't erase while iterating DbgUsers)
+    ToErase.insert(OrigDbgMI);
+  }
+
+  // Now safe to erase
+  for (MachineInstr *MI : ToErase)
+    MI->eraseFromParent();
+}
+
 void llvm::salvageDebugInfoForDbgValue(const MachineRegisterInfo &MRI,
                                        MachineInstr &MI,
                                        ArrayRef<MachineOperand *> DbgUsers) {
+  // G_MERGE_VALUES needs special handling - it creates multiple DBG_VALUEs
+  if (MI.getOpcode() == TargetOpcode::G_MERGE_VALUES) {
+    salvageDebugInfoForMerge(*MI.getMF(), MRI, MI, DbgUsers);
+    return;
+  }
+
   // These are arbitrary chosen limits on the maximum number of values and the
   // maximum size of a debug expression we can salvage up to, used for
   // performance reasons.
