@@ -1,5 +1,8 @@
 ; Test DBG_LABEL MachineInstr for label debugging.
 ; REQUIRES: asserts
+; MOS uses GlobalISel exclusively and does not have SelectionDAG. The
+; -debug-only=isel flag produces no output on GlobalISel targets.
+; UNSUPPORTED: target=mos{{.*}}
 ; RUN: llc -debug-only=isel %s -o /dev/null 2> %t.debug
 ; RUN: cat %t.debug | FileCheck %s --check-prefix=CHECKMI
 ;

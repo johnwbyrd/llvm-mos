@@ -1,4 +1,7 @@
 ; FIXME: Fix machine verifier issues and remove -verify-machineinstrs=0. PR39452.
+; MOS uses GlobalISel exclusively. The finalize-isel pass and pre-RA-sched
+; options are SelectionDAG-specific and do not exist in GlobalISel.
+; UNSUPPORTED: target=mos{{.*}}
 ; RUN: llc -stop-before=finalize-isel -pre-RA-sched=linearize -verify-machineinstrs=0 < %s -experimental-debug-variable-locations=false | FileCheck %s
 source_filename = "linear-dbg-value.ll"
 

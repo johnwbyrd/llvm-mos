@@ -1,4 +1,7 @@
 ; XFAIL: target={{.*}}-aix{{.*}}
+; MOS uses tail call optimization, converting the final call to a jump.
+; This eliminates the return instruction, so no .loc is emitted for line 5.
+; UNSUPPORTED: target=mos{{.*}}
 ; RUN: llc -filetype=asm -asm-verbose=0 -O0 -dwarf-extended-loc=Enable < %s | FileCheck %s --check-prefix ENABLED --check-prefix CHECK
 ; RUN: llc -filetype=asm -asm-verbose=0 -O0 -dwarf-extended-loc=Disable < %s | FileCheck %s --check-prefix DISABLED --check-prefix CHECK
 

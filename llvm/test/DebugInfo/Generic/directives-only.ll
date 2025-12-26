@@ -1,4 +1,7 @@
 ; XFAIL: target={{.*}}-aix{{.*}}
+; MOS uses tail call optimization, converting the final call to a jump.
+; This eliminates the return instruction, so no .loc is emitted for line 5.
+; UNSUPPORTED: target=mos{{.*}}
 ; RUN: llc -filetype=asm -asm-verbose=0 -O0 < %s | FileCheck %s
 
 ; Generated with clang from multiline.c:
