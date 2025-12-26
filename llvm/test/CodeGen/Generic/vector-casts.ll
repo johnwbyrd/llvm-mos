@@ -1,6 +1,10 @@
 ; RUN: llc < %s
 ; PR2671
 
+; GlobalISel cannot legalize vector cast operations like G_FPTOSI for <2 x s8>.
+; MOS fails at G_STORE, X86 GlobalISel fails at G_FPTOSI.
+; UNSUPPORTED: target=mos{{.*}}
+
 define void @a(ptr %p, ptr %q) {
   %t = load <2 x double>, ptr %p
   %r = fptosi <2 x double> %t to <2 x i8>

@@ -1,6 +1,10 @@
 ; RUN: llc < %s
 ; RUN: llc < %s -fast-isel
 
+; MOS uses GlobalISel exclusively and doesn't support FastISel. The -fast-isel
+; flag causes "target does not support generation of this file type" error.
+; UNSUPPORTED: target=mos{{.*}}
+
 @ok = internal constant [4 x i8] c"%d\0A\00"
 @no = internal constant [4 x i8] c"no\0A\00"
 

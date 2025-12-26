@@ -3,6 +3,12 @@
 ; The test uses inline assembly with x86-specific constraints.
 ; UNSUPPORTED: target=nvptx{{.*}}
 
+; GlobalISel doesn't support the 'invoke' instruction (exception handling).
+; This test uses invoke with inline asm and a landing pad. X86 passes because
+; it uses SelectionDAG by default. MOS uses GlobalISel exclusively with no
+; fallback. See llvm/lib/CodeGen/GlobalISel/IRTranslator.cpp - visitInvoke.
+; UNSUPPORTED: target=mos{{.*}}
+
 
 define fastcc void @bc__support__high_resolution_time__initialize_clock_rate() personality ptr @__gxx_personality_v0 {
 entry:

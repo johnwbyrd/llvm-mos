@@ -1,5 +1,9 @@
 ; RUN: llc < %s
 
+; GlobalISel cannot legalize <8 x float> vector operations. MOS fails at
+; G_STORE, X86 GlobalISel fails at G_FADD for this vector type.
+; UNSUPPORTED: target=mos{{.*}}
+
 %f8 = type <8 x float>
 
 define void @test_f8(ptr %P, ptr %Q, ptr %S) {

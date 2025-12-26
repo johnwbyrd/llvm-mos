@@ -4,6 +4,11 @@
 ; to fail.
 ; XFAIL: target=hexagon-{{.*}}
 
+; MOS uses GlobalISel which produces different basic block numbering than
+; SelectionDAG. The CHECK patterns expect SelectionDAG's block layout (bb.0,
+; bb.4, bb.5, bb.6) but GlobalISel produces a different structure (bb.1, etc).
+; UNSUPPORTED: target=mos{{.*}}
+
 declare void @foo()
 
 ; Make sure we have the correct weight attached to each successor.

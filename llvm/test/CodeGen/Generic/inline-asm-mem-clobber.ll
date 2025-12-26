@@ -3,6 +3,10 @@
 ; XCore default subtarget does not support 8-byte alignment on stack.
 ; XFAIL: target=xcore{{.*}}
 
+; GlobalISel fails to translate inline asm with "=r,r,~{memory}" constraints.
+; Both MOS and X86 GlobalISel fail with "unable to translate instruction: call".
+; UNSUPPORTED: target=mos{{.*}}
+
 @G = common global i32 0, align 4
 
 define i32 @foo(ptr %p) nounwind uwtable {

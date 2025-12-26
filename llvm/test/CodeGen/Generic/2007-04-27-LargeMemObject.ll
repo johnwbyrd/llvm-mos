@@ -1,5 +1,13 @@
 ; RUN: llc -no-integrated-as < %s
 
+; MOS uses GlobalISel exclusively, which doesn't support aggregate (struct)
+; operands in inline asm. The constraint "=*m" with elementtype(%struct..0anon)
+; passes an aggregate type. GlobalISel's InlineAsmLowering returns false at
+; "Aggregate input operands are not supported yet" (line ~264). X86 with
+; GlobalISel also fails; X86 SelectionDAG handles this. MOS has no SelectionDAG
+; fallback. See llvm/lib/CodeGen/GlobalISel/InlineAsmLowering.cpp.
+; UNSUPPORTED: target=mos{{.*}}
+
         %struct..0anon = type { [100 x i32] }
 
 define void @test() {

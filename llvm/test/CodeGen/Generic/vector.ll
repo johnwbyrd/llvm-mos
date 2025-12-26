@@ -1,6 +1,10 @@
 ; Test that vectors are scalarized/lowered correctly.
 ; RUN: llc < %s
 
+; GlobalISel cannot legalize various vector operations. MOS fails at G_STORE
+; for <2 x s32>, X86 GlobalISel fails at G_FADD. X86 SelectionDAG handles this.
+; UNSUPPORTED: target=mos{{.*}}
+
 %d8 = type <8 x double>
 %f1 = type <1 x float>
 %f2 = type <2 x float>
