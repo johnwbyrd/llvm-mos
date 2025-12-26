@@ -4,10 +4,7 @@
 ; Make sure the original -debug-only=isel still works.
 ; RUN: llc -debug-only=isel < %s 2>&1 | FileCheck %s  --check-prefixes=FOO,BAR,ZAP
 ; REQUIRES: asserts
-
-; MOS uses GlobalISel exclusively and doesn't have SelectionDAG. The isel-dump
-; and isel debug output comes from SelectionDAG's SelectionDAGISel pass.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: no-selectiondag-debug
 
 ; FOO:     === foo
 ; BAR-NOT: === foo

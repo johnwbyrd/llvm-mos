@@ -1,8 +1,5 @@
 ; RUN: llc < %s
-
-; GlobalISel cannot legalize G_EXTRACT_VECTOR_ELT for <4 x i32> vectors.
-; Both MOS and X86 GlobalISel fail. X86 SelectionDAG handles this.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: no-vector-legalization
 
 ; Examples that exhibits a bug in DAGCombine.  The case is triggered by the
 ; following program.  The bug is DAGCombine assumes that the bit convert

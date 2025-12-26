@@ -4,10 +4,7 @@
 
 ; Undefined external symbol "__powisf2"
 ; XFAIL: target=nvptx{{.*}}
-
-; GlobalISel cannot legalize G_FPOWI (floating-point power with integer exp).
-; Both MOS and X86 GlobalISel fail. X86 SelectionDAG handles this.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: no-vector-legalization
 
 define float @test(float %tmp23302331, i32 %tmp23282329 ) {
 

@@ -1,9 +1,5 @@
 ; RUN: llc < %s
-
-; GlobalISel cannot legalize <8 x i32> vector operations on targets without
-; native vector support. MOS fails at G_STORE legalization, X86 GlobalISel
-; fails at G_BUILD_VECTOR. X86 SelectionDAG handles this via scalarization.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: no-vector-legalization
 
 define void @test1(ptr %ptr)
 {

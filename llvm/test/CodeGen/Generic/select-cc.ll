@@ -1,8 +1,5 @@
 ; RUN: llc < %s
-
-; GlobalISel cannot legalize <2 x double> vector operations. MOS fails on
-; G_PHI, X86 GlobalISel fails on G_SELECT for this vector type.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: no-vector-legalization
 
 define <2 x double> @vector_select(<2 x double> %x, <2 x double> %y) nounwind  {
 	%x.lo = extractelement <2 x double> %x, i32 0		; <double> [#uses=1]

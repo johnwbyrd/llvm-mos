@@ -3,11 +3,7 @@
 ; Hexagon runs passes that renumber the basic blocks, causing this test
 ; to fail.
 ; XFAIL: target=hexagon-{{.*}}
-
-; MOS uses GlobalISel which produces different basic block numbering than
-; SelectionDAG. The CHECK patterns expect SelectionDAG's block layout (bb.0,
-; bb.4, bb.5, bb.6) but GlobalISel produces a different structure (bb.1, etc).
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: no-selectiondag-debug
 
 declare void @foo()
 

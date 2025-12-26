@@ -1,10 +1,5 @@
 ; RUN: llc < %s
-
-; MOS has a 16-bit soft stack pointer with a 65535-byte limit per function.
-; This test allocates 256*256*4 = 262144 bytes on the stack, which exceeds the
-; MOS limit. The 6502 has a 64KB address space, so such large stacks are not
-; practical. X86 GlobalISel also fails on the call with many pointer arguments.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: small-address-space
 
 ; Compiling this file produces:
 ; Sparc.cpp:91: failed assertion `(offset - OFFSET) % getStackFrameSizeAlignment() == 0'

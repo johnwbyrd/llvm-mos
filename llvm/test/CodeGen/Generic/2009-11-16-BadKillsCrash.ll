@@ -1,10 +1,6 @@
 ; RUN: llc < %s
 ; PR5495
-
-; GlobalISel doesn't support the 'invoke' instruction (exception handling).
-; This test uses multiple invoke instructions with landing pads. X86 passes
-; because it uses SelectionDAG by default. MOS uses GlobalISel exclusively.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: no-invoke-support
 
 %"struct.std::__ctype_abstract_base<wchar_t>" = type { %"struct.std::locale::facet" }
 %"struct.std::basic_ios<char,std::char_traits<char> >" = type { %"struct.std::ios_base", ptr, i8, i8, ptr, ptr, ptr, ptr }

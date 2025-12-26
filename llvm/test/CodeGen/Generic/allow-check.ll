@@ -7,10 +7,7 @@
 ; XFAIL: target=sparc{{.*}}
 ; XFAIL: target=hexagon-{{.*}}
 ; XFAIL: target=arm64ec-{{.*}}
-
-; MOS uses GlobalISel exclusively. The -global-isel=0 and -fast-isel=1 flags
-; force SelectionDAG/FastISel which MOS doesn't support.
-; UNSUPPORTED: target=mos{{.*}}
+; UNSUPPORTED: global-isel-only
 
 ; RUN: llc < %s -O3 -global-isel=0 -fast-isel=0
 ; RUN: llc < %s -O3 -global-isel=1 -fast-isel=0
