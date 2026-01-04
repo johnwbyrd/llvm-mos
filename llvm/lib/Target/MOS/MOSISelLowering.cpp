@@ -30,6 +30,7 @@
 #include "MOS.h"
 #include "MOSInstrBuilder.h"
 #include "MOSInstrInfo.h"
+#include "MOSMachineFunctionInfo.h"
 #include "MOSRegisterInfo.h"
 #include "MOSSubtarget.h"
 #include "MOSTargetMachine.h"
@@ -245,6 +246,8 @@ static MachineBasicBlock *emitIncDecMB(MachineInstr &MI,
                                        MachineBasicBlock *MBB);
 static MachineBasicBlock *emitCmpBrZeroMultiByte(MachineInstr &MI,
                                                  MachineBasicBlock *MBB);
+static MachineBasicBlock *emitRetAddr(MachineInstr &MI,
+                                      MachineBasicBlock *MBB);
 
 MachineBasicBlock *
 MOSTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
@@ -260,6 +263,8 @@ MOSTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
     return emitIncDecMB(MI, MBB);
   case MOS::CmpBrZeroMultiByte:
     return emitCmpBrZeroMultiByte(MI, MBB);
+  case MOS::RETADDR:
+    return emitRetAddr(MI, MBB);
   }
 }
 
@@ -681,4 +686,69 @@ static MachineBasicBlock *emitCmpBrZeroMultiByte(MachineInstr &MI,
   recomputeLiveIns(*MBB);
 
   return MaybeZero;
+}
+
+// Expand RETADDR pseudo to load the return address from the hardware stack.
+// The return address is at hardware stack base + S + 1 + CSR_offset.
+// JSR pushes (PC-1), so we add 1 to get the actual return address.
+static MachineBasicBlock *emitRetAddr(MachineInstr &MI,
+                                      MachineBasicBlock *MBB) {
+  MachineFunction &MF = *MBB->getParent();
+  const MOSSubtarget &STI = MF.getSubtarget<MOSSubtarget>();
+  const TargetInstrInfo &TII = *STI.getInstrInfo();
+  const TargetRegisterInfo &TRI = *STI.getRegisterInfo();
+  const MOSFunctionInfo &FuncInfo = *MF.getInfo<MOSFunctionInfo>();
+  const DebugLoc &DL = MI.getDebugLoc();
+
+  // Count callee-saved registers pushed to hardware stack (not zero page).
+  unsigned HardStackCSRCount = 0;
+  for (const CalleeSavedInfo &CSI : MF.getFrameInfo().getCalleeSavedInfo()) {
+    // Skip registers saved to zero page
+    if (FuncInfo.CSRZPOffsets.count(CSI.getReg()))
+      continue;
+    ++HardStackCSRCount;
+  }
+
+  // Hardware stack base address (0x0100 for 6502, may differ for 65816)
+  uint16_t StackBase = STI.getHardwareStackBase();
+  // Return address low byte is at S+1+offset, high byte at S+2+offset
+  uint16_t LoAddr = StackBase + 1 + HardStackCSRCount;
+  uint16_t HiAddr = StackBase + 2 + HardStackCSRCount;
+
+  Register Dst = MI.getOperand(0).getReg();
+  Register DstLo = TRI.getSubReg(Dst, MOS::sublo);
+  Register DstHi = TRI.getSubReg(Dst, MOS::subhi);
+
+  // TSX - transfer S to X for indexed addressing
+  BuildMI(*MBB, MI, DL, TII.get(MOS::TSX_Implied));
+
+  // LDA StackBase+1+offset,X - load low byte of (return_addr - 1)
+  BuildMI(*MBB, MI, DL, TII.get(MOS::LDAAbsIdx), MOS::A)
+      .addImm(LoAddr)
+      .addReg(MOS::X);
+
+  // CLC; ADC #1 - add 1 because JSR pushes PC-1
+  BuildMI(*MBB, MI, DL, TII.get(MOS::CLC_Implied));
+  BuildMI(*MBB, MI, DL, TII.get(MOS::ADCImm), MOS::A)
+      .addReg(MOS::A)
+      .addImm(1);
+
+  // Copy low byte to destination
+  BuildMI(*MBB, MI, DL, TII.get(MOS::COPY), DstLo).addReg(MOS::A);
+
+  // LDA StackBase+2+offset,X - load high byte
+  BuildMI(*MBB, MI, DL, TII.get(MOS::LDAAbsIdx), MOS::A)
+      .addImm(HiAddr)
+      .addReg(MOS::X);
+
+  // ADC #0 - propagate carry from low byte add
+  BuildMI(*MBB, MI, DL, TII.get(MOS::ADCImm), MOS::A)
+      .addReg(MOS::A)
+      .addImm(0);
+
+  // Copy high byte to destination
+  BuildMI(*MBB, MI, DL, TII.get(MOS::COPY), DstHi).addReg(MOS::A);
+
+  MI.eraseFromParent();
+  return MBB;
 }

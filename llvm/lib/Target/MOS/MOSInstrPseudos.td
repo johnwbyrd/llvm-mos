@@ -343,3 +343,17 @@ let mayLoad = true in {
     dag InOperandList = (ins label:$tgt, Flag:$flag, i1imm:$flag_val, Ac:$l, Imag16:$addr, Yc:$idx);
   }
 }
+
+//===---------------------------------------------------------------------===//
+// Intrinsic support
+//===---------------------------------------------------------------------===//
+
+// Pseudo for __builtin_return_address(0). Expanded late when we know
+// how many callee-saved regs were pushed to hardware stack.
+def RETADDR : MOSPseudo {
+  dag OutOperandList = (outs Imag16:$dst);
+  dag InOperandList = (ins);
+
+  let Defs = [A, X];
+  let usesCustomInserter = true;
+}
