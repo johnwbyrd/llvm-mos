@@ -77,6 +77,11 @@ public:
     return hasHUC6280() ? 0x2000 : 0;
   }
 
+  /// Get the base address of the hardware stack.
+  /// On 6502, this is always 0x0100 (stack page).
+  /// On 65816, this may differ based on configuration.
+  uint16_t getHardwareStackBase() const { return 0x0100; }
+
   bool enableMachineScheduler() const override { return true; }
   bool enableSubRegLiveness() const override { return true; }
 
