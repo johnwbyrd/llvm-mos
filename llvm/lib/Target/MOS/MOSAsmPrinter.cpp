@@ -21,8 +21,6 @@
 #include "MOSSubtarget.h"
 #include "TargetInfo/MOSTargetInfo.h"
 
-#include "llvm/ADT/StringSet.h"
-#include "llvm/BinaryFormat/MOSFlags.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
@@ -41,8 +39,29 @@ using namespace llvm;
 
 namespace {
 
+/// MOS-specific AsmPrinter implementation.
+
 class MOSAsmPrinter : public AsmPrinter {
   MOSMCInstLower InstLowering;
+
+  /// Track whether beginModule has been called for debug handlers.
+  /// MOS defers debug info setup (beginModule) until after MOSInternalize
+  /// runs GlobalDCE. This is necessary because:
+  ///
+  /// 1. AsmPrinter::doInitialization normally calls DwarfDebug::beginModule,
+  ///    which iterates M->globals() and creates debug info entries (DIEs).
+  ///
+  /// 2. MOSInternalize runs later (after ISel) and calls GlobalDCE, which
+  ///    deletes unused GlobalVariables (e.g., __func__ strings from inlined
+  ///    assert() calls in dead code).
+  ///
+  /// 3. If beginModule ran first, the .debug_addr section would contain
+  ///    relocations to symbols that GlobalDCE deleted, causing "undefined
+  ///    temporary symbol" linker errors.
+  bool BeginModuleCalled = false;
+
+  /// Store the Module pointer for deferred beginModule call.
+  Module *TheModule = nullptr;
 
 public:
   explicit MOSAsmPrinter(TargetMachine &TM,
@@ -74,6 +93,37 @@ public:
   void emitJumpTableInfo() override;
 
   const MCSymbol *getFunctionFrameSymbol(int FI) const override;
+
+  /// Defer beginModule to avoid debug info referencing globals deleted by
+  /// MOSInternalize::GlobalDCE. See class comment for details.
+  bool shouldCallBeginModule() const override { return false; }
+
+  bool doInitialization(Module &M) override {
+    TheModule = &M;
+    return AsmPrinter::doInitialization(M);
+  }
+
+  /// Call beginModule on first function setup, after MOSInternalize has
+  /// run GlobalDCE and deleted unused globals.
+  void SetupMachineFunction(MachineFunction &MF) override {
+    if (!BeginModuleCalled) {
+      callBeginModule(TheModule);
+      BeginModuleCalled = true;
+    }
+    AsmPrinter::SetupMachineFunction(MF);
+  }
+
+  /// For modules with no functions, beginModule was never called in
+  /// SetupMachineFunction. Call it now so retained types and other
+  /// module-level debug info get emitted. By this point, MOSInternalize
+  /// has already run GlobalDCE.
+  bool doFinalization(Module &M) override {
+    if (!BeginModuleCalled) {
+      callBeginModule(&M);
+      BeginModuleCalled = true;
+    }
+    return AsmPrinter::doFinalization(M);
+  }
 };
 
 // Simple pseudo-instructions have their lowering (with expansion to real
@@ -197,10 +247,12 @@ bool MOSAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
 }
 
 void MOSAsmPrinter::emitStartOfAsmFile(Module &M) {
-  auto &MTS =
-      *static_cast<MOSTargetStreamer *>(OutStreamer->getTargetStreamer());
+  auto *MTS =
+      static_cast<MOSTargetStreamer *>(OutStreamer->getTargetStreamer());
+  if (!MTS)
+    return;
   for (int I = 0; I < 32; I++)
-    MTS.emitDirectiveZeroPage(OutContext.getOrCreateSymbol("__rc" + Twine(I)));
+    MTS->emitDirectiveZeroPage(OutContext.getOrCreateSymbol("__rc" + Twine(I)));
 }
 
 void MOSAsmPrinter::emitJumpTableInfo() {
