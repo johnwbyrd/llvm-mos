@@ -78,6 +78,10 @@ private:
   void emitCalleeSavedFrameMoves(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MBBI,
                                  const DebugLoc &DL, bool IsPrologue) const;
+
+  void emitReturnAddressSave(MachineFunction &MF, MachineBasicBlock &MBB,
+                             MachineBasicBlock::iterator InsertPt,
+                             const DebugLoc &DL) const;
 };
 
 } // namespace llvm

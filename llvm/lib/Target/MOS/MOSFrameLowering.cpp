@@ -33,9 +33,9 @@
 #include "llvm/CodeGen/TargetFrameLowering.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
+#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
-#include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/Support/ErrorHandling.h"
 
 #define DEBUG_TYPE "mos-framelowering"
@@ -311,7 +311,7 @@ MachineBasicBlock::iterator MOSFrameLowering::eliminateCallFramePseudoInstr(
 
 void MOSFrameLowering::emitPrologue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
-  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineFrameInfo &MFI = MF.getFrameInfo();
   const TargetRegisterInfo &TRI = *MF.getRegInfo().getTargetRegisterInfo();
   const MCRegisterInfo *MRI = MF.getContext().getRegisterInfo();
   MachineIRBuilder Builder(MBB, MBB.begin());
@@ -322,6 +322,12 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
   for (MachineInstr &MI : MBB)
     if (MI.getOpcode() == MOS::CLD_Implied)
       Builder.setInsertPt(MBB, std::next(MI.getIterator()));
+
+  // If __builtin_return_address(0) is used, save the return address from
+  // the hardware stack to a frame slot. This must happen BEFORE any CSRs
+  // are pushed to the hardware stack, so the return address is at S+1/S+2.
+  if (MFI.isReturnAddressTaken())
+    emitReturnAddressSave(MF, MBB, Builder.getInsertPt(), DL);
 
   int64_t StackSize = MFI.getStackSize();
   // If the interrupted routine is in the middle of decrementing its stack
@@ -445,9 +451,14 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
 
   // Emit CFI to indicate CFA is now based on the frame pointer.
   // After setting FP = SP, CFA = FP + StackSize.
+  // We must use cfiDefCfa (not createDefCfaRegister) because the CIE uses
+  // a DWARF expression, not register+offset, so there's no offset to preserve.
   unsigned DwarfFP = MRI->getDwarfRegNum(TRI.getFrameRegister(MF), true);
+  int64_t FPStackSize = MFI.getStackSize();
+  if (isISR(MF))
+    FPStackSize += 256;
   BuildCFI(MBB, std::next(Builder.getInsertPt()), DL,
-           MCCFIInstruction::createDefCfaRegister(nullptr, DwarfFP),
+           MCCFIInstruction::cfiDefCfa(nullptr, DwarfFP, FPStackSize),
            MachineInstr::FrameSetup);
 }
 
@@ -646,4 +657,63 @@ void MOSFrameLowering::emitCalleeSavedFrameMoves(
                MachineInstr::FrameDestroy);
     }
   }
+}
+
+void MOSFrameLowering::emitReturnAddressSave(
+    MachineFunction &MF, MachineBasicBlock &MBB,
+    MachineBasicBlock::iterator InsertPt, const DebugLoc &DL) const {
+  const MOSSubtarget &STI = MF.getSubtarget<MOSSubtarget>();
+  const TargetInstrInfo &TII = *STI.getInstrInfo();
+  MOSFunctionInfo *FuncInfo = MF.getInfo<MOSFunctionInfo>();
+
+  int RAIndex = FuncInfo->getReturnAddrFrameIndex();
+  assert(RAIndex != -1 && "Return address frame index not created");
+
+  // At function entry, before CSRs are pushed:
+  //   Return address low byte is at StackBase + 1 + S
+  //   Return address high byte is at StackBase + 2 + S
+  // JSR pushes (PC-1), so we add 1 to get the actual return address.
+  uint16_t StackBase = STI.getHardwareStackBase();
+
+  // TSX - transfer S to X
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::TSX_Implied));
+
+  // LDA StackBase+1,X - load low byte of (return_addr - 1)
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::LDAAbsIdx), MOS::A)
+      .addImm(StackBase + 1)
+      .addReg(MOS::X);
+
+  // CLC; ADC #1 - add 1 to low byte
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::CLC_Implied));
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::ADCImm))
+      .addDef(MOS::A)
+      .addDef(MOS::C)
+      .addDef(MOS::V)
+      .addReg(MOS::A)
+      .addImm(1)
+      .addReg(MOS::C, RegState::Undef);
+
+  // STA frame_slot+0 - store low byte
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::STAbs))
+      .addReg(MOS::A)
+      .addFrameIndex(RAIndex, 0);
+
+  // LDA StackBase+2,X - load high byte
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::LDAAbsIdx), MOS::A)
+      .addImm(StackBase + 2)
+      .addReg(MOS::X);
+
+  // ADC #0 - propagate carry to high byte
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::ADCImm))
+      .addDef(MOS::A)
+      .addDef(MOS::C)
+      .addDef(MOS::V)
+      .addReg(MOS::A)
+      .addImm(0)
+      .addReg(MOS::C);
+
+  // STA frame_slot+1 - store high byte
+  BuildMI(MBB, InsertPt, DL, TII.get(MOS::STAbs))
+      .addReg(MOS::A)
+      .addFrameIndex(RAIndex, 1);
 }
