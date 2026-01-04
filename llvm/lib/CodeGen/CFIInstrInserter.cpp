@@ -348,6 +348,9 @@ void CFIInstrInserterImpl::calculateOutgoingCFAInfo(MBBCFAInfo &MBBInfo) {
       case MCCFIInstruction::OpLLVMVectorRegisterMask:
       case MCCFIInstruction::OpLabel:
       case MCCFIInstruction::OpValOffset:
+      case MCCFIInstruction::OpDefCfaExpression:
+      case MCCFIInstruction::OpExpression:
+      case MCCFIInstruction::OpValExpression:
         break;
       }
       assert((!CSRReg.has_value() || !CSROffset.has_value()) &&

@@ -518,12 +518,15 @@ public:
     OpDefCfaRegister,
     OpDefCfaOffset,
     OpDefCfa,
+    OpDefCfaExpression,
     OpRelOffset,
     OpAdjustCfaOffset,
     OpEscape,
     OpRestore,
     OpUndefined,
     OpRegister,
+    OpExpression,
+    OpValExpression,
     OpWindowSave,
     OpNegateRAState,
     OpNegateRAStateWithPC,
@@ -607,12 +610,20 @@ public:
     /// Precisely one of \p PACSym xor \p Offset should be set.
     int64_t Offset;
   };
+  // Held in ExtraFields when OpDefCfaExpression, OpExpression, OpValExpression.
+  struct ExpressionFields {
+    unsigned Register;
+    std::vector<char> Values;
+    ExpressionFields(unsigned Reg, StringRef Expr)
+        : Register(Reg), Values(Expr.begin(), Expr.end()) {}
+  };
 
 private:
   MCSymbol *Label;
   std::variant<CommonFields, EscapeFields, LabelFields, RegisterPairFields,
                VectorRegistersFields, VectorOffsetFields,
-               VectorRegisterMaskFields, LLVMSetRAStateFields>
+               VectorRegisterMaskFields, LLVMSetRAStateFields,
+               ExpressionFields>
       ExtraFields;
   OpType Operation;
   SMLoc Loc;
@@ -830,10 +841,33 @@ public:
     return {OpValOffset, L, CommonFields{Register, Offset}, Loc};
   }
 
+  /// .cfi_def_cfa_expression CFA is computed by evaluating the DWARF
+  /// expression in Expr.
+  static MCCFIInstruction createDefCfaExpression(MCSymbol *L, StringRef Expr,
+                                                  SMLoc Loc = {}) {
+    return {OpDefCfaExpression, L, ExpressionFields{0, Expr}, Loc};
+  }
+
+  /// .cfi_expression The value of Register is computed by evaluating the
+  /// DWARF expression in Expr as a memory location and dereferencing it.
+  static MCCFIInstruction createExpression(MCSymbol *L, unsigned Register,
+                                            StringRef Expr, SMLoc Loc = {}) {
+    return {OpExpression, L, ExpressionFields{Register, Expr}, Loc};
+  }
+
+  /// .cfi_val_expression The value of Register is computed by evaluating
+  /// the DWARF expression in Expr directly (not as a memory location).
+  static MCCFIInstruction createValExpression(MCSymbol *L, unsigned Register,
+                                               StringRef Expr, SMLoc Loc = {}) {
+    return {OpValExpression, L, ExpressionFields{Register, Expr}, Loc};
+  }
+
   OpType getOperation() const { return Operation; }
   MCSymbol *getLabel() const { return Label; }
 
   unsigned getRegister() const {
+    if (Operation == OpExpression || Operation == OpValExpression)
+      return std::get<ExpressionFields>(ExtraFields).Register;
     assert(Operation == OpDefCfa || Operation == OpOffset ||
            Operation == OpRestore || Operation == OpUndefined ||
            Operation == OpSameValue || Operation == OpDefCfaRegister ||
@@ -881,6 +915,11 @@ public:
   }
 
   StringRef getValues() const {
+    if (Operation == OpDefCfaExpression || Operation == OpExpression ||
+        Operation == OpValExpression) {
+      auto &Values = std::get<ExpressionFields>(ExtraFields).Values;
+      return StringRef(&Values[0], Values.size());
+    }
     assert(Operation == OpEscape);
     auto &Values = std::get<EscapeFields>(ExtraFields).Values;
     return StringRef(&Values[0], Values.size());

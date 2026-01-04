@@ -170,6 +170,9 @@ dwarf::CFIProgram DWARFCFIState::convert(MCCFIInstruction Directive) {
   case MCCFIInstruction::OpLLVMVectorRegisters:
   case MCCFIInstruction::OpLLVMVectorOffset:
   case MCCFIInstruction::OpLLVMVectorRegisterMask:
+  case MCCFIInstruction::OpDefCfaExpression:
+  case MCCFIInstruction::OpExpression:
+  case MCCFIInstruction::OpValExpression:
     // TODO: These should be pretty straightforward to support, but is low
     // priority. Similarly the implementation of OpLLVMDefAspaceCfa above
     // seem incomplete and should be fixed.
