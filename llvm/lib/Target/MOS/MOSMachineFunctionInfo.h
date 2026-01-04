@@ -33,6 +33,14 @@ struct MOSFunctionInfo : public MachineFunctionInfo {
   const GlobalValue *StaticStackValue = nullptr;
   const GlobalValue *ZeroPageStackValue = nullptr;
   DenseMap<Register, size_t> CSRZPOffsets;
+
+  /// Frame index for the slot where the return address is saved.
+  /// Only valid when MachineFrameInfo::isReturnAddressIsTaken() is true.
+  /// -1 means the frame index hasn't been created yet.
+  int ReturnAddrFrameIndex = -1;
+
+  int getReturnAddrFrameIndex() const { return ReturnAddrFrameIndex; }
+  void setReturnAddrFrameIndex(int FI) { ReturnAddrFrameIndex = FI; }
 };
 
 } // namespace llvm
