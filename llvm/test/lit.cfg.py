@@ -942,6 +942,19 @@ if platform.system() not in ["Windows"]:
         )
     )
 
+# GlobalISel-only target features
+# Targets that use GlobalISel exclusively without SelectionDAG fallback should
+# add these features. Tests can use UNSUPPORTED: global-isel-only instead of
+# listing specific target triples.
+if config.target_triple.startswith("mos"):
+    config.available_features.add("global-isel-only")
+    config.available_features.add("no-invoke-support")
+    config.available_features.add("no-vector-legalization")
+    config.available_features.add("limited-inline-asm")
+    config.available_features.add("no-selectiondag-debug")
+    config.available_features.add("aggressive-tailcall")
+    config.available_features.add("small-address-space")
+
 if lit_config.update_tests:
     import sys
     import os
