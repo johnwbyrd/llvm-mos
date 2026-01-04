@@ -17,6 +17,7 @@
 
 #include "MOSLegalizerInfo.h"
 
+#include "MOS.h"
 #include "MCTargetDesc/MOSMCTargetDesc.h"
 #include "MOSFrameLowering.h"
 #include "MOSInstrInfo.h"
@@ -456,6 +457,33 @@ bool MOSLegalizerInfo::legalizeIntrinsic(LegalizerHelper &Helper,
             MachineMemOperand::MOLoad | MachineMemOperand::MODereferenceable,
             Ty.getSizeInBytes(), Align()));
 
+    MI.eraseFromParent();
+    return true;
+  }
+  case Intrinsic::frameaddress: {
+    // __builtin_frame_address(0) returns the current frame pointer.
+    // MOS uses RS15 as frame pointer when hasFP(), otherwise RS0 (soft SP).
+    MachineFunction &MF = *MI.getMF();
+    const MOSRegisterInfo *TRI =
+        MF.getSubtarget<MOSSubtarget>().getRegisterInfo();
+    MF.getFrameInfo().setFrameAddressIsTaken(true);
+
+    Register FrameReg = TRI->getFrameRegister(MF);
+    Register Dst = MI.getOperand(0).getReg();
+    Builder.buildCopy(Dst, FrameReg);
+    MI.eraseFromParent();
+    return true;
+  }
+  case Intrinsic::returnaddress: {
+    // __builtin_return_address(0) returns the return address.
+    // On MOS, the return address is on the hardware stack. We emit a pseudo
+    // that gets expanded late (after register allocation) when we know how
+    // many callee-saved registers were pushed to the hardware stack.
+    MachineFunction &MF = *MI.getMF();
+    MF.getFrameInfo().setReturnAddressIsTaken(true);
+
+    Register Dst = MI.getOperand(0).getReg();
+    Builder.buildInstr(MOS::RETADDR, {Dst}, {});
     MI.eraseFromParent();
     return true;
   }

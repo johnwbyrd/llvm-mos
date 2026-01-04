@@ -445,9 +445,14 @@ void MOSFrameLowering::emitPrologue(MachineFunction &MF,
 
   // Emit CFI to indicate CFA is now based on the frame pointer.
   // After setting FP = SP, CFA = FP + StackSize.
+  // We must use cfiDefCfa (not createDefCfaRegister) because the CIE uses
+  // a DWARF expression, not register+offset, so there's no offset to preserve.
   unsigned DwarfFP = MRI->getDwarfRegNum(TRI.getFrameRegister(MF), true);
+  int64_t FPStackSize = MFI.getStackSize();
+  if (isISR(MF))
+    FPStackSize += 256;
   BuildCFI(MBB, std::next(Builder.getInsertPt()), DL,
-           MCCFIInstruction::createDefCfaRegister(nullptr, DwarfFP),
+           MCCFIInstruction::cfiDefCfa(nullptr, DwarfFP, FPStackSize),
            MachineInstr::FrameSetup);
 }
 

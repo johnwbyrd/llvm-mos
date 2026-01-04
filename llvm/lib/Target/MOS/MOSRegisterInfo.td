@@ -131,9 +131,9 @@ def P : MOSReg<3, "P"> {
 // and the linker script for a given memory layout later assigns these to their
 // real locations.
 
-// The first 16-bit imaginary register is reserved as the soft stack pointer.
-// The second 16-bit imaginary register is reserved as a frame pointer whenever
-// necessary, on a function-by-function basis.
+// The first 16-bit imaginary register (RS0) is reserved as the soft stack pointer.
+// RS15 is reserved as a frame pointer whenever necessary, on a function-by-function
+// basis (when hasFP() returns true, e.g., for VLAs or __builtin_frame_address).
 
 defvar MaxImag8Regs = 256;
 // DWARF register offsets according to MOS DWARF specification
