@@ -17,6 +17,7 @@
 
 #include "MOSLegalizerInfo.h"
 
+#include "MOS.h"
 #include "MCTargetDesc/MOSMCTargetDesc.h"
 #include "MOSFrameLowering.h"
 #include "MOSInstrInfo.h"
@@ -458,6 +459,51 @@ bool MOSLegalizerInfo::legalizeIntrinsic(LegalizerHelper &Helper,
             MachineMemOperand::MOLoad | MachineMemOperand::MODereferenceable,
             Ty.getSizeInBytes(), Align()));
 
+    MI.eraseFromParent();
+    return true;
+  }
+  case Intrinsic::frameaddress: {
+    // __builtin_frame_address(0) returns the current frame pointer.
+    // MOS uses RS15 as frame pointer when hasFP(), otherwise RS0 (soft SP).
+    MachineFunction &MF = *MI.getMF();
+    const MOSRegisterInfo *TRI =
+        MF.getSubtarget<MOSSubtarget>().getRegisterInfo();
+    MF.getFrameInfo().setFrameAddressIsTaken(true);
+
+    Register FrameReg = TRI->getFrameRegister(MF);
+    Register Dst = MI.getOperand(0).getReg();
+    Builder.buildCopy(Dst, FrameReg);
+    MI.eraseFromParent();
+    return true;
+  }
+  case Intrinsic::returnaddress: {
+    // __builtin_return_address(0) returns the return address.
+    // On MOS, the return address is on the hardware stack. The prologue
+    // saves it to a frame slot when isReturnAddressIsTaken() is true.
+    // Here we create that frame slot (if not already created) and load from it.
+    MachineFunction &MF = *MI.getMF();
+    MachineFrameInfo &MFI = MF.getFrameInfo();
+    MOSFunctionInfo *FuncInfo = MF.getInfo<MOSFunctionInfo>();
+    MFI.setReturnAddressIsTaken(true);
+
+    // Get or create the frame slot for the return address.
+    int RAIndex = FuncInfo->getReturnAddrFrameIndex();
+    if (RAIndex == -1) {
+      // Return address is 16-bit (pointer size).
+      RAIndex = MFI.CreateStackObject(2, Align(1), false);
+      FuncInfo->setReturnAddrFrameIndex(RAIndex);
+    }
+
+    // Load the return address from the frame slot into a pointer-typed register.
+    Register Dst = MI.getOperand(0).getReg();
+    MachinePointerInfo PtrInfo = MachinePointerInfo::getFixedStack(MF, RAIndex);
+    auto *MMO = MF.getMachineMemOperand(
+        PtrInfo, MachineMemOperand::MOLoad | MachineMemOperand::MODereferenceable,
+        2, Align(1));
+
+    // Build frame index, then load from it into destination.
+    auto FIReg = Builder.buildFrameIndex(P, RAIndex);
+    Builder.buildLoad(Dst, FIReg, *MMO);
     MI.eraseFromParent();
     return true;
   }
