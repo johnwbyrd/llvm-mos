@@ -378,6 +378,7 @@ bool MOSLateOptimization::combineLdImm(MachineBasicBlock &MBB) const {
     }
 
     // Store this instruction (changed or not) and the new register value.
+    // Only track A, X, Y registers - ignore other registers (e.g., imaginary).
     switch (Dst) {
     case MOS::A:
       Load = &LoadA;
@@ -388,6 +389,8 @@ bool MOSLateOptimization::combineLdImm(MachineBasicBlock &MBB) const {
     case MOS::Y:
       Load = &LoadY;
       break;
+    default:
+      continue;
     }
 
     Load->MI = &MI;
