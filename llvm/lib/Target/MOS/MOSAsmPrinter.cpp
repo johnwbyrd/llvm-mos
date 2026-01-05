@@ -21,8 +21,6 @@
 #include "MOSSubtarget.h"
 #include "TargetInfo/MOSTargetInfo.h"
 
-#include "llvm/ADT/StringSet.h"
-#include "llvm/BinaryFormat/MOSFlags.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
@@ -40,6 +38,8 @@ using namespace llvm;
 #define DEBUG_TYPE "asm-printer"
 
 namespace {
+
+/// MOS-specific AsmPrinter implementation.
 
 class MOSAsmPrinter : public AsmPrinter {
   MOSMCInstLower InstLowering;
@@ -197,10 +197,12 @@ bool MOSAsmPrinter::PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNo,
 }
 
 void MOSAsmPrinter::emitStartOfAsmFile(Module &M) {
-  auto &MTS =
-      *static_cast<MOSTargetStreamer *>(OutStreamer->getTargetStreamer());
+  auto *MTS =
+      static_cast<MOSTargetStreamer *>(OutStreamer->getTargetStreamer());
+  if (!MTS)
+    return;
   for (int I = 0; I < 32; I++)
-    MTS.emitDirectiveZeroPage(OutContext.getOrCreateSymbol("__rc" + Twine(I)));
+    MTS->emitDirectiveZeroPage(OutContext.getOrCreateSymbol("__rc" + Twine(I)));
 }
 
 void MOSAsmPrinter::emitJumpTableInfo() {
