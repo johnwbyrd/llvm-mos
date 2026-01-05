@@ -120,7 +120,7 @@ body: |
     ; 6502-NEXT: frame-setup PH killed $a
     ; 6502-NEXT: $rs15 = COPY $rs0
     ; 6502-NEXT: $a = LDAbs target-index(mos-static-stack) + 2 :: (load (s8) from %stack.2 + 1)
-    ; 6502-NEXT: frame-setup CFI_INSTRUCTION def_cfa_register $rs15
+    ; 6502-NEXT: frame-setup CFI_INSTRUCTION def_cfa $rs15, 0
     ; 6502-NEXT: $rs0 = COPY $rs15
     ; 6502-NEXT: $a = frame-destroy PL
     ; 6502-NEXT: frame-destroy CFI_INSTRUCTION def_cfa $rs0, 0
@@ -136,7 +136,7 @@ body: |
     ; 65C02-NEXT: frame-setup PH killed $x
     ; 65C02-NEXT: $rs15 = COPY $rs0
     ; 65C02-NEXT: $a = LDAbs target-index(mos-static-stack) + 2 :: (load (s8) from %stack.2 + 1)
-    ; 65C02-NEXT: frame-setup CFI_INSTRUCTION def_cfa_register $rs15
+    ; 65C02-NEXT: frame-setup CFI_INSTRUCTION def_cfa $rs15, 0
     ; 65C02-NEXT: $rs0 = COPY $rs15
     ; 65C02-NEXT: $x = frame-destroy PL
     ; 65C02-NEXT: frame-destroy CFI_INSTRUCTION def_cfa $rs0, 0
