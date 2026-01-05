@@ -25,6 +25,7 @@
 #include "MCTargetDesc/MOSMCTargetDesc.h"
 #include "MCTargetDesc/MOSTargetStreamer.h"
 #include "MOS.h"
+
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -649,33 +650,6 @@ public:
       Res = MOSMCExpr::create(VK, Inner, /*Negated=*/false, getContext());
       EndLoc = SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
       return false;
-    }
-
-    // Handle function-style modifiers: mos16lo(expr), mos24bank(expr), etc.
-    if (Parser.getTok().is(AsmToken::Identifier)) {
-      StringRef Name = Parser.getTok().getString();
-      MOSMCExpr::VariantKind VK =
-          MOSMCExpr::getKindByName(Name, /*IsImmediate=*/false);
-
-      if (VK != MOSMCExpr::VK_NONE &&
-          Parser.getLexer().peekTok().is(AsmToken::LParen)) {
-        Parser.Lex(); // Eat identifier
-        Parser.Lex(); // Eat '('
-
-        const MCExpr *Inner;
-        if (Parser.parseExpression(Inner))
-          return true;
-
-        if (Parser.getTok().isNot(AsmToken::RParen))
-          return Error(Parser.getTok().getLoc(),
-                       "expected ')' after expression");
-        Parser.Lex(); // Eat ')'
-
-        Res = MOSMCExpr::create(VK, Inner, /*Negated=*/false, getContext());
-        EndLoc =
-            SMLoc::getFromPointer(Parser.getTok().getLoc().getPointer() - 1);
-        return false;
-      }
     }
 
     // Parse normally
