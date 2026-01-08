@@ -256,6 +256,7 @@ MOSLegalizerInfo::MOSLegalizerInfo(const MOSSubtarget &STI) {
                                G_FDIV,
                                G_FMA,
                                G_FREM,
+                               G_FMODF,
                                G_FPOW,
                                G_FEXP,
                                G_FEXP2,
