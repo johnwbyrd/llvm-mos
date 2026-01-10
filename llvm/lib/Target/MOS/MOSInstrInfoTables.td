@@ -14,34 +14,31 @@ include "llvm/TableGen/SearchableTable.td"
 
 /// ---------------------------------------------------------------------------
 /// A MOS instruction relaxation entry.  Used primarily to relax 8 bit
-/// instructions that access zero page, to 16 bit equivalents, if the 
+/// instructions that access zero page, to 16 bit equivalents, if the
 /// target addresses do not necessarily reside in 8 bit memory. The same
 /// pattern is used to further relax 16 bit zero bank instructions into
 /// 24 bit equivalents for 65816.
 ///
 /// On 65CE02, this is also used to relax branch operations.
-class MOSRelaxationEntry< InstAddressMode from, 
-                          InstAddressMode to> {
-  InstAddressMode From = from;
-  InstAddressMode To = to;
+class MOSRelaxationEntry<Instruction from, Instruction to> {
+  Instruction From = from;
+  Instruction To = to;
 }
 
 /// MOS zero page/bank instruction relaxation entries.
 
-class ZeroPageInstructionRelaxationEntry< InstAddressMode from, 
-                                          InstAddressMode to> :
-                                          MOSRelaxationEntry<from, to>;
+class ZeroPageInstructionRelaxationEntry<Instruction from, Instruction to> :
+    MOSRelaxationEntry<from, to>;
 
-class ZeroBankInstructionRelaxationEntry< InstAddressMode from, 
-                                          InstAddressMode to> :
-                                          MOSRelaxationEntry<from, to>;
+class ZeroBankInstructionRelaxationEntry<Instruction from, Instruction to> :
+    MOSRelaxationEntry<from, to>;
 
 
-class ZPIRE< InstAddressMode from, InstAddressMode to> :
-	ZeroPageInstructionRelaxationEntry< from, to >;
+class ZPIRE<Instruction from, Instruction to> :
+	ZeroPageInstructionRelaxationEntry<from, to>;
 
-class ZBIRE< InstAddressMode from, InstAddressMode to> :
-	ZeroBankInstructionRelaxationEntry< from, to >;
+class ZBIRE<Instruction from, Instruction to> :
+	ZeroBankInstructionRelaxationEntry<from, to>;
 
 def : ZPIRE< ADC_ZeroPage, ADC_Absolute >;
 def : ZBIRE< ADC_Absolute, ADC_AbsoluteLong >;
@@ -157,12 +154,11 @@ def : ZPIRE< DIV_ZeroPageX_EL02, DIV_AbsoluteX_EL02 >;
 
 /// MOS branch instruction relaxation entries.
 
-class BranchInstructionRelaxationEntry< InstAddressMode from,
-                                        InstAddressMode to> :
-                                        MOSRelaxationEntry<from, to>;
+class BranchInstructionRelaxationEntry<Instruction from, Instruction to> :
+    MOSRelaxationEntry<from, to>;
 
-class BIRE< InstAddressMode from, InstAddressMode to> :
-	BranchInstructionRelaxationEntry< from, to >;
+class BIRE<Instruction from, Instruction to> :
+	BranchInstructionRelaxationEntry<from, to>;
 
 def : BIRE< BCC_Relative, BCC_Relative16 >;
 def : BIRE< BCS_Relative, BCS_Relative16 >;
