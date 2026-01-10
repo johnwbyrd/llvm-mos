@@ -311,7 +311,7 @@ def JMPIndir : MOSUnconditionalBranch, PseudoInstExpansion<(JMP_Indirect16 addr1
   let isIndirectBranch = true;
 }
 
-def JMPIdxIndir : MOSUnconditionalBranch, PseudoInstExpansion<(JMP_IndexedIndirect addr16:$tgt)> {
+def JMPIdxIndir : MOSUnconditionalBranch, PseudoInstExpansion<(JMP_IndexedIndirect16 addr16:$tgt)> {
   let Predicates = [HasJMPIdxIndir];
   let InOperandList = (ins addr16:$tgt, Xc:$idx);
   let isIndirectBranch = true;
