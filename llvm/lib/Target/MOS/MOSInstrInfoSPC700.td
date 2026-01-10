@@ -14,6 +14,14 @@
 /// For unknown reasons, while many of its opcodes map closely to those of
 /// the 6502, their encoding is completely different.
 
+/// SPC700 opcodes follow an aaabbbcc pattern similar to 6502, but with
+/// different meanings. This encoding helper is specific to SPC700.
+class SPC700OpcodeABC<bits<3> aaa = 0, bits<3> bbb = 0, bits<2> cc = 0> : Opcode<0> {
+  let op{7-5} = aaa;
+  let op{4-2} = bbb;
+  let op{1-0} = cc;
+}
+
 class MOSSPC700<Instruction from, Instruction to> {
   Instruction From = from;
   Instruction To = to;
@@ -25,72 +33,72 @@ class MOSSPC700Mode<string MosInstPrefix, string InstPrefix, string Suffix>
 
 /// == SPC700 addressing mode syntax ==
 
-def SPC700ZeroPageZeroPage : AddressingMode {
+def SPC700ZeroPageZeroPage : AddressingMode<2> {
   let OperandsStr = "$dest , $src";
   let InOperandList = (ins addr8:$dest, addr8at2:$src);
 }
 
-def SPC700ZeroPageImmediate : AddressingMode {
+def SPC700ZeroPageImmediate : AddressingMode<2> {
   let OperandsStr = "$dest , # $src";
   let InOperandList = (ins addr8:$dest, imm8at2:$src);
 }
 
-def SPC700ZeroPageX : AddressingMode {
+def SPC700ZeroPageX : AddressingMode<1> {
   let OperandsStr = "$param + x";
   let InOperandList = (ins addr8:$param);
 }
 
-def SPC700ZeroPageY : AddressingMode {
+def SPC700ZeroPageY : AddressingMode<1> {
   let OperandsStr = "$param + y";
   let InOperandList = (ins addr8:$param);
 }
 
-def SPC700ZeroPageRelative : AddressingMode {
+def SPC700ZeroPageRelative : AddressingMode<2> {
   let OperandsStr = "$dest , $src";
   let InOperandList = (ins addr8:$dest, pcrel8at2:$src);
 }
 
-def SPC700ZeroPageXRelative : AddressingMode {
+def SPC700ZeroPageXRelative : AddressingMode<2> {
   let OperandsStr = "$dest + x , $src";
   let InOperandList = (ins addr8:$dest, pcrel8at2:$src);
 }
 
-def SPC700AbsoluteX : AddressingMode {
+def SPC700AbsoluteX : AddressingMode<2> {
   let OperandsStr = "$param + x";
   let InOperandList = (ins addr16:$param);
 }
 
-def SPC700AbsoluteY : AddressingMode {
+def SPC700AbsoluteY : AddressingMode<2> {
   let OperandsStr = "$param + y";
   let InOperandList = (ins addr16:$param);
 }
 
-def SPC700IndirectXIndirectY : AddressingMode {
+def SPC700IndirectXIndirectY : AddressingMode<0> {
   let OperandsStr = "( x ) , ( y )";
   let InOperandList = (ins);
 }
 
-def SPC700IndirectX : AddressingMode {
+def SPC700IndirectX : AddressingMode<0> {
   let OperandsStr = "( x )";
   let InOperandList = (ins);
 }
 
-def SPC700IndirectXAutoIncrement : AddressingMode {
+def SPC700IndirectXAutoIncrement : AddressingMode<0> {
   let OperandsStr = "( x ) +";
   let InOperandList = (ins);
 }
 
-def SPC700IndexedIndirect : AddressingMode {
+def SPC700IndexedIndirect : AddressingMode<1> {
   let OperandsStr = "[ $param + x ]";
   let InOperandList = (ins addr8:$param);
 }
 
-def SPC700IndexedIndirect16 : AddressingMode {
+def SPC700IndexedIndirect16 : AddressingMode<2> {
   let OperandsStr = "[ $param + x ]";
   let InOperandList = (ins addr16:$param);
 }
 
-def SPC700IndirectIndexed : AddressingMode {
+def SPC700IndirectIndexed : AddressingMode<1> {
   let OperandsStr = "[ $param ] + y";
   let InOperandList = (ins addr8:$param);
 }
@@ -158,28 +166,28 @@ class SPC700Inst24TwoOp<string prefix, string suffix, Opcode op = DefaultOpcode,
 
 multiclass SPC700LoadStoreA<string prefix, string suffix, bits<3> aaa> {
   def _ZeroPage :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b001, 0b00>, ZeroPage>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b001, 0b00>, ZeroPage>;
 
   def _Absolute :
-    SPC700Inst24<prefix, suffix, OpcodeABC<aaa, 0b001, 0b01>, Absolute>;
+    SPC700Inst24<prefix, suffix, SPC700OpcodeABC<aaa, 0b001, 0b01>, Absolute>;
 
   def _IndirectX :
-    SPC700Inst8<prefix, suffix, OpcodeABC<aaa, 0b001, 0b10>, SPC700IndirectX>;
+    SPC700Inst8<prefix, suffix, SPC700OpcodeABC<aaa, 0b001, 0b10>, SPC700IndirectX>;
 
   def _IndexedIndirect :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b001, 0b11>, SPC700IndexedIndirect>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b001, 0b11>, SPC700IndexedIndirect>;
       
   def _ZeroPageX :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b101, 0b00>, SPC700ZeroPageX>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b101, 0b00>, SPC700ZeroPageX>;
 
   def _AbsoluteX :
-    SPC700Inst24<prefix, suffix, OpcodeABC<aaa, 0b101, 0b01>, SPC700AbsoluteX>;
+    SPC700Inst24<prefix, suffix, SPC700OpcodeABC<aaa, 0b101, 0b01>, SPC700AbsoluteX>;
 
   def _AbsoluteY :
-    SPC700Inst24<prefix, suffix, OpcodeABC<aaa, 0b101, 0b10>, SPC700AbsoluteY>;
+    SPC700Inst24<prefix, suffix, SPC700OpcodeABC<aaa, 0b101, 0b10>, SPC700AbsoluteY>;
 
   def _IndirectIndexed :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b101, 0b11>, SPC700IndirectIndexed>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b101, 0b11>, SPC700IndirectIndexed>;
 }
 
 multiclass SPC700MosAliasLoadStoreA<string MosOpcodeStr, string InstPrefix> {
@@ -205,13 +213,13 @@ multiclass SPC700MosSpcLoadStoreA<string MosInstPrefix, string InstPrefix> {
 
 multiclass SPC700LoadStoreX<string prefix, string suffix, bits<3> aaa> {
   def _Absolute :
-    SPC700Inst24<prefix, suffix, OpcodeABC<aaa, 0b010, 0b01>, Absolute>;
+    SPC700Inst24<prefix, suffix, SPC700OpcodeABC<aaa, 0b010, 0b01>, Absolute>;
 
   def _ZeroPage :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b110, 0b00>, ZeroPage>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b110, 0b00>, ZeroPage>;
 
   def _ZeroPageY :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b110, 0b01>, SPC700ZeroPageY>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b110, 0b01>, SPC700ZeroPageY>;
 }
 
 multiclass SPC700MosAliasLoadStoreX<string MosOpcodeStr, string InstPrefix> {
@@ -228,13 +236,13 @@ multiclass SPC700MosSpcLoadStoreX<string MosInstPrefix, string InstPrefix> {
 
 multiclass SPC700LoadStoreY<string prefix, string suffix, bits<3> aaa> {
   def _ZeroPage :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b010, 0b11>, ZeroPage>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b010, 0b11>, ZeroPage>;
 
   def _Absolute :
-    SPC700Inst24<prefix, suffix, OpcodeABC<aaa, 0b011, 0b00>, Absolute>;
+    SPC700Inst24<prefix, suffix, SPC700OpcodeABC<aaa, 0b011, 0b00>, Absolute>;
 
   def _ZeroPageX :
-    SPC700Inst16<prefix, suffix, OpcodeABC<aaa, 0b110, 0b11>, SPC700ZeroPageX>;
+    SPC700Inst16<prefix, suffix, SPC700OpcodeABC<aaa, 0b110, 0b11>, SPC700ZeroPageX>;
 }
 
 multiclass SPC700MosAliasLoadStoreY<string MosOpcodeStr, string InstPrefix> {
@@ -252,16 +260,16 @@ multiclass SPC700MosSpcLoadStoreY<string MosInstPrefix, string InstPrefix> {
 multiclass SPC700Arithmetic<string OpcodeStr, bits<3> aaa>
     : SPC700LoadStoreA<OpcodeStr # " a ,", "", aaa> {
   def _Immediate :
-    SPC700Inst16<OpcodeStr # " a ,", "", OpcodeABC<aaa, 0b010, 0b00>, Immediate>;
+    SPC700Inst16<OpcodeStr # " a ,", "", SPC700OpcodeABC<aaa, 0b010, 0b00>, Immediate>;
 
   def _ZeroPageZeroPage :
-    SPC700Inst24TwoOp<OpcodeStr, "", OpcodeABC<aaa, 0b010, 0b01>, SPC700ZeroPageZeroPage>;
+    SPC700Inst24TwoOp<OpcodeStr, "", SPC700OpcodeABC<aaa, 0b010, 0b01>, SPC700ZeroPageZeroPage>;
 
   def _ZeroPageImmediate :
-    SPC700Inst24TwoOp<OpcodeStr, "", OpcodeABC<aaa, 0b110, 0b00>, SPC700ZeroPageImmediate>;
+    SPC700Inst24TwoOp<OpcodeStr, "", SPC700OpcodeABC<aaa, 0b110, 0b00>, SPC700ZeroPageImmediate>;
 
   def _IndirectXIndirectY :
-    SPC700Inst8<OpcodeStr, "", OpcodeABC<aaa, 0b110, 0b01>, SPC700IndirectXIndirectY>;
+    SPC700Inst8<OpcodeStr, "", SPC700OpcodeABC<aaa, 0b110, 0b01>, SPC700IndirectXIndirectY>;
 }
 
 multiclass SPC700MosAliasArithmetic<string MosOpcodeStr, string InstPrefix>
@@ -276,16 +284,16 @@ multiclass SPC700MosSpcArithmetic<string MosInstPrefix, string InstPrefix>
 
 multiclass SPC700ShiftInc<string OpcodeStr, bits<3> aaa> {
   def _ZeroPage :
-    SPC700Inst16<OpcodeStr, "", OpcodeABC<aaa, 0b010, 0b11>, ZeroPage>;
+    SPC700Inst16<OpcodeStr, "", SPC700OpcodeABC<aaa, 0b010, 0b11>, ZeroPage>;
 
   def _ZeroPageX :
-    SPC700Inst16<OpcodeStr, "", OpcodeABC<aaa, 0b110, 0b11>, SPC700ZeroPageX>;
+    SPC700Inst16<OpcodeStr, "", SPC700OpcodeABC<aaa, 0b110, 0b11>, SPC700ZeroPageX>;
 
   def _Absolute :
-    SPC700Inst24<OpcodeStr, "", OpcodeABC<aaa, 0b011, 0b00>, Absolute>;
+    SPC700Inst24<OpcodeStr, "", SPC700OpcodeABC<aaa, 0b011, 0b00>, Absolute>;
 
   def _Accumulator :
-    SPC700Inst8<OpcodeStr, "a", OpcodeABC<aaa, 0b111, 0b00>, Accumulator>;
+    SPC700Inst8<OpcodeStr, "a", SPC700OpcodeABC<aaa, 0b111, 0b00>, Accumulator>;
 }
 
 multiclass SPC700MosAliasShiftInc<string MosOpcodeStr, string InstPrefix> {
@@ -360,7 +368,7 @@ class SPC700InstBit13<string prefix, string suffix, Opcode op = DefaultOpcode> :
 }
 
 class SPC700InstBitBranch<string opcodestr, Opcode op = DefaultOpcode> :
-    Inst<opcodestr>, InstConditionalBranch {
+    Inst<opcodestr>, TraitBranch {
   let Size = 3;
   bits<24> Inst;
   bits<3> tbit;
@@ -413,14 +421,14 @@ def SPC700_EI_Implied : InstLow0<"ei", 0xA>;
 def SPC700_DI_Implied : InstLow0<"di", 0xC>;
 def SPC700_CLRV_Implied : InstLow0<"clrv", 0xE>;
 
-def SPC700_BPL_Relative : ConditionalBranch<"bpl", 0b00, 0b0>;
-def SPC700_BMI_Relative : ConditionalBranch<"bmi", 0b00, 0b1>;
-def SPC700_BVC_Relative : ConditionalBranch<"bvc", 0b01, 0b0>;
-def SPC700_BVS_Relative : ConditionalBranch<"bvs", 0b01, 0b1>;
-def SPC700_BCC_Relative : ConditionalBranch<"bcc", 0b10, 0b0>;
-def SPC700_BCS_Relative : ConditionalBranch<"bcs", 0b10, 0b1>;
-def SPC700_BNE_Relative : ConditionalBranch<"bne", 0b11, 0b0>;
-def SPC700_BEQ_Relative : ConditionalBranch<"beq", 0b11, 0b1>;
+def SPC700_BPL_Relative : ConditionalBranch<0x10, "bpl">;
+def SPC700_BMI_Relative : ConditionalBranch<0x30, "bmi">;
+def SPC700_BVC_Relative : ConditionalBranch<0x50, "bvc">;
+def SPC700_BVS_Relative : ConditionalBranch<0x70, "bvs">;
+def SPC700_BCC_Relative : ConditionalBranch<0x90, "bcc">;
+def SPC700_BCS_Relative : ConditionalBranch<0xB0, "bcs">;
+def SPC700_BNE_Relative : ConditionalBranch<0xD0, "bne">;
+def SPC700_BEQ_Relative : ConditionalBranch<0xF0, "beq">;
  
 // x1 opcodes
 def SPC700_TCALL_Implied : Inst<"tcall $idx"> {
@@ -451,9 +459,9 @@ defm SPC700_LOAD_A : SPC700LoadStoreA<"mov a, ", "", 0b111>;
 defm SPC700_STORE_X : SPC700LoadStoreX<"mov", " , x", 0b110>;
 defm SPC700_LOAD_X : SPC700LoadStoreX<"mov x, ", "", 0b111>;
 def SPC700_CMP_X_Immediate :
-  SPC700Inst16<"cmp x ,", "", OpcodeABC<0b110, 0b010, 0b00>, Immediate>;
+  SPC700Inst16<"cmp x ,", "", SPC700OpcodeABC<0b110, 0b010, 0b00>, Immediate>;
 def SPC700_LOAD_A_Immediate :
-  SPC700Inst16<"mov a ,", "", OpcodeABC<0b111, 0b010, 0b00>, Immediate>;
+  SPC700Inst16<"mov a ,", "", SPC700OpcodeABC<0b111, 0b010, 0b00>, Immediate>;
 
 // xA
 def SPC700_OR1_C_Absolute : SPC700InstBit13<"or1 c ,", "", Opcode<0x0A>>;
@@ -526,17 +534,17 @@ def SPC700_DBNZ_Y_Relative
 // xF opcodes
 def SPC700_BRK_Implied : Inst8<"brk", Opcode<0x0F>>;
 def SPC700_JMP_IndexedIndirect16
-    : Inst24<"jmp", Opcode<0x1F>, SPC700IndexedIndirect16>, InstUnconditionalBranch {
-  let isIndirectBranch = true;  
+    : Inst24<"jmp", Opcode<0x1F>, SPC700IndexedIndirect16>, TraitUnconditionalBranch {
+  let isIndirectBranch = true;
 }
 def SPC700_BRA_Relative
-    : Inst16<"bra", Opcode<0x2F>, Relative>, InstUnconditionalBranch;
-def SPC700_CALL_Absolute : Inst24<"call", Opcode<0x3F>, Absolute>, InstCall;
-def SPC700_PCALL_LastPage : Inst16<"pcall", Opcode<0x4F>, ZeroPage>, InstCall;
+    : Inst16<"bra", Opcode<0x2F>, Relative>, TraitUnconditionalBranch;
+def SPC700_CALL_Absolute : Inst24<"call", Opcode<0x3F>, Absolute>, TraitCall;
+def SPC700_PCALL_LastPage : Inst16<"pcall", Opcode<0x4F>, ZeroPage>, TraitCall;
 def SPC700_JMP_Absolute
-    : Inst24<"jmp", Opcode<0x5F>, Absolute>, InstUnconditionalBranch;
-def SPC700_RET_Implied : Inst8<"ret", Opcode<0x6F>>, InstReturn;
-def SPC700_RETI_Implied : Inst8<"reti", Opcode<0x7F>>, InstReturn;
+    : Inst24<"jmp", Opcode<0x5F>, Absolute>, TraitUnconditionalBranch;
+def SPC700_RET_Implied : Inst8<"ret", Opcode<0x6F>>, TraitReturn;
+def SPC700_RETI_Implied : Inst8<"reti", Opcode<0x7F>>, TraitReturn;
 def SPC700_MOV_ZeroPageImmediate
     : SPC700Inst24TwoOp<"mov", "", Opcode<0x8F>, SPC700ZeroPageImmediate>;
 def SPC700_XCN_A : Inst8<"xcn a", Opcode<0x9F>>;
@@ -772,7 +780,7 @@ def : MOSSPC700<PLY_Implied, SPC700_POP_Y>;
 // xF opcodes
 def : MOSSPC700<BRA_Relative, SPC700_BRA_Relative>;
 def : MOSSPC700<JSR_Absolute, SPC700_CALL_Absolute>;
-def : MOSSPC700<JMP_IndexedIndirect, SPC700_JMP_IndexedIndirect16>;
+def : MOSSPC700<JMP_IndexedIndirect16, SPC700_JMP_IndexedIndirect16>;
 def : MOSSPC700<RTS_Implied, SPC700_RET_Implied>;
 def : MOSSPC700<RTI_Implied, SPC700_RETI_Implied>;
 def : MOSSPC700<WAI_Implied, SPC700_SLEEP_Implied>;
