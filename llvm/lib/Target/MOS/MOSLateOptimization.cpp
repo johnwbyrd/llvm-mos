@@ -61,17 +61,39 @@ bool MOSLateOptimization::runOnMachineFunction(MachineFunction &MF) {
   return Changed;
 }
 
-static bool definesNZ(const MachineInstr &MI, Register Val, const MOSSubtarget &STI) {
-  if (MI.getOpcode() == MOS::CL)
+/// Returns true if MI defines the given register Val and also sets NZ flags.
+/// This is used to find earlier instructions that already compute the flags
+/// we need, allowing us to eliminate redundant CmpZero instructions.
+static bool definesNZ(const MachineInstr &MI, Register Val,
+                      const MOSSubtarget &STI) {
+  // Check pseudo-instructions that don't set NZ despite defining a register.
+  switch (MI.getOpcode()) {
+  case MOS::CL:
+  case MOS::MOVImag8:
+  case MOS::STImag8:
     return false;
-  if (STI.hasSPC700() && MI.getOpcode() == MOS::PL)
-    return false;
-  if (MI.getOpcode() == MOS::MOVImag8)
-    return false;
-  if (MI.getOpcode() == MOS::STImag8)
-    return false;
+  case MOS::PL:
+    // SPC700's PL doesn't set NZ.
+    if (STI.hasSPC700())
+      return false;
+    break;
+  default:
+    break;
+  }
+
+  // For real instructions with TSFlags, use the flag metadata.
+  uint64_t TSFlags = MI.getDesc().TSFlags;
+  if (TSFlags != 0) {
+    // If the instruction doesn't modify NZ, it can't define the flags we need.
+    if (!MOS::modifiesNZ(TSFlags))
+      return false;
+  }
+
+  // Check if this instruction defines the register we're interested in.
   if (MI.definesRegister(Val, /*TRI=*/nullptr))
     return true;
+
+  // Some transfer instructions set NZ based on the source, not destination.
   switch (MI.getOpcode()) {
   default:
     return false;
@@ -113,25 +135,41 @@ bool MOSLateOptimization::lowerCmpZeros(MachineBasicBlock &MBB) const {
       }
       if (J.modifiesRegister(MOS::NZ, TRI))
         break;
-      bool ClobbersNZ = true;
-      if (J.isBranch() || (J.mayStore() && !J.mayLoad()))
-        ClobbersNZ = false;
-      else
-        switch (J.getOpcode()) {
-        case MOS::CL:
-        case MOS::CLV:
-        case MOS::LDCImm:
-        case MOS::MOVImag8:
-        case MOS::STImag8:
-        case MOS::PH:
-        case MOS::SWAP:
-          ClobbersNZ = false;
-          break;
-        case MOS::PL:
-          if (STI.hasSPC700())
+
+      // Determine if this instruction clobbers NZ flags.
+      bool ClobbersNZ = false;
+
+      // For real instructions with TSFlags, use the flag metadata.
+      uint64_t TSFlags = J.getDesc().TSFlags;
+      if (TSFlags != 0) {
+        ClobbersNZ = MOS::modifiesNZ(TSFlags);
+      } else {
+        // For pseudo-instructions without TSFlags, use explicit checks.
+        // Branches and pure stores don't affect flags.
+        if (!J.isBranch() && !(J.mayStore() && !J.mayLoad())) {
+          // Assume pseudo-instructions clobber NZ unless we know otherwise.
+          ClobbersNZ = true;
+          switch (J.getOpcode()) {
+          case MOS::CL:
+          case MOS::CLV:
+          case MOS::LDCImm:
+          case MOS::MOVImag8:
+          case MOS::STImag8:
+          case MOS::PH:
+          case MOS::SWAP:
             ClobbersNZ = false;
-          break;
+            break;
+          case MOS::PL:
+            // SPC700's PL doesn't modify NZ.
+            if (STI.hasSPC700())
+              ClobbersNZ = false;
+            break;
+          default:
+            break;
+          }
         }
+      }
+
       if (ClobbersNZ)
         break;
     }

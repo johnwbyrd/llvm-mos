@@ -180,8 +180,26 @@ inline FlagEffect getFlagC(uint64_t TSFlags) {
       (TSFlags >> TSFlagBits::FlagCShift) & TSFlagBits::FlagMask);
 }
 
-// Helper to check if instruction modifies any flags
-inline bool modifiesFlags(uint64_t TSFlags) {
+// Convenience helpers for common flag queries
+
+/// Returns true if the instruction modifies the N or Z flags.
+inline bool modifiesNZ(uint64_t TSFlags) {
+  return getFlagN(TSFlags) != FlagUnaffected ||
+         getFlagZ(TSFlags) != FlagUnaffected;
+}
+
+/// Returns true if the instruction modifies the carry flag.
+inline bool modifiesCarry(uint64_t TSFlags) {
+  return getFlagC(TSFlags) != FlagUnaffected;
+}
+
+/// Returns true if the instruction modifies the overflow flag.
+inline bool modifiesOverflow(uint64_t TSFlags) {
+  return getFlagV(TSFlags) != FlagUnaffected;
+}
+
+/// Returns true if the instruction modifies any processor flag.
+inline bool modifiesAnyFlag(uint64_t TSFlags) {
   constexpr uint64_t AllFlagsMask =
       (TSFlagBits::FlagMask << TSFlagBits::FlagNShift) |
       (TSFlagBits::FlagMask << TSFlagBits::FlagVShift) |
