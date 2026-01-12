@@ -15,7 +15,6 @@
 #define LLVM_LIB_TARGET_MOS_MOSCONTEXT_H
 
 #include "llvm/Emulator/Context.h"
-#include "llvm/Emulator/System.h"
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstrInfo.h"
@@ -79,6 +78,10 @@ public:
   void setPC(uint64_t NewPC) override { PC = static_cast<uint16_t>(NewPC); }
   uint64_t getCycles() const override { return Cycles; }
   bool isHalted() const override { return Halted; }
+  void halt(int ExitCode = 0) override {
+    Halted = true;
+    ExitCode_ = ExitCode;
+  }
   int getExitCode() const override { return ExitCode_; }
 
   //===--------------------------------------------------------------------===//
@@ -184,30 +187,6 @@ public:
       A = diff & 0xFF;
       setNZ(A);
     }
-  }
-
-  //===--------------------------------------------------------------------===//
-  // Memory Access (routes through System)
-  //===--------------------------------------------------------------------===//
-
-  uint8_t read(uint16_t Addr) {
-    if (Sys)
-      return Sys->read(Addr);
-    return 0xFF;
-  }
-
-  void write(uint16_t Addr, uint8_t Value) {
-    if (Sys)
-      Sys->write(Addr, Value);
-  }
-
-  uint16_t read16(uint16_t Addr) {
-    return read(Addr) | (read(Addr + 1) << 8);
-  }
-
-  void write16(uint16_t Addr, uint16_t Value) {
-    write(Addr, Value & 0xFF);
-    write(Addr + 1, Value >> 8);
   }
 
 private:
