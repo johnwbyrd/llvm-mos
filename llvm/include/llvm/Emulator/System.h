@@ -142,6 +142,22 @@ public:
     return true;
   }
 
+  /// Halt all CPUs with the given exit code.
+  void halt(int ExitCode = 0) {
+    for (auto &Entry : Contexts) {
+      Entry.Ctx->halt(ExitCode);
+    }
+  }
+
+  /// Get the exit code from the first halted context.
+  int getExitCode() const {
+    for (const auto &Entry : Contexts) {
+      if (Entry.Ctx->isHalted())
+        return Entry.Ctx->getExitCode();
+    }
+    return 0;
+  }
+
 private:
   struct ContextEntry {
     Context *Ctx;
