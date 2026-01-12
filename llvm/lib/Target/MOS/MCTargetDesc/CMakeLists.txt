@@ -1,5 +1,6 @@
 add_llvm_component_library(LLVMMOSDesc
   MOSAsmBackend.cpp
+  MOSContext.cpp
   MOSELFObjectWriter.cpp
   MOSFixupKinds.cpp
   MOSInstPrinter.cpp
@@ -13,6 +14,7 @@ add_llvm_component_library(LLVMMOSDesc
   MOSTargetStreamer.cpp
 
   LINK_COMPONENTS
+  Emulator
   MC
   MOSInfo
   Support

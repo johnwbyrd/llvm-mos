@@ -27,6 +27,7 @@ let Cycles6502 = 7, FlagB = 2, FlagI = 2,
   push(getP() | 0x30);  // B and unused flag set
   I = true;
   PC = read(0xFFFE) | (read(0xFFFF) << 8);
+  PCModified = true;
 }] in
 def BRK_Implied    : MOSInst<0x00, "brk", Implicit>, TraitUnconditionalBranch;
 
@@ -573,21 +574,21 @@ defm NOP           : Op<0xEA, "nop", Implicit>;
 // Branches take 2 cycles if not taken, +1 if taken, +1 more if page cross
 
 let Cycles6502 = 2, PageCrossCycles = 1 in {
-let Emulate = [{ if (!N) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (!N) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BPL           : OpBranch<0x10, "bpl">;  // Branch if Plus (N=0)
-let Emulate = [{ if (N) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (N) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BMI           : OpBranch<0x30, "bmi">;  // Branch if Minus (N=1)
-let Emulate = [{ if (!V) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (!V) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BVC           : OpBranch<0x50, "bvc">;  // Branch if Overflow Clear (V=0)
-let Emulate = [{ if (V) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (V) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BVS           : OpBranch<0x70, "bvs">;  // Branch if Overflow Set (V=1)
-let Emulate = [{ if (!C) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (!C) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BCC           : OpBranch<0x90, "bcc">;  // Branch if Carry Clear (C=0)
-let Emulate = [{ if (C) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (C) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BCS           : OpBranch<0xB0, "bcs">;  // Branch if Carry Set (C=1)
-let Emulate = [{ if (!Z) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (!Z) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BNE           : OpBranch<0xD0, "bne">;  // Branch if Not Equal (Z=0)
-let Emulate = [{ if (Z) { PC = $EA; Cycles++; } }] in
+let Emulate = [{ if (Z) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BEQ           : OpBranch<0xF0, "beq">;  // Branch if Equal (Z=1)
 }
 
@@ -596,10 +597,10 @@ defm BEQ           : OpBranch<0xF0, "beq">;  // Branch if Equal (Z=1)
 //===----------------------------------------------------------------------===//
 
 // JMP - Jump (unconditional)
-let Cycles6502 = 3, Emulate = [{ PC = $EA; }] in
+let Cycles6502 = 3, Emulate = [{ PC = $EA; PCModified = true; }] in
 defm JMP           : OpJump<0x4C, "jmp", Absolute>;
 
-let Cycles6502 = 5, Emulate = [{ PC = $EA; }] in
+let Cycles6502 = 5, Emulate = [{ PC = $EA; PCModified = true; }] in
 defm JMP           : OpJumpIndirect<0x6C, "jmp", Indirect16>;
 
 // JSR - Jump to Subroutine (pushes return address - 1)
@@ -608,6 +609,7 @@ let Cycles6502 = 6, Emulate = [{
   push((ret >> 8) & 0xFF);
   push(ret & 0xFF);
   PC = $EA;
+  PCModified = true;
 }] in
 defm JSR           : OpCall<0x20, "jsr", Absolute>;
 
@@ -616,6 +618,7 @@ let Cycles6502 = 6, Emulate = [{
   uint8_t lo = pull();
   uint8_t hi = pull();
   PC = ((hi << 8) | lo) + 1;
+  PCModified = true;
 }] in
 defm RTS           : OpReturn<0x60, "rts">;
 
@@ -626,6 +629,7 @@ let Cycles6502 = 6, FlagN = 1, FlagV = 1, FlagB = 1, FlagD = 1, FlagI = 1, FlagZ
   uint8_t lo = pull();
   uint8_t hi = pull();
   PC = (hi << 8) | lo;
+  PCModified = true;
 }] in
 defm RTI           : OpReturn<0x40, "rti">;
 

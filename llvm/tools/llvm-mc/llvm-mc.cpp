@@ -15,10 +15,15 @@
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/DWARFCFIChecker/DWARFCFIFunctionFrameAnalyzer.h"
 #include "llvm/DWARFCFIChecker/DWARFCFIFunctionFrameStreamer.h"
+#include "llvm/Emulator/Context.h"
+#include "llvm/Emulator/Memory.h"
+#include "llvm/Emulator/System.h"
+#include "llvm/Emulator/Trace.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCObjectFileInfo.h"
@@ -30,6 +35,7 @@
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCTargetOptionsCommandFlags.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compression.h"
 #include "llvm/Support/FileUtilities.h"
@@ -228,6 +234,7 @@ enum ActionType {
   AC_Disassemble,
   AC_MDisassemble,
   AC_CDisassemble,
+  AC_Run,
 };
 
 static cl::opt<ActionType> Action(
@@ -240,7 +247,30 @@ static cl::opt<ActionType> Action(
                clEnumValN(AC_MDisassemble, "mdis",
                           "Marked up disassembly of strings of hex bytes"),
                clEnumValN(AC_CDisassemble, "cdis",
-                          "Colored disassembly of strings of hex bytes")),
+                          "Colored disassembly of strings of hex bytes"),
+               clEnumValN(AC_Run, "run",
+                          "Load and execute an ELF file")),
+    cl::cat(MCCategory));
+
+static cl::opt<bool>
+    EmulatorTrace("trace", cl::desc("Trace instruction execution"),
+                  cl::cat(MCCategory));
+
+enum TraceFormatType {
+  TF_Text,
+  TF_JSON,
+  TF_VCD,
+};
+
+static cl::opt<TraceFormatType> TraceFormat(
+    "trace-format", cl::init(TF_Text),
+    cl::desc("Choose trace output format:"),
+    cl::values(clEnumValN(TF_Text, "text",
+                          "Tab-separated text (default)"),
+               clEnumValN(TF_JSON, "json",
+                          "JSON Lines (one object per line)"),
+               clEnumValN(TF_VCD, "vcd",
+                          "VCD (Value Change Dump) for waveform viewers")),
     cl::cat(MCCategory));
 
 static cl::opt<unsigned>
@@ -375,6 +405,115 @@ static int AssembleInput(const char *ProgName, const Target *TheTarget,
   int Res = Parser->Run(NoInitialTextSection);
 
   return Res;
+}
+
+//===----------------------------------------------------------------------===//
+// Object File Execution (--run)
+//===----------------------------------------------------------------------===//
+
+static int RunObject(const char *ProgName, const Target *TheTarget,
+                     const MCSubtargetInfo &STI, MemoryBuffer &Buffer,
+                     MCContext &Ctx, const MCAsmInfo &MAI,
+                     const MCInstrInfo &MCII, const MCRegisterInfo &MRI) {
+  // Parse the object file (auto-detects format from magic bytes)
+  Expected<std::unique_ptr<object::ObjectFile>> ObjOrErr =
+      object::ObjectFile::createObjectFile(Buffer.getMemBufferRef());
+  if (!ObjOrErr) {
+    WithColor::error(errs(), ProgName)
+        << "failed to parse object file: " << toString(ObjOrErr.takeError())
+        << "\n";
+    return 1;
+  }
+  object::ObjectFile &Obj = **ObjOrErr;
+
+  // Determine memory size from address width (cap at 4GB)
+  unsigned AddrBits = Obj.getBytesInAddress() * 8;
+  uint64_t MemSize = (AddrBits >= 32) ? (4ULL * 1024 * 1024 * 1024)
+                                      : (1ULL << AddrBits);
+
+  // Create system with RAM covering the entire address space
+  emu::System Sys;
+  auto RAM = std::make_unique<emu::Memory>(MemSize);
+
+  // Load sections from object file into RAM
+  // Only load runtime sections (text, data, bss), skip debug/metadata
+  for (const object::SectionRef &Section : Obj.sections()) {
+    // Skip non-runtime sections (debug info, symbol tables, etc.)
+    if (!Section.isText() && !Section.isData() && !Section.isBSS())
+      continue;
+
+    Expected<StringRef> ContentsOrErr = Section.getContents();
+    if (!ContentsOrErr) {
+      WithColor::error(errs(), ProgName)
+          << "failed to read section: " << toString(ContentsOrErr.takeError())
+          << "\n";
+      return 1;
+    }
+    StringRef Contents = *ContentsOrErr;
+    uint64_t Addr = Section.getAddress();
+
+    // Copy section data to RAM
+    RAM->writeBlock(Addr, reinterpret_cast<const uint8_t *>(Contents.data()),
+                    Contents.size());
+  }
+
+  // Add RAM to system
+  Sys.addOwnedDevice(0, MemSize - 1, std::move(RAM));
+
+  // Create the target-specific emulator
+  std::unique_ptr<emu::Context> Emu(TheTarget->createEmulator(STI, Ctx));
+  if (!Emu) {
+    WithColor::error(errs(), ProgName)
+        << "no emulator available for target " << TheTarget->getName() << "\n";
+    return 1;
+  }
+
+  // Register emulator with system
+  Sys.addContext(Emu.get());
+
+  // Set PC to entry point (if available) or reset vector
+  // For now, let the CPU reset itself (which reads the reset vector)
+  Emu->reset();
+
+  // Configure tracing if requested
+  std::unique_ptr<MCInstPrinter> IP;
+  std::unique_ptr<emu::TraceWriter> TraceWriter;
+  if (EmulatorTrace) {
+    IP.reset(TheTarget->createMCInstPrinter(STI.getTargetTriple(),
+                                            0, MAI, MCII, MRI));
+
+    // Create the appropriate trace writer based on format
+    switch (TraceFormat) {
+    case TF_Text:
+      TraceWriter = std::make_unique<emu::TextTraceWriter>(errs(), IP.get(), &STI);
+      break;
+    case TF_JSON:
+      TraceWriter = std::make_unique<emu::JSONTraceWriter>(errs(), IP.get(), &STI);
+      break;
+    case TF_VCD:
+      TraceWriter = std::make_unique<emu::VCDTraceWriter>(errs());
+      break;
+    }
+
+    Emu->setInstPrinter(IP.get());
+    Emu->setSubtargetInfo(&STI);
+    Emu->setTraceWriter(TraceWriter.get());
+    Emu->setTracing(true);
+    TraceWriter->traceStart();
+  }
+
+  // Run until halt
+  if (!Emu->run()) {
+    if (TraceWriter)
+      TraceWriter->traceEnd();
+    WithColor::error(errs(), ProgName) << "emulator execution failed\n";
+    return 1;
+  }
+
+  if (TraceWriter)
+    TraceWriter->traceEnd();
+
+  return Emu->getExitCode();
 }
 
 int main(int argc, char **argv) {
@@ -664,6 +803,9 @@ int main(int argc, char **argv) {
   case AC_CDisassemble:
   case AC_Disassemble:
     disassemble = true;
+    break;
+  case AC_Run:
+    Res = RunObject(ProgName, TheTarget, *STI, *Buffer, Ctx, *MAI, *MCII, *MRI);
     break;
   }
   if (disassemble)
