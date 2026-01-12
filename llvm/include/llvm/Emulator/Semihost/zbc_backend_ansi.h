@@ -271,6 +271,58 @@ void zbc_ansi_insecure_init(zbc_ansi_insecure_state_t *state);
  */
 void zbc_ansi_insecure_cleanup(zbc_ansi_insecure_state_t *state);
 
+/*========================================================================
+ * Console-Only Backend State
+ *========================================================================*/
+
+/**
+ * Console-only ANSI backend state (caller-allocated).
+ *
+ * Initialize with zbc_ansi_console_init() before use.
+ * This backend only supports console I/O (stdin/stdout/stderr) and exit.
+ * File operations are rejected with EACCES.
+ */
+typedef struct zbc_ansi_console_state_s {
+    /* Exit callback */
+    void (*on_exit)(void *ctx, unsigned int reason, unsigned int subcode);
+    void *callback_ctx;
+
+    /* Other state */
+    int last_errno;
+    uint64_t start_clock;
+    int initialized;
+} zbc_ansi_console_state_t;
+
+/*========================================================================
+ * Console-Only Backend API
+ *========================================================================*/
+
+/**
+ * Initialize console-only ANSI backend.
+ *
+ * @param state Caller-allocated state structure
+ */
+void zbc_ansi_console_init(zbc_ansi_console_state_t *state);
+
+/**
+ * Set exit callback for console-only backend.
+ *
+ * @param state   Initialized state
+ * @param on_exit Called when guest requests exit
+ * @param ctx     Context passed to callback
+ */
+void zbc_ansi_console_set_exit_callback(
+    zbc_ansi_console_state_t *state,
+    void (*on_exit)(void *ctx, unsigned int reason, unsigned int subcode),
+    void *ctx);
+
+/**
+ * Clean up console-only ANSI backend state.
+ *
+ * @param state Initialized state
+ */
+void zbc_ansi_console_cleanup(zbc_ansi_console_state_t *state);
+
 #ifdef __cplusplus
 } /* extern "C" */
 } /* namespace zbc */
