@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "MOSMCTargetDesc.h"
+#include "MOSContext.h"
 #include "MOSInstPrinter.h"
 #include "MOSMCAsmInfo.h"
 #include "MOSMCELFStreamer.h"
@@ -22,6 +23,8 @@
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCCodeEmitter.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCInstrAnalysis.h"
@@ -166,6 +169,24 @@ static MCInstrAnalysis *createMOSMCInstrAnalysis(const MCInstrInfo *Info) {
   return new MOSMCInstrAnalysis(Info);
 }
 
+static emu::Context *createMOSEmulator(const Target &T,
+                                       const MCSubtargetInfo &STI,
+                                       MCContext &Ctx) {
+  // Create the disassembler for instruction decoding
+  std::unique_ptr<MCDisassembler> Disasm(T.createMCDisassembler(STI, Ctx));
+  if (!Disasm)
+    return nullptr;
+
+  // Create MCInstrInfo for instruction size lookup
+  std::unique_ptr<MCInstrInfo> II(T.createMCInstrInfo());
+  if (!II)
+    return nullptr;
+
+  // Create the MOS execution context
+  // Note: The context takes ownership of both the disassembler and instr info
+  return new MOS::Context(Disasm.release(), II.release());
+}
+
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMOSTargetMC() {
   // Register the MC asm info with initial frame state for CFI.
   TargetRegistry::RegisterMCAsmInfo(getTheMOSTarget(), createMOSMCAsmInfo);
@@ -206,6 +227,9 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMOSTargetMC() {
 
   // Register the asm backend (as little endian).
   TargetRegistry::RegisterMCAsmBackend(getTheMOSTarget(), createMOSAsmBackend);
+
+  // Register the emulator.
+  TargetRegistry::RegisterEmulator(getTheMOSTarget(), createMOSEmulator);
 }
 
 constexpr StringRef ZPPrefixes[] = {
