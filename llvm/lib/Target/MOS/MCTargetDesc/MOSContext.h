@@ -84,6 +84,9 @@ public:
   }
   int getExitCode() const override { return ExitCode_; }
 
+  /// MOS has a 16-bit address bus (64KB address space).
+  unsigned getAddressBits() const override { return 16; }
+
   //===--------------------------------------------------------------------===//
   // Helper Methods (used by generated code)
   //===--------------------------------------------------------------------===//
