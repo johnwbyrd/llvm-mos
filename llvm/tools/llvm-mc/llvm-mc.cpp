@@ -257,15 +257,11 @@ static cl::opt<bool>
     EmulatorTrace("trace", cl::desc("Trace instruction execution"),
                   cl::cat(MCCategory));
 
-static cl::opt<bool>
+static cl::opt<std::string>
     EmulatorSemihost("semihost",
-                     cl::desc("Enable semihosting for host I/O"),
+                     cl::desc("Enable semihosting with sandbox directory for file I/O"),
+                     cl::value_desc("sandbox-dir"),
                      cl::cat(MCCategory));
-
-static cl::opt<bool>
-    EmulatorSemihostInsecure("semihost-insecure",
-                             cl::desc("Allow unrestricted filesystem access (DANGEROUS)"),
-                             cl::cat(MCCategory));
 
 enum TraceFormatType {
   TF_Text,
@@ -487,15 +483,8 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
 
   // Add semihosting device if requested
   std::unique_ptr<emu::Semihost> Semihost;
-  if (EmulatorSemihost || EmulatorSemihostInsecure) {
-    if (EmulatorSemihostInsecure) {
-      Semihost = emu::Semihost::createInsecure(Sys);
-    } else {
-      // Use current working directory as sandbox
-      SmallString<256> SandboxDir;
-      sys::fs::current_path(SandboxDir);
-      Semihost = emu::Semihost::create(Sys, std::string(SandboxDir));
-    }
+  if (!EmulatorSemihost.empty()) {
+    Semihost = emu::Semihost::create(Sys, EmulatorSemihost);
 
     // Compute semihost address per ZBC specification:
     // reserved_start = 2^n - 2^(n/2)
@@ -505,20 +494,19 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
     uint64_t SemihostBase = ReservedStart - 512 - 32;
     uint64_t SemihostEnd = SemihostBase + 31;
     Sys.addDevice(SemihostBase, SemihostEnd, Semihost.get());
+
+    // Hook up semihost exit callback to halt all CPUs
+    Semihost->setExitCallback(
+        [&Sys](unsigned Reason, unsigned Subcode) {
+          // Use Subcode as exit code (Reason may contain ARM ADP_Stopped_* constants
+          // which don't fit in 16 bits on MOS, but Subcode always has the exit value)
+          (void)Reason;
+          Sys.halt(static_cast<int>(Subcode));
+        });
   }
 
   // Register emulator with system
   Sys.addContext(Emu.get());
-
-  // Hook up semihost exit callback to halt emulator
-  if (Semihost) {
-    Semihost->setExitCallback(
-        [&Emu](unsigned Reason, unsigned Subcode) {
-          // Reason 0x20026 = ADP_Stopped_ApplicationExit, Subcode is exit code
-          // For simplicity, use Subcode as exit code for all reasons
-          Emu->halt(static_cast<int>(Subcode));
-        });
-  }
 
   // Set PC to entry point (if available) or reset vector
   // For now, let the CPU reset itself (which reads the reset vector)
@@ -562,7 +550,7 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   if (TraceWriter)
     TraceWriter->traceEnd();
 
-  return Emu->getExitCode();
+  return Sys.getExitCode();
 }
 
 int main(int argc, char **argv) {
