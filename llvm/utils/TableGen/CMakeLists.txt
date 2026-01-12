@@ -49,6 +49,7 @@ add_tablegen(llvm-tblgen LLVM
   DFAPacketizerEmitter.cpp
   DisassemblerEmitter.cpp
   DXILEmitter.cpp
+  EmulatorEmitter.cpp
   ExegesisEmitter.cpp
   FastISelEmitter.cpp
   GlobalISelCombinerEmitter.cpp
