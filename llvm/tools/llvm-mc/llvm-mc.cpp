@@ -481,29 +481,33 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   // Add RAM to system
   Sys.addOwnedDevice(0, MemSize - 1, std::move(RAM));
 
-  // Add semihosting device if requested
+  // Always add semihosting device for console I/O and exit handling.
+  // If --semihost=<dir> is specified, enable sandboxed filesystem access.
+  // Otherwise, use console-only mode (no filesystem access).
   std::unique_ptr<emu::Semihost> Semihost;
   if (!EmulatorSemihost.empty()) {
     Semihost = emu::Semihost::create(Sys, EmulatorSemihost);
-
-    // Compute semihost address per ZBC specification:
-    // reserved_start = 2^n - 2^(n/2)
-    // semihost_base = reserved_start - 512 - 32
-    // For 16-bit: 65536 - 256 - 512 - 32 = 64736 = 0xFCE0
-    uint64_t ReservedStart = MemSize - (1ULL << (AddrBits / 2));
-    uint64_t SemihostBase = ReservedStart - 512 - 32;
-    uint64_t SemihostEnd = SemihostBase + 31;
-    Sys.addDevice(SemihostBase, SemihostEnd, Semihost.get());
-
-    // Hook up semihost exit callback to halt all CPUs
-    Semihost->setExitCallback(
-        [&Sys](unsigned Reason, unsigned Subcode) {
-          // Use Subcode as exit code (Reason may contain ARM ADP_Stopped_* constants
-          // which don't fit in 16 bits on MOS, but Subcode always has the exit value)
-          (void)Reason;
-          Sys.halt(static_cast<int>(Subcode));
-        });
+  } else {
+    Semihost = emu::Semihost::createConsoleOnly(Sys);
   }
+
+  // Compute semihost address per ZBC specification:
+  // reserved_start = 2^n - 2^(n/2)
+  // semihost_base = reserved_start - 512 - 32
+  // For 16-bit: 65536 - 256 - 512 - 32 = 64736 = 0xFCE0
+  uint64_t ReservedStart = MemSize - (1ULL << (AddrBits / 2));
+  uint64_t SemihostBase = ReservedStart - 512 - 32;
+  uint64_t SemihostEnd = SemihostBase + 31;
+  Sys.addDevice(SemihostBase, SemihostEnd, Semihost.get());
+
+  // Hook up semihost exit callback to halt all CPUs
+  Semihost->setExitCallback(
+      [&Sys](unsigned Reason, unsigned Subcode) {
+        // Use Subcode as exit code (Reason may contain ARM ADP_Stopped_* constants
+        // which don't fit in 16 bits on MOS, but Subcode always has the exit value)
+        (void)Reason;
+        Sys.halt(static_cast<int>(Subcode));
+      });
 
   // Register emulator with system
   Sys.addContext(Emu.get());
