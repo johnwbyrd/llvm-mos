@@ -62,6 +62,7 @@ add_llvm_target(MOSCodeGen
   CodeGen
   CodeGenTypes
   Core
+  Emulator
   GlobalISel
   IPO
   InstCombine
