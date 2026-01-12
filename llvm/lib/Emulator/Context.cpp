@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Emulator/Context.h"
+#include "llvm/Emulator/System.h"
 
 using namespace llvm;
 using namespace llvm::emu;
@@ -29,4 +30,15 @@ uint64_t Context::executeFor(uint64_t TargetCycles) {
   }
 
   return getCycles() - StartCycles;
+}
+
+uint8_t Context::read(uint64_t Addr) {
+  if (Sys)
+    return Sys->read(Addr);
+  return 0xFF;
+}
+
+void Context::write(uint64_t Addr, uint8_t Value) {
+  if (Sys)
+    Sys->write(Addr, Value);
 }

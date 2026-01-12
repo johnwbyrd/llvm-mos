@@ -68,6 +68,10 @@ public:
   /// Check if the CPU has halted.
   virtual bool isHalted() const = 0;
 
+  /// Request the CPU to halt with the given exit code.
+  /// The halt takes effect before the next instruction executes.
+  virtual void halt(int ExitCode = 0) = 0;
+
   /// Get the exit code (valid only when halted).
   virtual int getExitCode() const { return 0; }
 
@@ -102,6 +106,27 @@ public:
 
   /// Check if tracing is enabled.
   bool isTracing() const { return Tracing; }
+
+  //===--------------------------------------------------------------------===//
+  // Memory Access (routes through System)
+  //===--------------------------------------------------------------------===//
+
+  /// Read a byte from the given address.
+  uint8_t read(uint64_t Addr);
+
+  /// Write a byte to the given address.
+  void write(uint64_t Addr, uint8_t Value);
+
+  /// Read a 16-bit little-endian value from the given address.
+  uint16_t read16(uint64_t Addr) {
+    return read(Addr) | (read(Addr + 1) << 8);
+  }
+
+  /// Write a 16-bit little-endian value to the given address.
+  void write16(uint64_t Addr, uint16_t Value) {
+    write(Addr, Value & 0xFF);
+    write(Addr + 1, Value >> 8);
+  }
 
 protected:
   System *Sys = nullptr;
