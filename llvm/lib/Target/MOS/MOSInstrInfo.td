@@ -33,6 +33,3 @@ include "MOSInstrInfoSPC700.td"
 include "MOSInstrPseudos.td"
 include "MOSInstrLogical.td"
 include "MOSInstrGISel.td"
-
-// Emulation semantics (for llvm-mc --run)
-include "MOSEmulator.td"
