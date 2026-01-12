@@ -75,6 +75,11 @@ public:
   /// Get the exit code (valid only when halted).
   virtual int getExitCode() const { return 0; }
 
+  /// Get the address bus width in bits.
+  /// Used to determine the memory size for emulation.
+  /// Subclasses should override this if different from 32 bits.
+  virtual unsigned getAddressBits() const { return 32; }
+
   //===--------------------------------------------------------------------===//
   // System Integration
   //===--------------------------------------------------------------------===//
