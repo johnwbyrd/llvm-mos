@@ -58,6 +58,9 @@ class MCTargetStreamer;
 class raw_ostream;
 class TargetMachine;
 class TargetOptions;
+namespace emu {
+class Context;
+} // namespace emu
 namespace mca {
 class CustomBehaviour;
 class InstrPostProcess;
@@ -237,6 +240,10 @@ public:
       mca::InstrumentManager *(*)(const MCSubtargetInfo &STI,
                                   const MCInstrInfo &MCII);
 
+  using EmulatorCtorTy = emu::Context *(*)(const Target &T,
+                                           const MCSubtargetInfo &STI,
+                                           MCContext &Ctx);
+
 private:
   /// Next - The next registered target in the linked list, maintained by the
   /// TargetRegistry.
@@ -350,6 +357,10 @@ private:
   /// InstrumentManagerCtorFn - Construction function for this target's
   /// InstrumentManager, if registered (default = nullptr).
   InstrumentManagerCtorTy InstrumentManagerCtorFn = nullptr;
+
+  /// EmulatorCtorFn - Construction function for this target's
+  /// Emulator, if registered (default = nullptr).
+  EmulatorCtorTy EmulatorCtorFn = nullptr;
 
 public:
   Target() = default;
@@ -535,6 +546,14 @@ public:
     if (!MCDisassemblerCtorFn)
       return nullptr;
     return MCDisassemblerCtorFn(*this, STI, Ctx);
+  }
+
+  /// createEmulator - Create a target-specific emulator.
+  emu::Context *createEmulator(const MCSubtargetInfo &STI,
+                               MCContext &Ctx) const {
+    if (!EmulatorCtorFn)
+      return nullptr;
+    return EmulatorCtorFn(*this, STI, Ctx);
   }
 
   MCInstPrinter *createMCInstPrinter(const Triple &T, unsigned SyntaxVariant,
@@ -956,6 +975,19 @@ struct TargetRegistry {
   /// @param Fn - A function to construct an MCCodeEmitter for the target.
   static void RegisterMCCodeEmitter(Target &T, Target::MCCodeEmitterCtorTy Fn) {
     T.MCCodeEmitterCtorFn = Fn;
+  }
+
+  /// RegisterEmulator - Register an Emulator implementation for the
+  /// given target.
+  ///
+  /// Clients are responsible for ensuring that registration doesn't occur
+  /// while another thread is attempting to access the registry. Typically
+  /// this is done by initializing all targets at program startup.
+  ///
+  /// @param T - The target being registered.
+  /// @param Fn - A function to construct an Emulator for the target.
+  static void RegisterEmulator(Target &T, Target::EmulatorCtorTy Fn) {
+    T.EmulatorCtorFn = Fn;
   }
 
   static void RegisterCOFFStreamer(Target &T, Target::COFFStreamerCtorTy Fn) {
