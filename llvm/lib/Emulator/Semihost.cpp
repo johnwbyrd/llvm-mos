@@ -28,34 +28,45 @@ constexpr uint64_t DEVICE_SIZE = 0x20;   // 32 bytes total
 constexpr size_t WORK_BUFFER_SIZE = 1024;
 } // namespace
 
+// Backend mode for constructor
+enum class BackendMode { Secure, Insecure, ConsoleOnly };
+
 std::unique_ptr<Semihost> Semihost::create(System &Sys,
                                            const std::string &SandboxDir) {
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, true, SandboxDir));
+  Dev->initSecureBackend(SandboxDir);
   return Dev;
 }
 
 std::unique_ptr<Semihost> Semihost::createInsecure(System &Sys) {
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, false, ""));
+  Dev->initInsecureBackend();
+  return Dev;
+}
+
+std::unique_ptr<Semihost> Semihost::createConsoleOnly(System &Sys) {
+  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, false, ""));
+  Dev->initConsoleBackend();
   return Dev;
 }
 
 Semihost::Semihost(System &Sys, bool Secure, const std::string &SandboxDir)
     : Sys(Sys), Secure(Secure), WorkBuffer(WORK_BUFFER_SIZE) {
   HostState = std::make_unique<zbc_host_state_t>();
-
-  if (Secure) {
-    initSecureBackend(SandboxDir);
-  } else {
-    initInsecureBackend();
-  }
+  // Backend initialization is done by the factory methods
+  (void)SandboxDir; // Used by initSecureBackend called from factory
 }
 
 Semihost::~Semihost() {
   // Clean up backend state
-  if (Secure && SecureState) {
+  if (SecureState) {
     zbc_ansi_cleanup(SecureState.get());
-  } else if (!Secure && InsecureState) {
+  }
+  if (InsecureState) {
     zbc_ansi_insecure_cleanup(InsecureState.get());
+  }
+  if (ConsoleState) {
+    zbc_ansi_console_cleanup(ConsoleState.get());
   }
 }
 
@@ -83,6 +94,20 @@ void Semihost::initInsecureBackend() {
                                memWriteBlock};
   zbc_host_init(HostState.get(), &MemOps, this, zbc_backend_ansi_insecure(),
                 InsecureState.get(), WorkBuffer.data(), WorkBuffer.size());
+}
+
+void Semihost::initConsoleBackend() {
+  ConsoleState = std::make_unique<zbc_ansi_console_state_t>();
+  zbc_ansi_console_init(ConsoleState.get());
+
+  // Set up exit callback
+  zbc_ansi_console_set_exit_callback(ConsoleState.get(), onExitCallback, this);
+
+  // Initialize host state
+  zbc_host_mem_ops_t MemOps = {memReadU8, memWriteU8, memReadBlock,
+                               memWriteBlock};
+  zbc_host_init(HostState.get(), &MemOps, this, zbc_backend_console(),
+                ConsoleState.get(), WorkBuffer.data(), WorkBuffer.size());
 }
 
 uint8_t Semihost::read(uint64_t Offset) {

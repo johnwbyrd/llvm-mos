@@ -64,6 +64,11 @@ public:
   /// WARNING: Guest code can read/write/delete any file!
   static std::unique_ptr<Semihost> createInsecure(System &Sys);
 
+  /// Create a semihost device with console-only access.
+  /// Supports stdin/stdout/stderr and exit, but no filesystem access.
+  /// File operations will return errors to the guest.
+  static std::unique_ptr<Semihost> createConsoleOnly(System &Sys);
+
   ~Semihost() override;
 
   // Non-copyable
@@ -103,6 +108,7 @@ private:
 
   void initSecureBackend(const std::string &SandboxDir);
   void initInsecureBackend();
+  void initConsoleBackend();
   void processRequest();
 
   // Memory callbacks for ZBC library
@@ -132,6 +138,7 @@ private:
   std::unique_ptr<zbc::zbc_host_state_t> HostState;
   std::unique_ptr<zbc::zbc_ansi_state_t> SecureState;
   std::unique_ptr<zbc::zbc_ansi_insecure_state_t> InsecureState;
+  std::unique_ptr<zbc::zbc_ansi_console_state_t> ConsoleState;
   std::vector<uint8_t> WorkBuffer;
 
   // Signature bytes (per ZBC specification)
