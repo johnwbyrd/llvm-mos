@@ -17,6 +17,7 @@
 #include "llvm/DWARFCFIChecker/DWARFCFIFunctionFrameStreamer.h"
 #include "llvm/Emulator/Context.h"
 #include "llvm/Emulator/Memory.h"
+#include "llvm/Emulator/Semihost.h"
 #include "llvm/Emulator/System.h"
 #include "llvm/Emulator/Trace.h"
 #include "llvm/MC/MCAsmBackend.h"
@@ -256,6 +257,16 @@ static cl::opt<bool>
     EmulatorTrace("trace", cl::desc("Trace instruction execution"),
                   cl::cat(MCCategory));
 
+static cl::opt<bool>
+    EmulatorSemihost("semihost",
+                     cl::desc("Enable semihosting for host I/O"),
+                     cl::cat(MCCategory));
+
+static cl::opt<bool>
+    EmulatorSemihostInsecure("semihost-insecure",
+                             cl::desc("Allow unrestricted filesystem access (DANGEROUS)"),
+                             cl::cat(MCCategory));
+
 enum TraceFormatType {
   TF_Text,
   TF_JSON,
@@ -460,6 +471,27 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   // Add RAM to system
   Sys.addOwnedDevice(0, MemSize - 1, std::move(RAM));
 
+  // Add semihosting device if requested
+  std::unique_ptr<emu::Semihost> Semihost;
+  if (EmulatorSemihost || EmulatorSemihostInsecure) {
+    if (EmulatorSemihostInsecure) {
+      Semihost = emu::Semihost::createInsecure(Sys);
+    } else {
+      // Use current working directory as sandbox
+      SmallString<256> SandboxDir;
+      sys::fs::current_path(SandboxDir);
+      Semihost = emu::Semihost::create(Sys, std::string(SandboxDir));
+    }
+
+    // Compute semihost address per ZBC specification:
+    // semihost_base = 2^n - 2^(n/2) - 32, where n = address bus width
+    // This places the device at a proportional distance from the top of
+    // the address space, leaving room for other peripherals above it.
+    uint64_t SemihostBase = MemSize - (1ULL << (AddrBits / 2)) - 32;
+    uint64_t SemihostEnd = SemihostBase + 31;
+    Sys.addDevice(SemihostBase, SemihostEnd, Semihost.get());
+  }
+
   // Create the target-specific emulator
   std::unique_ptr<emu::Context> Emu(TheTarget->createEmulator(STI, Ctx));
   if (!Emu) {
@@ -470,6 +502,16 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
 
   // Register emulator with system
   Sys.addContext(Emu.get());
+
+  // Hook up semihost exit callback to halt emulator
+  if (Semihost) {
+    Semihost->setExitCallback(
+        [&Emu](unsigned Reason, unsigned Subcode) {
+          // Reason 0x20026 = ADP_Stopped_ApplicationExit, Subcode is exit code
+          // For simplicity, use Subcode as exit code for all reasons
+          Emu->halt(static_cast<int>(Subcode));
+        });
+  }
 
   // Set PC to entry point (if available) or reset vector
   // For now, let the CPU reset itself (which reads the reset vector)
