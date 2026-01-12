@@ -437,8 +437,17 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   }
   object::ObjectFile &Obj = **ObjOrErr;
 
-  // Determine memory size from address width (cap at 4GB)
-  unsigned AddrBits = Obj.getBytesInAddress() * 8;
+  // Create the target-specific emulator first to query its address bus width
+  std::unique_ptr<emu::Context> Emu(TheTarget->createEmulator(STI, Ctx));
+  if (!Emu) {
+    WithColor::error(errs(), ProgName)
+        << "no emulator available for target " << TheTarget->getName() << "\n";
+    return 1;
+  }
+
+  // Get address space size from the emulator (not the ELF format)
+  // ELF32 uses 4-byte pointers even for targets with smaller address buses
+  unsigned AddrBits = Emu->getAddressBits();
   uint64_t MemSize = (AddrBits >= 32) ? (4ULL * 1024 * 1024 * 1024)
                                       : (1ULL << AddrBits);
 
@@ -447,10 +456,15 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   auto RAM = std::make_unique<emu::Memory>(MemSize);
 
   // Load sections from object file into RAM
-  // Only load runtime sections (text, data, bss), skip debug/metadata
+  // Only load runtime sections (text, data), skip debug/metadata
+  // BSS sections are already zero-initialized (RAM starts zeroed)
   for (const object::SectionRef &Section : Obj.sections()) {
     // Skip non-runtime sections (debug info, symbol tables, etc.)
     if (!Section.isText() && !Section.isData() && !Section.isBSS())
+      continue;
+
+    // BSS sections have no content - they're zero-initialized in RAM already
+    if (Section.isBSS())
       continue;
 
     Expected<StringRef> ContentsOrErr = Section.getContents();
@@ -484,20 +498,13 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
     }
 
     // Compute semihost address per ZBC specification:
-    // semihost_base = 2^n - 2^(n/2) - 32, where n = address bus width
-    // This places the device at a proportional distance from the top of
-    // the address space, leaving room for other peripherals above it.
-    uint64_t SemihostBase = MemSize - (1ULL << (AddrBits / 2)) - 32;
+    // reserved_start = 2^n - 2^(n/2)
+    // semihost_base = reserved_start - 512 - 32
+    // For 16-bit: 65536 - 256 - 512 - 32 = 64736 = 0xFCE0
+    uint64_t ReservedStart = MemSize - (1ULL << (AddrBits / 2));
+    uint64_t SemihostBase = ReservedStart - 512 - 32;
     uint64_t SemihostEnd = SemihostBase + 31;
     Sys.addDevice(SemihostBase, SemihostEnd, Semihost.get());
-  }
-
-  // Create the target-specific emulator
-  std::unique_ptr<emu::Context> Emu(TheTarget->createEmulator(STI, Ctx));
-  if (!Emu) {
-    WithColor::error(errs(), ProgName)
-        << "no emulator available for target " << TheTarget->getName() << "\n";
-    return 1;
   }
 
   // Register emulator with system
