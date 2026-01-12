@@ -136,6 +136,18 @@ const zbc_backend_t *zbc_backend_ansi_insecure(void);
  */
 const zbc_backend_t *zbc_backend_dummy(void);
 
+/**
+ * Get the console-only ANSI backend.
+ *
+ * This backend supports console I/O (writec, write0, readc) and
+ * read/write on stdin/stdout/stderr. File operations return errors.
+ * Use with zbc_ansi_console_state_t from zbc_backend_ansi.h.
+ *
+ * @return Pointer to backend vtable
+ * @see zbc_ansi_console_init
+ */
+const zbc_backend_t *zbc_backend_console(void);
+
 #ifdef __cplusplus
 } /* extern "C" */
 } /* namespace zbc */
