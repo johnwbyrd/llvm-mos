@@ -259,6 +259,25 @@ class Inst<string asmstr> : Instruction {
   let TSFlags{25-24} = FlagI;
   let TSFlags{27-26} = FlagZ;
   let TSFlags{29-28} = FlagC;
+
+  //=========================================================================
+  // Emulation Support
+  //=========================================================================
+  // C++ code that executes this instruction's behavior. Can reference:
+  //   - $EA, $Value, $Base: from addressing mode (looked up as fields)
+  //   - State: A, X, Y, S, PC, C, Z, I, D, B, V, N, Cycles
+  //   - Helpers: setNZ(), push(), pull(), read(), write(), etc.
+  //
+  // Empty means "not emulatable" - will fall through to default handler.
+  // Use outer `let Emulate = ... in { }` blocks to share across variants.
+  code Emulate = [{}];
+
+  // Addressing mode emulation fields (propagated from AddressingMode)
+  // These are inherited by instruction classes and can be referenced as
+  // $EA, $Value, $Base in Emulate code.
+  code EA = [{}];
+  code Value = [{}];
+  code Base = [{}];
 }
 
 //===----------------------------------------------------------------------===//
@@ -440,161 +459,304 @@ class AddressingMode<int size> {
   string OperandsStr = ?;
   dag InOperandList = ?;
   int OperandSize = size;  // Size of operand in bytes (instruction size = 1 + this)
+
+  //=========================================================================
+  // Emulation Support
+  //=========================================================================
+  // These fields define how to compute effective addresses and read values
+  // for instruction emulation. They are used by the EmulatorEmitter backend
+  // to generate switch cases for llvm-mc --run.
+  //
+  // The Emulate code in instructions can reference these as $EA, $Value, $Base.
+  // The EmulatorEmitter resolves these references generically - any $Foo looks
+  // up field "Foo" on the instruction record (inherited from AddressingMode).
+
+  // Effective address computation (empty if N/A, e.g. immediate mode)
+  code EA = [{}];
+
+  // Value read expression (usually "read($EA)" for memory modes)
+  code Value = [{}];
+
+  // Base address before indexing (for page-cross detection)
+  code Base = [{}];
 }
+
+//===----------------------------------------------------------------------===//
+// Addressing Mode Definitions
+//===----------------------------------------------------------------------===//
+// Each mode defines:
+//   - OperandsStr: Assembly syntax for the operand(s)
+//   - InOperandList: DAG of operand types for parsing
+//   - EA: Effective address computation (for emulation)
+//   - Value: How to read the value (for emulation)
+//   - Base: Base address before indexing (for page-cross detection)
 
 def Implicit : AddressingMode<0> {
   let OperandsStr = "";
   let InOperandList = (ins);
+  // No EA/Value - implied instructions operate on registers
 }
 
 def Accumulator : AddressingMode<0> {
   let OperandsStr = "";
   let InOperandList = (ins);
+  let Value = [{ A }];
 }
 
 def Immediate : AddressingMode<1> {
   let OperandsStr = "#$param";
   let InOperandList = (ins imm8:$param);
+  let Value = [{ (uint8_t)Inst.getOperand(0).getImm() }];
 }
 
 def Immediate16 : AddressingMode<2> {
   let OperandsStr = "#$param";
   let InOperandList = (ins imm16:$param);
+  let Value = [{ (uint16_t)Inst.getOperand(0).getImm() }];
 }
 
 def ZeroPage : AddressingMode<1> {
   let OperandsStr = "$param";
   let InOperandList = (ins addr8:$param);
+  let EA = [{ (uint16_t)Inst.getOperand(0).getImm() }];
+  let Value = [{ read($EA) }];
 }
 
 def ZeroPageX : AddressingMode<1> {
   let OperandsStr = "$param , x";
   let InOperandList = (ins addr8:$param);
+  let EA = [{ (uint8_t)(Inst.getOperand(0).getImm() + X) }];
+  let Value = [{ read($EA) }];
 }
 
 def ZeroPageY : AddressingMode<1> {
   let OperandsStr = "$param , y";
   let InOperandList = (ins addr8:$param);
+  let EA = [{ (uint8_t)(Inst.getOperand(0).getImm() + Y) }];
+  let Value = [{ read($EA) }];
 }
 
 def Relative : AddressingMode<1> {
   let OperandsStr = "$param";
   let InOperandList = (ins pcrel8:$param);
+  let EA = [{ (uint16_t)(PC + 2 + (int8_t)Inst.getOperand(0).getImm()) }];
 }
 
 def Relative16 : AddressingMode<2> {
   let OperandsStr = "$param";
   let InOperandList = (ins pcrel16:$param);
+  let EA = [{ (uint16_t)(PC + 3 + (int16_t)Inst.getOperand(0).getImm()) }];
 }
 
 def Absolute : AddressingMode<2> {
   let OperandsStr = "$param";
   let InOperandList = (ins addr16:$param);
+  let EA = [{ (uint16_t)Inst.getOperand(0).getImm() }];
+  let Value = [{ read($EA) }];
 }
 
 def AbsoluteLong : AddressingMode<3> {
   let OperandsStr = "$param";
   let InOperandList = (ins addr24:$param);
+  let EA = [{ (uint32_t)Inst.getOperand(0).getImm() }];
+  let Value = [{ read($EA) }];
 }
 
 def AbsoluteX : AddressingMode<2> {
   let OperandsStr = "$param , x";
   let InOperandList = (ins addr16:$param);
+  let Base = [{ (uint16_t)Inst.getOperand(0).getImm() }];
+  let EA = [{ (uint16_t)($Base + X) }];
+  let Value = [{ read($EA) }];
 }
 
 def AbsoluteXLong : AddressingMode<3> {
   let OperandsStr = "$param , x";
   let InOperandList = (ins addr24:$param);
+  let Base = [{ (uint32_t)Inst.getOperand(0).getImm() }];
+  let EA = [{ (uint32_t)($Base + X) }];
+  let Value = [{ read($EA) }];
 }
 
 def AbsoluteY : AddressingMode<2> {
   let OperandsStr = "$param , y";
   let InOperandList = (ins addr16:$param);
+  let Base = [{ (uint16_t)Inst.getOperand(0).getImm() }];
+  let EA = [{ (uint16_t)($Base + Y) }];
+  let Value = [{ read($EA) }];
 }
 
 def Indirect : AddressingMode<1> {
   let OperandsStr = "( $param )";
   let InOperandList = (ins addr8:$param);
+  // 65C02 zero-page indirect - pointer at ZP location
+  let EA = [{
+    uint8_t zp = Inst.getOperand(0).getImm();
+    (uint16_t)(read(zp) | (read((uint8_t)(zp + 1)) << 8))
+  }];
+  let Value = [{ read($EA) }];
 }
 
 def Indirect16 : AddressingMode<2> {
   let OperandsStr = "( $param )";
   let InOperandList = (ins addr16:$param);
+  // 6502 JMP indirect - with page-wrap bug
+  let EA = [{
+    uint16_t ptr = Inst.getOperand(0).getImm();
+    (uint16_t)(read(ptr) | (read((ptr & 0xFF00) | ((ptr + 1) & 0xFF)) << 8))
+  }];
 }
 
 def IndexedIndirect16 : AddressingMode<2> {
   let OperandsStr = "( $param , x )";
   let InOperandList = (ins addr16:$param);
+  // 65C02 JMP (addr,X) - absolute indexed indirect
+  let EA = [{
+    uint16_t addr = (uint16_t)(Inst.getOperand(0).getImm() + X);
+    (uint16_t)(read(addr) | (read(addr + 1) << 8))
+  }];
 }
 
 def IndirectLong : AddressingMode<1> {
   let OperandsStr = "[ $param ]";
   let InOperandList = (ins addr8:$param);
+  // 65816 [dp] - 24-bit pointer at direct page location
+  let EA = [{
+    uint8_t dp = Inst.getOperand(0).getImm();
+    (uint32_t)(read(dp) | (read(dp + 1) << 8) | (read(dp + 2) << 16))
+  }];
+  let Value = [{ read($EA) }];
 }
 
 def IndexedIndirect : AddressingMode<1> {
   let OperandsStr = "( $param , x )";
   let InOperandList = (ins addr8:$param);
+  // (zp,X) - add X first, then read pointer
+  let EA = [{
+    uint8_t zp = (uint8_t)(Inst.getOperand(0).getImm() + X);
+    (uint16_t)(read(zp) | (read((uint8_t)(zp + 1)) << 8))
+  }];
+  let Value = [{ read($EA) }];
 }
 
 def IndirectIndexed : AddressingMode<1> {
   let OperandsStr = "( $param ) , y";
   let InOperandList = (ins addr8:$param);
+  // (zp),Y - read pointer first, then add Y (page cross possible)
+  let Base = [{
+    uint8_t zp = Inst.getOperand(0).getImm();
+    (uint16_t)(read(zp) | (read((uint8_t)(zp + 1)) << 8))
+  }];
+  let EA = [{ (uint16_t)($Base + Y) }];
+  let Value = [{ read($EA) }];
 }
 
 def IndirectIndexedLong : AddressingMode<1> {
   let OperandsStr = "[ $param ] , y";
   let InOperandList = (ins addr8:$param);
+  // 65816 [dp],Y - 24-bit pointer + Y
+  let Base = [{
+    uint8_t dp = Inst.getOperand(0).getImm();
+    (uint32_t)(read(dp) | (read(dp + 1) << 8) | (read(dp + 2) << 16))
+  }];
+  let EA = [{ (uint32_t)($Base + Y) }];
+  let Value = [{ read($EA) }];
 }
 
 def IndirectIndexedLongZ : AddressingMode<1> {
   let OperandsStr = "[ $param ] , z";
   let InOperandList = (ins addr8:$param);
+  // 65CE02/45GS02 [bp],Z - 32-bit flat pointer + Z
+  let Base = [{
+    uint8_t bp = Inst.getOperand(0).getImm();
+    (uint32_t)(read(bp) | (read(bp + 1) << 8) | (read(bp + 2) << 16) | (read(bp + 3) << 24))
+  }];
+  let EA = [{ (uint32_t)($Base + Z) }];
+  let Value = [{ read($EA) }];
 }
 
 def IndirectZeroPageZ : AddressingMode<1> {
   let OperandsStr = "( $param ) , z";
   let InOperandList = (ins addr8:$param);
+  // 65CE02 (bp),Z - 16-bit pointer + Z
+  let Base = [{
+    uint8_t bp = Inst.getOperand(0).getImm();
+    (uint16_t)(read(bp) | (read((uint8_t)(bp + 1)) << 8))
+  }];
+  let EA = [{ (uint16_t)($Base + Z) }];
+  let Value = [{ read($EA) }];
 }
 
 def StackRelative : AddressingMode<1> {
   let OperandsStr = "$param , s";
   let InOperandList = (ins addr8:$param);
+  // 65816 sr,S - stack relative
+  let EA = [{ (uint16_t)(S + Inst.getOperand(0).getImm()) }];
+  let Value = [{ read($EA) }];
 }
 
 def IndirectStackRelativeY : AddressingMode<1> {
   let OperandsStr = "( $param , s ) , y";
   let InOperandList = (ins addr8:$param);
+  // 65816 (sr,S),Y - stack relative indirect indexed
+  let Base = [{
+    uint16_t addr = S + Inst.getOperand(0).getImm();
+    (uint16_t)(read(addr) | (read(addr + 1) << 8))
+  }];
+  let EA = [{ (uint16_t)($Base + Y) }];
+  let Value = [{ read($EA) }];
 }
 
 def RStackRelative : AddressingMode<1> {
   let OperandsStr = "$param , r";
   let InOperandList = (ins addr8:$param);
+  // 65EL02 R-stack relative (uses R register instead of S)
+  let EA = [{ (uint16_t)(R + Inst.getOperand(0).getImm()) }];
+  let Value = [{ read($EA) }];
 }
 
 def IndirectRStackRelativeY : AddressingMode<1> {
   let OperandsStr = "( $param , r ) , y";
   let InOperandList = (ins addr8:$param);
+  // 65EL02 (sr,R),Y - R-stack relative indirect indexed
+  let Base = [{
+    uint16_t addr = R + Inst.getOperand(0).getImm();
+    (uint16_t)(read(addr) | (read(addr + 1) << 8))
+  }];
+  let EA = [{ (uint16_t)($Base + Y) }];
+  let Value = [{ read($EA) }];
 }
 
+// Offset-2 variants: operand is at byte offset 2 in instruction encoding.
+// For BBR/BBS, RMB/SMB, TST instructions where first operand is a bit index.
+// These use getOperand(1) since getOperand(0) is the bit/immediate.
 def ZeroPageAt2 : AddressingMode<1> {
   let OperandsStr = "$param";
   let InOperandList = (ins addr8at2:$param);
+  let EA = [{ (uint16_t)Inst.getOperand(1).getImm() }];
+  let Value = [{ read($EA) }];
 }
 
 def ZeroPageXAt2 : AddressingMode<1> {
   let OperandsStr = "$param , x";
   let InOperandList = (ins addr8at2:$param);
+  let EA = [{ (uint8_t)(Inst.getOperand(1).getImm() + X) }];
+  let Value = [{ read($EA) }];
 }
 
 def AbsoluteAt2 : AddressingMode<2> {
   let OperandsStr = "$param";
   let InOperandList = (ins addr16at2:$param);
+  let EA = [{ (uint16_t)Inst.getOperand(1).getImm() }];
+  let Value = [{ read($EA) }];
 }
 
 def AbsoluteXAt2 : AddressingMode<2> {
   let OperandsStr = "$param , x";
   let InOperandList = (ins addr16at2:$param);
+  let Base = [{ (uint16_t)Inst.getOperand(1).getImm() }];
+  let EA = [{ (uint16_t)($Base + X) }];
+  let Value = [{ read($EA) }];
 }
 
 /// An unsized MOS instruction, to which an addressing mode may be applied.
@@ -604,6 +766,10 @@ class InstAddressMode<string asmstr, Opcode op = DefaultOpcode,
   let InOperandList = mode.InOperandList;
   string OperandsStr;
   let OperandsStr = mode.OperandsStr;
+  // Propagate emulation fields from addressing mode
+  let EA = mode.EA;
+  let Value = mode.Value;
+  let Base = mode.Base;
 }
 
 /// An 8 bit real MOS instruction.
@@ -683,6 +849,11 @@ class MOSInst<bits<8> opcode, string mnemonic, AddressingMode mode>
   let Inst{15-8}  = !if(!ge(mode.OperandSize, 1), param{7-0}, 0);
   let Inst{23-16} = !if(!ge(mode.OperandSize, 2), param{15-8}, 0);
   let Inst{31-24} = !if(!ge(mode.OperandSize, 3), param{23-16}, 0);
+
+  // Propagate emulation fields from addressing mode
+  let EA = mode.EA;
+  let Value = mode.Value;
+  let Base = mode.Base;
 }
 
 /// Op - Generate instruction with standard naming: MNEMONIC_AddressingMode

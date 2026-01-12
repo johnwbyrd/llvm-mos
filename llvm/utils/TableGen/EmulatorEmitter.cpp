@@ -14,15 +14,13 @@
 //
 // INPUT FORMAT
 // ============
-// The backend processes records that derive from "EmulatorInst". Each record
-// must have:
-//
-//   1. An "Emulate" field (code type) containing C++ code to execute
-//   2. A reference to an Instruction record (for the opcode name and features)
+// The backend processes Instruction records that have a non-empty "Emulate"
+// field. It also supports EmulatorInst records for backward compatibility.
 //
 // The Emulate code can contain $Variable references. When the backend sees
 // $Foo, it looks up "Foo" as a field on the same record. This lookup follows
-// TableGen inheritance, so variables can come from parent classes.
+// TableGen inheritance, so variables can come from parent classes (like
+// AddressingMode providing $EA, $Value, $Base).
 //
 // Variables can reference other variables, creating a dependency chain.
 // The backend resolves these dependencies and emits them in the correct order.
@@ -31,19 +29,11 @@
 //   - All lines except the last are emitted as setup statements
 //   - The last line is treated as an expression and assigned to the variable
 //
-// Example TableGen input:
+// Example TableGen input (DRY style - emulation in Instruction):
 //
-//   class EmulatorInst<Instruction inst> {
-//     Instruction Inst = inst;
-//     code Emulate = [{}];
-//     code EA = [{}];
-//     code Value = [{}];
-//   }
-//
-//   def : EmulatorInst<LDA_ZeroPage> {
-//     let EA = [{ (uint16_t)Inst.getOperand(0).getImm() }];
-//     let Value = [{ read($EA) }];
-//     let Emulate = [{ A = $Value; setNZ(A); }];
+//   let Emulate = [{ A = $Value; setNZ(A); }] in {
+//     defm LDA : Op<0xA9, "lda", Immediate>;  // EA/Value from Immediate mode
+//     defm LDA : Op<0xA5, "lda", ZeroPage>;   // EA/Value from ZeroPage mode
 //   }
 //
 // OUTPUT FORMAT
@@ -52,7 +42,6 @@
 //
 //   #ifdef GET_EMULATOR_CASES
 //   case MOS::LDA_ZeroPage: {
-//     if (!hasFeature(MOS::Feature6502)) goto unhandled;
 //     auto EA = (uint16_t)Inst.getOperand(0).getImm();
 //     auto Value = read(EA);
 //     A = Value;
@@ -63,7 +52,7 @@
 //
 // FEATURE PREDICATES
 // ==================
-// The backend reads the "Predicates" field from the referenced Instruction.
+// The backend reads the "Predicates" field from the Instruction.
 // For each predicate that has a "PredicateName" field, it emits a runtime
 // feature check:
 //
@@ -139,8 +128,11 @@ private:
   /// Substitute $Var with Var in code.
   std::string substituteVars(StringRef Code);
 
-  /// Emit code for one EmulatorInst.
-  void emitInstructionCase(raw_ostream &OS, const Record *EmuInst);
+  /// Emit code for one Instruction (or EmulatorInst for backward compat).
+  void emitInstructionCase(raw_ostream &OS, const Record *Inst);
+
+  /// For EmulatorInst records, find the referenced Instruction.
+  const Record *getReferencedInstruction(const Record *EmuInst);
 };
 
 } // end anonymous namespace
@@ -269,29 +261,40 @@ void EmulatorEmitter::emitVariable(raw_ostream &OS, StringRef VarName,
   Emitted.insert(VarName);
 }
 
+const Record *EmulatorEmitter::getReferencedInstruction(const Record *EmuInst) {
+  // For EmulatorInst records, find the referenced Instruction
+  for (const RecordVal &RV : EmuInst->getValues()) {
+    if (const auto *DI = dyn_cast<DefInit>(RV.getValue())) {
+      if (DI->getDef()->isSubClassOf("Instruction")) {
+        return DI->getDef();
+      }
+    }
+  }
+  return nullptr;
+}
+
 void EmulatorEmitter::emitInstructionCase(raw_ostream &OS,
-                                          const Record *EmuInst) {
+                                          const Record *Rec) {
   // Get the Emulate code - this is the ONLY thing we care about
-  StringRef EmulateCode = lookupVariable(EmuInst, "Emulate");
+  StringRef EmulateCode = lookupVariable(Rec, "Emulate");
   if (EmulateCode.empty() || EmulateCode.trim().empty()) {
     // No emulation code - skip this instruction, runtime handles it in default
     return;
   }
 
-  // Get the instruction name for the case label
-  // We need to find whatever field references an Instruction
-  const Record *Inst = nullptr;
-  for (const RecordVal &RV : EmuInst->getValues()) {
-    if (const auto *DI = dyn_cast<DefInit>(RV.getValue())) {
-      if (DI->getDef()->isSubClassOf("Instruction")) {
-        Inst = DI->getDef();
-        break;
-      }
+  // Determine if this is an Instruction record or an EmulatorInst record.
+  // For Instruction: use Rec directly for both case label and field lookup.
+  // For EmulatorInst: use the referenced Instruction for the case label,
+  //                   but Rec for field lookup (EA/Value/Base/Emulate).
+  const Record *Inst = Rec;
+  if (Rec->isSubClassOf("EmulatorInst")) {
+    Inst = getReferencedInstruction(Rec);
+    if (!Inst) {
+      // EmulatorInst without referenced instruction - skip
+      return;
     }
-  }
-
-  if (!Inst) {
-    // No instruction reference - skip
+  } else if (!Rec->isSubClassOf("Instruction")) {
+    // Not an Instruction or EmulatorInst - skip
     return;
   }
 
@@ -320,8 +323,9 @@ void EmulatorEmitter::emitInstructionCase(raw_ostream &OS,
   StringSet<> Emitted;
 
   // Emit each referenced variable (with dependency resolution)
+  // For EmulatorInst, look up variables on Rec (not Inst)
   for (const auto &Ref : Refs) {
-    emitVariable(OS, Ref.getKey(), EmuInst, Emitted);
+    emitVariable(OS, Ref.getKey(), Rec, Emitted);
   }
 
   // Emit the emulate code with substitutions
@@ -342,21 +346,51 @@ void EmulatorEmitter::emitInstructionCase(raw_ostream &OS,
 void EmulatorEmitter::run(raw_ostream &OS) {
   emitSourceFileHeader("Instruction Emulator", OS);
 
+  // Collect records from both sources:
+  // 1. Instruction records with non-empty Emulate field (new DRY style)
+  // 2. EmulatorInst records (backward compatibility)
+  std::vector<const Record *> RecordsToProcess;
+
+  // Check all Instruction records for non-empty Emulate field
+  // Only process instructions that actually have the Emulate field defined
+  // (pseudo-instructions and logical instructions may not inherit from Inst)
+  ArrayRef<const Record *> Instructions =
+      Records.getAllDerivedDefinitions("Instruction");
+  for (const Record *Inst : Instructions) {
+    // Skip if the record doesn't have an Emulate field at all
+    // (getValue returns nullptr if the field doesn't exist)
+    const RecordVal *EmuField = Inst->getValue("Emulate");
+    if (!EmuField)
+      continue;
+    StringRef EmulateCode = lookupVariable(Inst, "Emulate");
+    if (!EmulateCode.empty() && !EmulateCode.trim().empty()) {
+      RecordsToProcess.push_back(Inst);
+    }
+  }
+
+  // Also include EmulatorInst records for backward compatibility
   ArrayRef<const Record *> EmuInsts =
       Records.getAllDerivedDefinitions("EmulatorInst");
+  for (const Record *EmuInst : EmuInsts) {
+    RecordsToProcess.push_back(EmuInst);
+  }
 
-  if (EmuInsts.empty()) {
-    OS << "// No EmulatorInst definitions found.\n";
+  if (RecordsToProcess.empty()) {
+    OS << "// No emulatable instructions found.\n";
+    OS << "// Add 'let Emulate = [{ ... }]' to instruction definitions.\n";
     return;
   }
 
   OS << "// Generated instruction emulation switch cases.\n";
-  OS << "// Include this file inside a switch(Inst.getOpcode()) block.\n\n";
+  OS << "// Include this file inside a switch(Inst.getOpcode()) block.\n";
+  OS << "// Instructions: " << Instructions.size() << " total, "
+     << (RecordsToProcess.size() - EmuInsts.size()) << " with Emulate field\n";
+  OS << "// EmulatorInst: " << EmuInsts.size() << " (backward compat)\n\n";
 
   OS << "#ifdef GET_EMULATOR_CASES\n";
 
-  for (const Record *EmuInst : EmuInsts) {
-    emitInstructionCase(OS, EmuInst);
+  for (const Record *Rec : RecordsToProcess) {
+    emitInstructionCase(OS, Rec);
   }
 
   OS << "#endif // GET_EMULATOR_CASES\n";
