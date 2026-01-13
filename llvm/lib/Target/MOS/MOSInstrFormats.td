@@ -202,13 +202,14 @@ class Inst<string asmstr> : Instruction {
   let DecoderNamespace = "MOS";
 
   //=========================================================================
-  // TSFlags Layout (31 bits used)
+  // TSFlags Layout (32 bits used)
   //=========================================================================
   // Bits 0-3:   65816 M/X flag requirements
   // Bit  4:     LongBranch (65CE02 16-bit branches with opcode+2 PC base)
   // Bits 5-12:  Base cycle count (8 bits, 0-255)
   // Bits 13-16: Page cross penalty cycles (4 bits, 0-15)
   // Bits 17-30: Flag effects (2 bits each, 7 flags)
+  // Bit 31:     HaltEmulation
   //
   // Flag effect encoding: 0=unaffected, 1=modified, 2=set, 3=cleared
 
@@ -254,6 +255,13 @@ class Inst<string asmstr> : Instruction {
   let TSFlags{26-25} = FlagI;
   let TSFlags{28-27} = FlagZ;
   let TSFlags{30-29} = FlagC;
+
+  //=========================================================================
+  // Emulator Halt Flag (bit 31)
+  //=========================================================================
+  // When set, executing this instruction halts the emulator.
+  bit HaltEmulation = 0;
+  let TSFlags{31} = HaltEmulation;
 
   //=========================================================================
   // Emulation Support
