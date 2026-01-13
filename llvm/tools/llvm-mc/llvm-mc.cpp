@@ -416,7 +416,10 @@ static int AssembleInput(const char *ProgName, const Target *TheTarget,
   Parser->setTargetParser(*TAP);
   Parser->getLexer().setLexMasmIntegers(LexMasmIntegers);
   Parser->getLexer().setLexMasmHexFloats(LexMasmHexFloats);
-  Parser->getLexer().setLexMotorolaIntegers(LexMotorolaIntegers);
+  // Only override the Motorola integers setting if explicitly specified on
+  // the command line; otherwise respect the target's MCAsmInfo setting.
+  if (LexMotorolaIntegers.getNumOccurrences() > 0)
+    Parser->getLexer().setLexMotorolaIntegers(LexMotorolaIntegers);
 
   int Res = Parser->Run(NoInitialTextSection);
 

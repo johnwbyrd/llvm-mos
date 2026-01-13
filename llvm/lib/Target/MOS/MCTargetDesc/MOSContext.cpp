@@ -118,9 +118,17 @@ bool Context::step() {
   uint16_t PrePC = PC;
   execute(Inst);
 
-  // Accumulate cycles from instruction TSFlags
+  // Get instruction descriptor and TSFlags (used for halt check and cycles)
   const MCInstrDesc &Desc = InstrInfo->get(Inst.getOpcode());
   uint64_t TSFlags = Desc.TSFlags;
+
+  // Check for halt instruction
+  if (MOS::getHaltEmulation(TSFlags)) {
+    halt(0);
+    return true;
+  }
+
+  // Accumulate cycles from instruction TSFlags
   unsigned BaseCycles = MOS::getCycles(TSFlags);
   unsigned PageCrossPenalty = DidPageCross ? MOS::getPageCrossCycles(TSFlags) : 0;
   Cycles += BaseCycles + PageCrossPenalty;
