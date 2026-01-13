@@ -15,12 +15,14 @@
 #define LLVM_LIB_TARGET_MOS_MOSCONTEXT_H
 
 #include "llvm/Emulator/Context.h"
-#include "llvm/MC/MCDisassembler/MCDisassembler.h"
-#include "llvm/MC/MCInst.h"
-#include "llvm/MC/MCInstrInfo.h"
 #include <cstdint>
 
 namespace llvm {
+
+class MCDisassembler;
+class MCInst;
+class MCInstrInfo;
+
 namespace MOS {
 
 /// MOS 6502-family execution context.
@@ -51,7 +53,8 @@ public:
   uint64_t Cycles = 0;
   bool Halted = false;
   int ExitCode_ = 0;
-  bool PCModified = false; // Set by instructions that modify PC (JMP, JSR, etc.)
+  bool PCModified = false;   // Set by instructions that modify PC (JMP, JSR, etc.)
+  bool DidPageCross = false; // Set by indexed addressing modes when crossing page
 
   //===--------------------------------------------------------------------===//
   // Construction
@@ -59,13 +62,8 @@ public:
 
   /// Create a context with the given disassembler and instruction info.
   /// Takes ownership of both pointers.
-  Context(const MCDisassembler *Disasm, const MCInstrInfo *II)
-      : Disassembler(Disasm), InstrInfo(II) {}
-
-  ~Context() {
-    delete Disassembler;
-    delete InstrInfo;
-  }
+  Context(const MCDisassembler *Disasm, const MCInstrInfo *II);
+  ~Context();
 
   //===--------------------------------------------------------------------===//
   // Context Interface Implementation
@@ -78,10 +76,7 @@ public:
   void setPC(uint64_t NewPC) override { PC = static_cast<uint16_t>(NewPC); }
   uint64_t getCycles() const override { return Cycles; }
   bool isHalted() const override { return Halted; }
-  void halt(int ExitCode = 0) override {
-    Halted = true;
-    ExitCode_ = ExitCode;
-  }
+  void halt(int ExitCode = 0) override;
   int getExitCode() const override { return ExitCode_; }
 
   /// MOS has a 16-bit address bus (64KB address space).
@@ -91,106 +86,24 @@ public:
   // Helper Methods (used by generated code)
   //===--------------------------------------------------------------------===//
 
-  void setNZ(uint8_t val) {
-    N = (val >> 7) & 1;
-    Z = val == 0;
-  }
-
-  void push(uint8_t val) { write(0x100 + S--, val); }
-  uint8_t pull() { return read(0x100 + ++S); }
-
-  void push16(uint16_t val) {
-    push(val >> 8);
-    push(val & 0xFF);
-  }
-
-  uint16_t pull16() {
-    uint8_t lo = pull();
-    return lo | (pull() << 8);
-  }
-
-  bool pageCrossed(uint16_t a, uint16_t b) {
-    return (a & 0xFF00) != (b & 0xFF00);
-  }
+  void setNZ(uint8_t Val);
+  void push(uint8_t Val);
+  uint8_t pull();
+  void push16(uint16_t Val);
+  uint16_t pull16();
+  bool pageCrossed(uint16_t Addr1, uint16_t Addr2);
 
   /// Get processor status as a byte.
-  uint8_t getP() const {
-    return (N << 7) | (V << 6) | (1 << 5) | (B << 4) | (D << 3) | (I << 2) |
-           (Z << 1) | C;
-  }
+  uint8_t getP() const;
 
   /// Set processor status from a byte.
-  void setP(uint8_t p) {
-    N = (p >> 7) & 1;
-    V = (p >> 6) & 1;
-    B = (p >> 4) & 1;
-    D = (p >> 3) & 1;
-    I = (p >> 2) & 1;
-    Z = (p >> 1) & 1;
-    C = p & 1;
-  }
+  void setP(uint8_t P);
 
   /// ADC with decimal mode support.
-  void doADC(uint8_t val) {
-    if (D) {
-      // Decimal mode
-      uint8_t lo = (A & 0x0F) + (val & 0x0F) + C;
-      uint8_t hi = (A >> 4) + (val >> 4);
-      if (lo > 9) {
-        lo -= 10;
-        hi++;
-      }
-      Z = ((A + val + C) & 0xFF) == 0;
-      N = hi & 0x08;
-      V = ~(A ^ val) & (A ^ (hi << 4)) & 0x80;
-      if (hi > 9) {
-        hi -= 10;
-        C = true;
-      } else {
-        C = false;
-      }
-      A = (hi << 4) | (lo & 0x0F);
-    } else {
-      // Binary mode
-      uint16_t sum = A + val + C;
-      C = sum > 0xFF;
-      V = ~(A ^ val) & (A ^ sum) & 0x80;
-      A = sum & 0xFF;
-      setNZ(A);
-    }
-  }
+  void doADC(uint8_t Val);
 
   /// SBC with decimal mode support.
-  void doSBC(uint8_t val) {
-    if (D) {
-      // Decimal mode
-      int lo = (A & 0x0F) - (val & 0x0F) - !C;
-      int hi = (A >> 4) - (val >> 4);
-      if (lo < 0) {
-        lo += 10;
-        hi--;
-      }
-      if (hi < 0) {
-        hi += 10;
-        C = false;
-      } else {
-        C = true;
-      }
-      A = (hi << 4) | (lo & 0x0F);
-      // N, Z, V set based on binary result
-      uint16_t diff = A - val - !C;
-      Z = (diff & 0xFF) == 0;
-      N = diff & 0x80;
-      V = (A ^ val) & (A ^ diff) & 0x80;
-    } else {
-      // Binary mode
-      uint16_t diff = A - val - !C;
-      C = diff <= 0xFF; // No borrow
-      V = (A ^ val) & (A ^ diff) & 0x80;
-      A = diff & 0xFF;
-      setNZ(A);
-    }
-  }
+  void doSBC(uint8_t Val);
 
 private:
   const MCDisassembler *Disassembler;
