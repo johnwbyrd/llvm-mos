@@ -426,7 +426,7 @@ static std::string translateJibToC(const JibInstructionBody &Instr,
         if (SanitizedVar == "tmp0")
           continue;
 
-        std::string CppType = "uint8_t"; // Default
+        std::string CppType = "uint64_t"; // Default for untyped %bv
         if (Type.starts_with("%bv16") || Type.starts_with("%i16"))
           CppType = "uint16_t";
         else if (Type.starts_with("%bv32") || Type.starts_with("%i") ||
