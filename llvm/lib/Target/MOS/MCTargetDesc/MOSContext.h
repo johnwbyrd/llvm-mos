@@ -49,12 +49,20 @@ public:
   bool V = false; // Overflow
   bool N = false; // Negative
 
+  // Interrupt state (directly set by external hardware/devices)
+  uint8_t IRQPending = 0; // Hardware IRQ line asserted (level-triggered)
+  uint8_t NMIPending = 0; // Non-maskable interrupt pending (edge-triggered)
+
   // Execution state
   uint64_t Cycles = 0;
   bool Halted = false;
-  int ExitCode_ = 0;
+  int ExitCode = 0;
   uint16_t NextPC = 0;       // Next PC (set before execute, branches/jumps override)
   bool DidPageCross = false; // Set by indexed addressing modes when crossing page
+
+  // Interrupt vectors
+  static constexpr uint16_t IrqVector = 0xFFFE;
+  static constexpr uint16_t NmiVector = 0xFFFA;
 
   //===--------------------------------------------------------------------===//
   // Construction
@@ -77,10 +85,19 @@ public:
   uint64_t getCycles() const override { return Cycles; }
   bool isHalted() const override { return Halted; }
   void halt(int ExitCode = 0) override;
-  int getExitCode() const override { return ExitCode_; }
+  int getExitCode() const override { return ExitCode; }
 
   /// MOS has a 16-bit address bus (64KB address space).
   unsigned getAddressBits() const override { return 16; }
+
+  /// Assert IRQ line (level-triggered).
+  void assertIRQ() override { IRQPending = 1; }
+
+  /// Deassert IRQ line.
+  void deassertIRQ() override { IRQPending = 0; }
+
+  /// Assert NMI (edge-triggered).
+  void assertNMI() override { NMIPending = 1; }
 
   //===--------------------------------------------------------------------===//
   // Helper Methods (used by SAIL-generated code)
@@ -192,6 +209,19 @@ public:
     writeMem(EA, Val);
     setNZ(Val);
   }
+
+  //===--------------------------------------------------------------------===//
+  // SAIL-generated interrupt handling functions
+  // These are generated from mos6502.sail and included via MOSGenEmulator.inc
+  //===--------------------------------------------------------------------===//
+
+  /// Check and handle pending IRQ (if interrupts enabled).
+  /// Returns true if IRQ was taken.
+  bool checkAndHandleIRQ();
+
+  /// Check and handle pending NMI.
+  /// Returns true if NMI was taken.
+  bool checkAndHandleNMI();
 
 private:
   const MCDisassembler *Disassembler;
