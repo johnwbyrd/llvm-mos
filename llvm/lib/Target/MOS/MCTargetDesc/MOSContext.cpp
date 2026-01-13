@@ -112,15 +112,18 @@ bool Context::step() {
     errs() << "\n";
   }
 
-  // Execute the instruction
-  PCModified = false;
-  DidPageCross = false;
-  uint16_t PrePC = PC;
-  execute(Inst);
-
-  // Get instruction descriptor and TSFlags (used for halt check and cycles)
+  // Get instruction descriptor and TSFlags
   const MCInstrDesc &Desc = InstrInfo->get(Inst.getOpcode());
   uint64_t TSFlags = Desc.TSFlags;
+
+  // Set NextPC to default (instruction after this one)
+  // Branches/jumps will override this via set_next_pc()
+  uint16_t DefaultNextPC = PC + Desc.getSize();
+  NextPC = DefaultNextPC;
+  DidPageCross = false;
+
+  // Execute the instruction
+  execute(Inst);
 
   // Check for halt instruction
   if (MOS::getHaltEmulation(TSFlags)) {
@@ -134,18 +137,17 @@ bool Context::step() {
   Cycles += BaseCycles + PageCrossPenalty;
 
   // Handle branch page-cross penalty
-  // Branch Emulate code already adds +1 for taken (via Cycles++).
+  // Branch instructions add +1 for taken (via Cycles++ in generated code).
   // We add another +1 if the branch crossed a page boundary.
-  if (Desc.isBranch() && PCModified) {
-    uint16_t NextPC = PrePC + Desc.getSize();
-    if (pageCrossed(NextPC, PC)) {
+  if (Desc.isBranch() && NextPC != DefaultNextPC) {
+    // Branch was taken (NextPC was modified)
+    if (pageCrossed(DefaultNextPC, NextPC)) {
       Cycles += 1;
     }
   }
 
-  // Advance PC if instruction didn't modify it
-  if (!PCModified)
-    PC += Desc.getSize();
+  // Commit NextPC to PC (tick_pc)
+  PC = NextPC;
 
   return true;
 }
