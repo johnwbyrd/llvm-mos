@@ -264,13 +264,16 @@ static JibIR parseJibIR(StringRef Path) {
             Func.Params.push_back(zdecode(P));
         }
 
-        // Collect function body until "end;" or "}"
+        // Collect function body including "end;" (for label emission)
         for (size_t J = I + 1; J < Lines.size(); ++J) {
           StringRef BodyLine = Lines[J].trim();
-          if (BodyLine == "end;" || BodyLine == "}") {
+          if (BodyLine == "}") {
             break;
           }
           Func.Body.push_back(BodyLine.str());
+          if (BodyLine == "end;") {
+            break;
+          }
         }
 
         IR.Functions[Func.Name] = std::move(Func);
@@ -791,6 +794,200 @@ static std::string translateJibExp(StringRef Exp, const JibIR &IR) {
   return Sanitized;
 }
 
+/// Translate a JibFunction (standalone function) to C++ code.
+/// Labels are implicit in the IR (jump targets are line numbers).
+static std::string translateJibFunctionToC(const JibFunction &Func,
+                                           const JibIR &IR) {
+  std::string Result;
+  raw_string_ostream OS(Result);
+
+  // First pass: collect all jump targets
+  DenseSet<size_t> JumpTargets;
+  for (const std::string &Line : Func.Body) {
+    StringRef L = StringRef(Line).trim();
+    if (L.starts_with("goto ")) {
+      StringRef Target = L.substr(5);
+      // Strip backtick annotation and semicolon
+      size_t BacktickPos = Target.find('`');
+      if (BacktickPos != StringRef::npos)
+        Target = Target.substr(0, BacktickPos);
+      Target = Target.rtrim(";").trim();
+      size_t TargetNum;
+      if (!Target.getAsInteger(10, TargetNum))
+        JumpTargets.insert(TargetNum);
+    } else if (L.starts_with("jump ")) {
+      size_t GotoPos = L.find(" goto ");
+      if (GotoPos != StringRef::npos) {
+        StringRef Target = L.substr(GotoPos + 6);
+        // Strip backtick annotation and semicolon
+        size_t BacktickPos = Target.find('`');
+        if (BacktickPos != StringRef::npos)
+          Target = Target.substr(0, BacktickPos);
+        Target = Target.rtrim(";").trim();
+        size_t TargetNum;
+        if (!Target.getAsInteger(10, TargetNum))
+          JumpTargets.insert(TargetNum);
+      }
+    }
+  }
+
+  // Track unit-type variables - we still emit their RHS for side effects
+  StringSet<> UnitVars;
+
+  // Second pass: generate code, only emitting labels for jump targets
+  size_t LineNum = 0;
+  for (const std::string &Line : Func.Body) {
+    StringRef L = StringRef(Line).trim();
+
+    // Only emit label if this line is a jump target
+    if (JumpTargets.contains(LineNum))
+      OS << "L" << LineNum << ":;\n";
+    ++LineNum;
+
+    // Skip empty lines
+    if (L.empty())
+      continue;
+
+    // Handle return statement: "return = exp"
+    if (L.starts_with("return = ")) {
+      StringRef Exp = L.substr(9);
+      size_t BacktickPos = Exp.find('`');
+      if (BacktickPos != StringRef::npos)
+        Exp = Exp.substr(0, BacktickPos).trim();
+      std::string CppExp = translateJibExp(Exp, IR);
+      OS << "  return " << CppExp << ";\n";
+      continue;
+    }
+
+    // Declaration: "id : %type"
+    if (L.contains(" : %") && !L.contains(" = ")) {
+      size_t ColonPos = L.find(" : ");
+      if (ColonPos != StringRef::npos) {
+        StringRef VarName = L.substr(0, ColonPos);
+        StringRef Type = L.substr(ColonPos + 3);
+        size_t BacktickPos = Type.find('`');
+        if (BacktickPos != StringRef::npos)
+          Type = Type.substr(0, BacktickPos).trim();
+
+        std::string SanitizedVar = sanitizeVarName(VarName);
+
+        if (Type.starts_with("%unit")) {
+          UnitVars.insert(SanitizedVar);
+          continue;
+        }
+
+        std::string CppType = "uint64_t";
+        if (Type.starts_with("%bv16") || Type.starts_with("%i16"))
+          CppType = "uint16_t";
+        else if (Type.starts_with("%bv8"))
+          CppType = "uint8_t";
+        else if (Type.starts_with("%bv32") || Type.starts_with("%i") ||
+                 Type.starts_with("%i64"))
+          CppType = "uint32_t";
+        else if (Type.starts_with("%bool"))
+          CppType = "bool";
+        else if (Type.starts_with("%enum"))
+          continue;
+
+        OS << "  " << CppType << " " << SanitizedVar << ";\n";
+        continue;
+      }
+    }
+
+    // Init: "id : %type = exp"
+    if (L.contains(" : %") && L.contains(" = ")) {
+      size_t ColonPos = L.find(" : ");
+      size_t EqPos = L.find(" = ");
+      if (ColonPos != StringRef::npos && EqPos != StringRef::npos) {
+        StringRef VarName = L.substr(0, ColonPos);
+        StringRef Type = L.substr(ColonPos + 3, EqPos - ColonPos - 3).trim();
+        StringRef Exp = L.substr(EqPos + 3);
+
+        size_t BacktickPos = Exp.find('`');
+        if (BacktickPos != StringRef::npos)
+          Exp = Exp.substr(0, BacktickPos).trim();
+
+        std::string SanitizedVar = sanitizeVarName(VarName);
+        std::string CppExp = translateJibExp(Exp, IR);
+
+        // For unit types, emit RHS for side effects (function calls like push)
+        if (Type.starts_with("%unit")) {
+          UnitVars.insert(SanitizedVar);
+          if (!CppExp.empty() && CppExp != "{}" && CppExp != "()")
+            OS << "  " << CppExp << ";\n";
+          continue;
+        }
+        if (Type.starts_with("%enum"))
+          continue;
+
+        if (CppExp.empty() || CppExp == "{}")
+          continue;
+
+        OS << "  auto " << SanitizedVar << " = " << CppExp << ";\n";
+        continue;
+      }
+    }
+
+    // Assignment: "loc = exp"
+    if (L.contains(" = ") && !L.contains(" : ")) {
+      size_t EqPos = L.find(" = ");
+      if (EqPos != StringRef::npos) {
+        StringRef Loc = L.substr(0, EqPos);
+        StringRef Exp = L.substr(EqPos + 3);
+
+        size_t BacktickPos = Exp.find('`');
+        if (BacktickPos != StringRef::npos)
+          Exp = Exp.substr(0, BacktickPos).trim();
+
+        std::string SanitizedLoc = sanitizeVarName(Loc);
+        std::string CppExp = translateJibExp(Exp, IR);
+
+        // For unit vars, emit RHS for side effects
+        if (UnitVars.contains(SanitizedLoc)) {
+          if (!CppExp.empty() && CppExp != "{}" && CppExp != "()")
+            OS << "  " << CppExp << ";\n";
+          continue;
+        }
+
+        if (CppExp.empty() || CppExp == "{}")
+          continue;
+
+        OS << "  " << SanitizedLoc << " = " << CppExp << ";\n";
+        continue;
+      }
+    }
+
+    // Control flow: goto, jump, end
+    if (L.starts_with("goto ")) {
+      StringRef Target = L.substr(5);
+      size_t BacktickPos = Target.find('`');
+      if (BacktickPos != StringRef::npos)
+        Target = Target.substr(0, BacktickPos).trim();
+      OS << "  goto L" << Target << ";\n";
+      continue;
+    }
+
+    if (L.starts_with("jump ")) {
+      size_t GotoPos = L.find(" goto ");
+      if (GotoPos != StringRef::npos) {
+        StringRef Cond = L.substr(5, GotoPos - 5);
+        StringRef Target = L.substr(GotoPos + 6);
+        size_t BacktickPos = Target.find('`');
+        if (BacktickPos != StringRef::npos)
+          Target = Target.substr(0, BacktickPos).trim();
+        std::string CppCond = translateJibExp(Cond, IR);
+        OS << "  if (" << CppCond << ") goto L" << Target << ";\n";
+        continue;
+      }
+    }
+
+    if (L == "end;")
+      continue;
+  }
+
+  return Result;
+}
+
 //===----------------------------------------------------------------------===//
 // EmulatorEmitter class
 //===----------------------------------------------------------------------===//
@@ -1101,6 +1298,46 @@ void EmulatorEmitter::run(raw_ostream &OS) {
   }
 
   OS << "#endif // GET_EMULATOR_CASES\n";
+
+  // Emit standalone functions from SAIL (e.g., checkAndHandleIRQ)
+  // These are functions that are not instruction execute clauses but are
+  // preserved via -isla_preserve and can be called from the emulator.
+  if (!SailIR.empty()) {
+    // List of functions to emit as standalone C++ functions
+    static const char *StandaloneFunctions[] = {
+        "checkAndHandleIRQ",
+        "checkAndHandleNMI",
+    };
+
+    bool HasFunctions = false;
+    for (const char *FuncName : StandaloneFunctions) {
+      if (SailIR.Functions.count(FuncName)) {
+        HasFunctions = true;
+        break;
+      }
+    }
+
+    if (HasFunctions) {
+      OS << "\n#ifdef GET_EMULATOR_FUNCTIONS\n";
+      OS << "// Standalone functions generated from SAIL specification.\n";
+      OS << "// These are class method definitions - include after the class definition.\n\n";
+
+      for (const char *FuncName : StandaloneFunctions) {
+        auto It = SailIR.Functions.find(FuncName);
+        if (It != SailIR.Functions.end()) {
+          const JibFunction &Func = It->second;
+          std::string Body = translateJibFunctionToC(Func, SailIR);
+
+          // Emit as class method definition - Context:: prefix
+          OS << "bool Context::" << FuncName << "() {\n";
+          OS << Body;
+          OS << "}\n\n";
+        }
+      }
+
+      OS << "#endif // GET_EMULATOR_FUNCTIONS\n";
+    }
+  }
 }
 
 static TableGen::Emitter::OptClass<EmulatorEmitter>

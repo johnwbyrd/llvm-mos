@@ -74,9 +74,9 @@ void Semihost::initSecureBackend(const std::string &SandboxDir) {
   SecureState = std::make_unique<zbc_ansi_state_t>();
   zbc_ansi_init(SecureState.get(), SandboxDir.c_str());
 
-  // Set up exit callback
-  zbc_ansi_set_callbacks(SecureState.get(), nullptr, onExitCallback, nullptr,
-                         this);
+  // Set up exit and timer config callbacks
+  zbc_ansi_set_callbacks(SecureState.get(), nullptr, onExitCallback,
+                         onTimerConfigCallback, this);
 
   // Initialize host state
   zbc_host_mem_ops_t MemOps = {memReadU8, memWriteU8, memReadBlock,
@@ -102,6 +102,10 @@ void Semihost::initConsoleBackend() {
 
   // Set up exit callback
   zbc_ansi_console_set_exit_callback(ConsoleState.get(), onExitCallback, this);
+
+  // Set up timer config callback
+  zbc_ansi_console_set_timer_callback(ConsoleState.get(), onTimerConfigCallback,
+                                      this);
 
   // Initialize host state
   zbc_host_mem_ops_t MemOps = {memReadU8, memWriteU8, memReadBlock,
@@ -152,9 +156,15 @@ void Semihost::write(uint64_t Offset, uint8_t Value) {
     return;
   }
 
-  // STATUS (writing clears response ready)
+  // STATUS (writing 0 clears response ready and deasserts IRQ)
   if (Offset == REG_STATUS) {
-    ResponseReady = false;
+    if (Value == 0) {
+      ResponseReady = false;
+      // Deassert IRQ when guest acknowledges by writing 0 to STATUS
+      // This matches MAME's level-triggered IRQ behavior
+      if (Context *Ctx = Sys.getContext(0))
+        Ctx->deassertIRQ();
+    }
     return;
   }
 
@@ -225,4 +235,16 @@ void Semihost::onExitCallback(void *Ctx, unsigned Reason, unsigned Subcode) {
   if (Self->OnExit) {
     Self->OnExit(Reason, Subcode);
   }
+}
+
+//===----------------------------------------------------------------------===//
+// Timer Config Callback
+//===----------------------------------------------------------------------===//
+
+void Semihost::onTimerConfigCallback(void *Ctx, unsigned RateHz) {
+  auto *Self = static_cast<Semihost *>(Ctx);
+  // Register ourselves with System so it can call setTimerTick() on timer fire
+  Self->Sys.setSemihostDevice(Self);
+  // Configure the timer in System
+  Self->Sys.configureTimer(RateHz);
 }

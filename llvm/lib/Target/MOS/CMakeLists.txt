@@ -98,7 +98,10 @@ set(MOS_SAIL_IR ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502.ir)
 set(ISLA_PLUGIN "$ENV{HOME}/git/isla/isla-sail/_build/default/sail_plugin_isla.cmxs")
 
 add_custom_target(mos-sail-ir
-  COMMAND sail -plugin ${ISLA_PLUGIN} -isla -o ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502 ${MOS_SAIL_SOURCE}
+  COMMAND sail -plugin ${ISLA_PLUGIN} -isla
+    -isla_preserve checkAndHandleIRQ
+    -isla_preserve checkAndHandleNMI
+    -o ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502 ${MOS_SAIL_SOURCE}
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Sail
   COMMENT "Regenerating MOS SAIL IR from mos6502.sail"
   SOURCES ${MOS_SAIL_SOURCE}

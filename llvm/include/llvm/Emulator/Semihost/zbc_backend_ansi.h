@@ -287,6 +287,10 @@ typedef struct zbc_ansi_console_state_s {
     void (*on_exit)(void *ctx, unsigned int reason, unsigned int subcode);
     void *callback_ctx;
 
+    /* Timer config callback */
+    void (*on_timer_config)(void *ctx, unsigned int rate_hz);
+    void *timer_callback_ctx;
+
     /* Other state */
     int last_errno;
     uint64_t start_clock;
@@ -314,6 +318,18 @@ void zbc_ansi_console_init(zbc_ansi_console_state_t *state);
 void zbc_ansi_console_set_exit_callback(
     zbc_ansi_console_state_t *state,
     void (*on_exit)(void *ctx, unsigned int reason, unsigned int subcode),
+    void *ctx);
+
+/**
+ * Set timer config callback for console-only backend.
+ *
+ * @param state           Initialized state
+ * @param on_timer_config Called when guest configures timer
+ * @param ctx             Context passed to callback
+ */
+void zbc_ansi_console_set_timer_callback(
+    zbc_ansi_console_state_t *state,
+    void (*on_timer_config)(void *ctx, unsigned int rate_hz),
     void *ctx);
 
 /**
