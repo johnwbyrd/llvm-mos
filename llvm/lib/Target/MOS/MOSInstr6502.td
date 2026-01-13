@@ -20,16 +20,7 @@ let Predicates = [Has6502] in {
 // BRK - Break (software interrupt)
 // Pushes PC+2 and P (with B flag set), then loads IRQ/BRK vector
 // HaltEmulation=1: halts the emulator after execution
-let Cycles6502 = 7, FlagB = 2, FlagI = 2, HaltEmulation = 1,
-    Emulate = [{
-  uint16_t ret = PC + 2;
-  push((ret >> 8) & 0xFF);
-  push(ret & 0xFF);
-  push(getP() | 0x30);  // B and unused flag set
-  I = true;
-  PC = read(0xFFFE) | (read(0xFFFF) << 8);
-  PCModified = true;
-}] in
+let Cycles6502 = 7, FlagB = 2, FlagI = 2, HaltEmulation = 1 in
 def BRK_Implied    : MOSInst<0x00, "brk", Implicit>, TraitUnconditionalBranch;
 
 //===----------------------------------------------------------------------===//
@@ -37,7 +28,7 @@ def BRK_Implied    : MOSInst<0x00, "brk", Implicit>, TraitUnconditionalBranch;
 //===----------------------------------------------------------------------===//
 
 // ORA - Logical OR with Accumulator
-let FlagN = 1, FlagZ = 1, Emulate = [{ A |= $Value; setNZ(A); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 2 in
   def ORA_Immediate  : MOSInst<0x09, "ora", Immediate> { let MHigh = 1; }
   let Cycles6502 = 3 in
@@ -58,7 +49,7 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ A |= $Value; setNZ(A); }] in {
 }
 
 // AND - Logical AND with Accumulator
-let FlagN = 1, FlagZ = 1, Emulate = [{ A &= $Value; setNZ(A); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 2 in
   def AND_Immediate  : MOSInst<0x29, "and", Immediate> { let MHigh = 1; }
   let Cycles6502 = 3 in
@@ -79,7 +70,7 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ A &= $Value; setNZ(A); }] in {
 }
 
 // EOR - Exclusive OR with Accumulator
-let FlagN = 1, FlagZ = 1, Emulate = [{ A ^= $Value; setNZ(A); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 2 in
   def EOR_Immediate  : MOSInst<0x49, "eor", Immediate> { let MHigh = 1; }
   let Cycles6502 = 3 in
@@ -107,7 +98,7 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ A ^= $Value; setNZ(A); }] in {
 //   doSBC(value) - subtracts value + !C from A, sets N, V, Z, C
 
 // ADC - Add with Carry
-let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1, Emulate = [{ doADC($Value); }] in {
+let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 2 in
   def ADC_Immediate  : MOSInst<0x69, "adc", Immediate> { let MHigh = 1; }
   let Cycles6502 = 3 in
@@ -128,7 +119,7 @@ let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1, Emulate = [{ doADC($Value); }] i
 }
 
 // SBC - Subtract with Carry
-let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1, Emulate = [{ doSBC($Value); }] in {
+let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 2 in
   def SBC_Immediate  : MOSInst<0xE9, "sbc", Immediate> { let MHigh = 1; }
   let Cycles6502 = 3 in
@@ -155,8 +146,7 @@ let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1, Emulate = [{ doSBC($Value); }] i
 // N = bit 7 of (reg - value)
 
 // CMP - Compare Accumulator
-let FlagN = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ uint8_t diff = A - $Value; C = (A >= $Value); setNZ(diff); }] in {
+let FlagN = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 2 in
   def CMP_Immediate  : MOSInst<0xC9, "cmp", Immediate> { let MHigh = 1; }
   let Cycles6502 = 3 in
@@ -177,8 +167,7 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
 }
 
 // CPX - Compare X Register
-let FlagN = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ uint8_t diff = X - $Value; C = (X >= $Value); setNZ(diff); }] in {
+let FlagN = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 2 in
   def CPX_Immediate  : MOSInst<0xE0, "cpx", Immediate> { let XHigh = 1; }
   let Cycles6502 = 3 in
@@ -188,8 +177,7 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
 }
 
 // CPY - Compare Y Register
-let FlagN = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ uint8_t diff = Y - $Value; C = (Y >= $Value); setNZ(diff); }] in {
+let FlagN = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 2 in
   def CPY_Immediate  : MOSInst<0xC0, "cpy", Immediate> { let XHigh = 1; }
   let Cycles6502 = 3 in
@@ -203,8 +191,7 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
 //===----------------------------------------------------------------------===//
 // BIT sets Z based on A AND Value, but N and V come directly from Value bits 7,6
 
-let FlagN = 1, FlagV = 1, FlagZ = 1,
-    Emulate = [{ Z = (A & $Value) == 0; N = ($Value >> 7) & 1; V = ($Value >> 6) & 1; }] in {
+let FlagN = 1, FlagV = 1, FlagZ = 1 in {
   let Cycles6502 = 3 in
   defm BIT           : Op<0x24, "bit", ZeroPage>;
   let Cycles6502 = 4 in
@@ -220,7 +207,7 @@ let FlagN = 1, FlagV = 1, FlagZ = 1,
 // All set N and Z flags based on the loaded value.
 
 // LDA - Load Accumulator (all variants share emulation behavior)
-let FlagN = 1, FlagZ = 1, Emulate = [{ A = $Value; setNZ(A); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 2 in
   def LDA_Immediate  : MOSInst<0xA9, "lda", Immediate> { let MHigh = 1; }
   let Cycles6502 = 3 in
@@ -241,7 +228,7 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ A = $Value; setNZ(A); }] in {
 }
 
 // LDX - Load X Register (all variants share emulation behavior)
-let FlagN = 1, FlagZ = 1, Emulate = [{ X = $Value; setNZ(X); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 2 in
   def LDX_Immediate  : MOSInst<0xA2, "ldx", Immediate> { let XHigh = 1; }
   let Cycles6502 = 3 in
@@ -256,7 +243,7 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ X = $Value; setNZ(X); }] in {
 }
 
 // LDY - Load Y Register (all variants share emulation behavior)
-let FlagN = 1, FlagZ = 1, Emulate = [{ Y = $Value; setNZ(Y); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 2 in
   def LDY_Immediate  : MOSInst<0xA0, "ldy", Immediate> { let XHigh = 1; }
   let Cycles6502 = 3 in
@@ -278,66 +265,60 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ Y = $Value; setNZ(Y); }] in {
 // STY stores the Y register to memory
 // Store instructions do not affect any flags.
 
-// STA - Store Accumulator (all variants share emulation behavior)
-let Emulate = [{ write($EA, A); }] in {
-  // Zero Page: 3 cycles
-  let Cycles6502 = 3 in
-  defm STA           : Op<0x85, "sta", ZeroPage>;
+// STA - Store Accumulator
+// Zero Page: 3 cycles
+let Cycles6502 = 3 in
+defm STA           : Op<0x85, "sta", ZeroPage>;
 
-  // Zero Page,X: 4 cycles
-  let Cycles6502 = 4 in
-  defm STA           : Op<0x95, "sta", ZeroPageX>;
+// Zero Page,X: 4 cycles
+let Cycles6502 = 4 in
+defm STA           : Op<0x95, "sta", ZeroPageX>;
 
-  // Absolute: 4 cycles
-  let Cycles6502 = 4 in
-  defm STA           : Op<0x8D, "sta", Absolute>;
+// Absolute: 4 cycles
+let Cycles6502 = 4 in
+defm STA           : Op<0x8D, "sta", Absolute>;
 
-  // Absolute,X: 5 cycles (no page cross penalty for stores)
-  let Cycles6502 = 5 in
-  defm STA           : Op<0x9D, "sta", AbsoluteX>;
+// Absolute,X: 5 cycles (no page cross penalty for stores)
+let Cycles6502 = 5 in
+defm STA           : Op<0x9D, "sta", AbsoluteX>;
 
-  // Absolute,Y: 5 cycles (no page cross penalty for stores)
-  let Cycles6502 = 5 in
-  defm STA           : Op<0x99, "sta", AbsoluteY>;
+// Absolute,Y: 5 cycles (no page cross penalty for stores)
+let Cycles6502 = 5 in
+defm STA           : Op<0x99, "sta", AbsoluteY>;
 
-  // Indexed Indirect (d,X): 6 cycles
-  let Cycles6502 = 6 in
-  defm STA           : Op<0x81, "sta", IndexedIndirect>;
+// Indexed Indirect (d,X): 6 cycles
+let Cycles6502 = 6 in
+defm STA           : Op<0x81, "sta", IndexedIndirect>;
 
-  // Indirect Indexed (d),Y: 6 cycles (no page cross penalty for stores)
-  let Cycles6502 = 6 in
-  defm STA           : Op<0x91, "sta", IndirectIndexed>;
-}
+// Indirect Indexed (d),Y: 6 cycles (no page cross penalty for stores)
+let Cycles6502 = 6 in
+defm STA           : Op<0x91, "sta", IndirectIndexed>;
 
-// STX - Store X Register (all variants share emulation behavior)
-let Emulate = [{ write($EA, X); }] in {
-  // Zero Page: 3 cycles
-  let Cycles6502 = 3 in
-  defm STX           : Op<0x86, "stx", ZeroPage>;
+// STX - Store X Register
+// Zero Page: 3 cycles
+let Cycles6502 = 3 in
+defm STX           : Op<0x86, "stx", ZeroPage>;
 
-  // Zero Page,Y: 4 cycles
-  let Cycles6502 = 4 in
-  defm STX           : Op<0x96, "stx", ZeroPageY>;
+// Zero Page,Y: 4 cycles
+let Cycles6502 = 4 in
+defm STX           : Op<0x96, "stx", ZeroPageY>;
 
-  // Absolute: 4 cycles
-  let Cycles6502 = 4 in
-  defm STX           : Op<0x8E, "stx", Absolute>;
-}
+// Absolute: 4 cycles
+let Cycles6502 = 4 in
+defm STX           : Op<0x8E, "stx", Absolute>;
 
-// STY - Store Y Register (all variants share emulation behavior)
-let Emulate = [{ write($EA, Y); }] in {
-  // Zero Page: 3 cycles
-  let Cycles6502 = 3 in
-  defm STY           : Op<0x84, "sty", ZeroPage>;
+// STY - Store Y Register
+// Zero Page: 3 cycles
+let Cycles6502 = 3 in
+defm STY           : Op<0x84, "sty", ZeroPage>;
 
-  // Zero Page,X: 4 cycles
-  let Cycles6502 = 4 in
-  defm STY           : Op<0x94, "sty", ZeroPageX>;
+// Zero Page,X: 4 cycles
+let Cycles6502 = 4 in
+defm STY           : Op<0x94, "sty", ZeroPageX>;
 
-  // Absolute: 4 cycles
-  let Cycles6502 = 4 in
-  defm STY           : Op<0x8C, "sty", Absolute>;
-}
+// Absolute: 4 cycles
+let Cycles6502 = 4 in
+defm STY           : Op<0x8C, "sty", Absolute>;
 
 //===----------------------------------------------------------------------===//
 // Shift/Rotate Instructions (ASL, LSR, ROL, ROR) - Affect N, Z, C
@@ -345,12 +326,10 @@ let Emulate = [{ write($EA, Y); }] in {
 
 // ASL - Arithmetic Shift Left (shifts 0 into bit 0, bit 7 into C)
 // Accumulator mode
-let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2,
-    Emulate = [{ C = (A >> 7) & 1; A <<= 1; setNZ(A); }] in
+let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2 in
 defm ASL           : Op<0x0A, "asl", Accumulator>;
 // Memory modes (read-modify-write)
-let FlagN = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ uint8_t v = $Value; C = (v >> 7) & 1; v <<= 1; write($EA, v); setNZ(v); }] in {
+let FlagN = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 5 in
   defm ASL           : Op<0x06, "asl", ZeroPage>;
   let Cycles6502 = 6 in {
@@ -363,12 +342,10 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
 
 // LSR - Logical Shift Right (shifts 0 into bit 7, bit 0 into C)
 // Accumulator mode
-let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2,
-    Emulate = [{ C = A & 1; A >>= 1; setNZ(A); }] in
+let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2 in
 defm LSR           : Op<0x4A, "lsr", Accumulator>;
 // Memory modes
-let FlagN = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ uint8_t v = $Value; C = v & 1; v >>= 1; write($EA, v); setNZ(v); }] in {
+let FlagN = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 5 in
   defm LSR           : Op<0x46, "lsr", ZeroPage>;
   let Cycles6502 = 6 in {
@@ -381,12 +358,10 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
 
 // ROL - Rotate Left (C into bit 0, bit 7 into C)
 // Accumulator mode
-let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2,
-    Emulate = [{ bool c = C; C = (A >> 7) & 1; A = (A << 1) | c; setNZ(A); }] in
+let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2 in
 defm ROL           : Op<0x2A, "rol", Accumulator>;
 // Memory modes
-let FlagN = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ uint8_t v = $Value; bool c = C; C = (v >> 7) & 1; v = (v << 1) | c; write($EA, v); setNZ(v); }] in {
+let FlagN = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 5 in
   defm ROL           : Op<0x26, "rol", ZeroPage>;
   let Cycles6502 = 6 in {
@@ -399,12 +374,10 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
 
 // ROR - Rotate Right (C into bit 7, bit 0 into C)
 // Accumulator mode
-let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2,
-    Emulate = [{ bool c = C; C = A & 1; A = (A >> 1) | (c << 7); setNZ(A); }] in
+let FlagN = 1, FlagZ = 1, FlagC = 1, Cycles6502 = 2 in
 defm ROR           : Op<0x6A, "ror", Accumulator>;
 // Memory modes
-let FlagN = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ uint8_t v = $Value; bool c = C; C = v & 1; v = (v >> 1) | (c << 7); write($EA, v); setNZ(v); }] in {
+let FlagN = 1, FlagZ = 1, FlagC = 1 in {
   let Cycles6502 = 5 in
   defm ROR           : Op<0x66, "ror", ZeroPage>;
   let Cycles6502 = 6 in {
@@ -420,7 +393,7 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
 //===----------------------------------------------------------------------===//
 
 // DEC - Decrement Memory
-let FlagN = 1, FlagZ = 1, Emulate = [{ uint8_t v = $Value - 1; write($EA, v); setNZ(v); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 5 in
   defm DEC           : Op<0xC6, "dec", ZeroPage>;
   let Cycles6502 = 6 in {
@@ -432,7 +405,7 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ uint8_t v = $Value - 1; write($EA, v); se
 }
 
 // INC - Increment Memory
-let FlagN = 1, FlagZ = 1, Emulate = [{ uint8_t v = $Value + 1; write($EA, v); setNZ(v); }] in {
+let FlagN = 1, FlagZ = 1 in {
   let Cycles6502 = 5 in
   defm INC           : Op<0xE6, "inc", ZeroPage>;
   let Cycles6502 = 6 in {
@@ -445,16 +418,9 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ uint8_t v = $Value + 1; write($EA, v); se
 
 // Register operations: 2 cycles
 let Cycles6502 = 2, FlagN = 1, FlagZ = 1 in {
-let Emulate = [{ Y--; setNZ(Y); }] in
 defm DEY           : Op<0x88, "dey", Implicit>;
-
-let Emulate = [{ Y++; setNZ(Y); }] in
 defm INY           : Op<0xC8, "iny", Implicit>;
-
-let Emulate = [{ X--; setNZ(X); }] in
 defm DEX           : Op<0xCA, "dex", Implicit>;
-
-let Emulate = [{ X++; setNZ(X); }] in
 defm INX           : Op<0xE8, "inx", Implicit>;
 }
 
@@ -463,24 +429,15 @@ defm INX           : Op<0xE8, "inx", Implicit>;
 //===----------------------------------------------------------------------===//
 
 let Cycles6502 = 2, FlagN = 1, FlagZ = 1 in {
-let Emulate = [{ X = A; setNZ(X); }] in
 defm TAX           : Op<0xAA, "tax", Implicit>;
-
-let Emulate = [{ Y = A; setNZ(Y); }] in
 defm TAY           : Op<0xA8, "tay", Implicit>;
-
-let Emulate = [{ A = X; setNZ(A); }] in
 defm TXA           : Op<0x8A, "txa", Implicit>;
-
-let Emulate = [{ A = Y; setNZ(A); }] in
 defm TYA           : Op<0x98, "tya", Implicit>;
-
-let Emulate = [{ X = S; setNZ(X); }] in
 defm TSX           : Op<0xBA, "tsx", Implicit>;
 }
 
 // TXS doesn't affect any flags
-let Cycles6502 = 2, Emulate = [{ S = X; }] in {
+let Cycles6502 = 2 in {
 defm TXS           : Op<0x9A, "txs", Implicit>;
 }
 
@@ -490,26 +447,26 @@ defm TXS           : Op<0x9A, "txs", Implicit>;
 
 let Cycles6502 = 2 in {
 // Clear flags (set to 0)
-let FlagC = 3, Emulate = [{ C = false; }] in
+let FlagC = 3 in
 defm CLC : Op<0x18, "clc", Implicit>;  // Clear Carry
 
-let FlagI = 3, Emulate = [{ I = false; }] in
+let FlagI = 3 in
 defm CLI : Op<0x58, "cli", Implicit>;  // Clear Interrupt Disable
 
-let FlagV = 3, Emulate = [{ V = false; }] in
+let FlagV = 3 in
 defm CLV : Op<0xB8, "clv", Implicit>;  // Clear Overflow
 
-let FlagD = 3, Emulate = [{ D = false; }] in
+let FlagD = 3 in
 defm CLD : Op<0xD8, "cld", Implicit>;  // Clear Decimal
 
 // Set flags (set to 1)
-let FlagC = 2, Emulate = [{ C = true; }] in
+let FlagC = 2 in
 defm SEC : Op<0x38, "sec", Implicit>;  // Set Carry
 
-let FlagI = 2, Emulate = [{ I = true; }] in
+let FlagI = 2 in
 defm SEI : Op<0x78, "sei", Implicit>;  // Set Interrupt Disable
 
-let FlagD = 2, Emulate = [{ D = true; }] in
+let FlagD = 2 in
 defm SED : Op<0xF8, "sed", Implicit>;  // Set Decimal
 }
 
@@ -519,21 +476,17 @@ defm SED : Op<0xF8, "sed", Implicit>;  // Set Decimal
 
 // Push: 3 cycles, no flag effects
 let Cycles6502 = 3 in {
-let Emulate = [{ push(getP() | 0x30); }] in  // B flag set when pushed
 defm PHP           : Op<0x08, "php", Implicit>;
-
-let Emulate = [{ push(A); }] in
 defm PHA           : Op<0x48, "pha", Implicit>;
 }
 
 // PLA: 4 cycles, affects N, Z
-let Cycles6502 = 4, FlagN = 1, FlagZ = 1, Emulate = [{ A = pull(); setNZ(A); }] in {
+let Cycles6502 = 4, FlagN = 1, FlagZ = 1 in {
 defm PLA           : Op<0x68, "pla", Implicit>;
 }
 
 // PLP: 4 cycles, restores all flags
-let Cycles6502 = 4, FlagN = 1, FlagV = 1, FlagB = 1, FlagD = 1, FlagI = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{ setP(pull()); }] in {
+let Cycles6502 = 4, FlagN = 1, FlagV = 1, FlagB = 1, FlagD = 1, FlagI = 1, FlagZ = 1, FlagC = 1 in {
 defm PLP           : Op<0x28, "plp", Implicit>;
 }
 
@@ -541,7 +494,7 @@ defm PLP           : Op<0x28, "plp", Implicit>;
 // No-Operation
 //===----------------------------------------------------------------------===//
 
-let Cycles6502 = 2, Emulate = [{ /* NOP does nothing */ }] in {
+let Cycles6502 = 2 in {
 defm NOP           : Op<0xEA, "nop", Implicit>;
 }
 
@@ -551,21 +504,13 @@ defm NOP           : Op<0xEA, "nop", Implicit>;
 // Branches take 2 cycles if not taken, +1 if taken, +1 more if page cross
 
 let Cycles6502 = 2, PageCrossCycles = 1 in {
-let Emulate = [{ if (!N) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BPL           : OpBranch<0x10, "bpl">;  // Branch if Plus (N=0)
-let Emulate = [{ if (N) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BMI           : OpBranch<0x30, "bmi">;  // Branch if Minus (N=1)
-let Emulate = [{ if (!V) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BVC           : OpBranch<0x50, "bvc">;  // Branch if Overflow Clear (V=0)
-let Emulate = [{ if (V) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BVS           : OpBranch<0x70, "bvs">;  // Branch if Overflow Set (V=1)
-let Emulate = [{ if (!C) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BCC           : OpBranch<0x90, "bcc">;  // Branch if Carry Clear (C=0)
-let Emulate = [{ if (C) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BCS           : OpBranch<0xB0, "bcs">;  // Branch if Carry Set (C=1)
-let Emulate = [{ if (!Z) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BNE           : OpBranch<0xD0, "bne">;  // Branch if Not Equal (Z=0)
-let Emulate = [{ if (Z) { PC = $EA; PCModified = true; Cycles++; } }] in
 defm BEQ           : OpBranch<0xF0, "beq">;  // Branch if Equal (Z=1)
 }
 
@@ -574,40 +519,22 @@ defm BEQ           : OpBranch<0xF0, "beq">;  // Branch if Equal (Z=1)
 //===----------------------------------------------------------------------===//
 
 // JMP - Jump (unconditional)
-let Cycles6502 = 3, Emulate = [{ PC = $EA; PCModified = true; }] in
+let Cycles6502 = 3 in
 defm JMP           : OpJump<0x4C, "jmp", Absolute>;
 
-let Cycles6502 = 5, Emulate = [{ PC = $EA; PCModified = true; }] in
+let Cycles6502 = 5 in
 defm JMP           : OpJumpIndirect<0x6C, "jmp", Indirect16>;
 
 // JSR - Jump to Subroutine (pushes return address - 1)
-let Cycles6502 = 6, Emulate = [{
-  uint16_t ret = PC + 2;  // PC of last byte of JSR instruction
-  push((ret >> 8) & 0xFF);
-  push(ret & 0xFF);
-  PC = $EA;
-  PCModified = true;
-}] in
+let Cycles6502 = 6 in
 defm JSR           : OpCall<0x20, "jsr", Absolute>;
 
 // RTS - Return from Subroutine (pulls return address, adds 1)
-let Cycles6502 = 6, Emulate = [{
-  uint8_t lo = pull();
-  uint8_t hi = pull();
-  PC = ((hi << 8) | lo) + 1;
-  PCModified = true;
-}] in
+let Cycles6502 = 6 in
 defm RTS           : OpReturn<0x60, "rts">;
 
 // RTI - Return from Interrupt (pulls P then PC)
-let Cycles6502 = 6, FlagN = 1, FlagV = 1, FlagB = 1, FlagD = 1, FlagI = 1, FlagZ = 1, FlagC = 1,
-    Emulate = [{
-  setP(pull());
-  uint8_t lo = pull();
-  uint8_t hi = pull();
-  PC = (hi << 8) | lo;
-  PCModified = true;
-}] in
+let Cycles6502 = 6, FlagN = 1, FlagV = 1, FlagB = 1, FlagD = 1, FlagI = 1, FlagZ = 1, FlagC = 1 in
 defm RTI           : OpReturn<0x40, "rti">;
 
 //===----------------------------------------------------------------------===//

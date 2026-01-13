@@ -53,7 +53,7 @@ public:
   uint64_t Cycles = 0;
   bool Halted = false;
   int ExitCode_ = 0;
-  bool PCModified = false;   // Set by instructions that modify PC (JMP, JSR, etc.)
+  uint16_t NextPC = 0;       // Next PC (set before execute, branches/jumps override)
   bool DidPageCross = false; // Set by indexed addressing modes when crossing page
 
   //===--------------------------------------------------------------------===//
@@ -83,15 +83,37 @@ public:
   unsigned getAddressBits() const override { return 16; }
 
   //===--------------------------------------------------------------------===//
-  // Helper Methods (used by generated code)
+  // Helper Methods (used by SAIL-generated code)
+  // Names match SAIL specification for direct code generation.
   //===--------------------------------------------------------------------===//
 
+  /// Memory access - matches SAIL readMem/writeMem names.
+  uint8_t readMem(uint16_t Addr) { return read(Addr); }
+  void writeMem(uint16_t Addr, uint8_t Val) { write(Addr, Val); }
+  uint16_t readMem16(uint16_t Addr) { return read16(Addr); }
+
+  /// Set N and Z flags based on value.
   void setNZ(uint8_t Val);
+
+  /// Stack operations.
   void push(uint8_t Val);
   uint8_t pull();
   void push16(uint16_t Val);
   uint16_t pull16();
+
+  /// Check if two addresses are in different pages.
   bool pageCrossed(uint16_t Addr1, uint16_t Addr2);
+
+  /// Set the next PC (called by branches/jumps to override default).
+  void setNextPC(uint16_t PC) { NextPC = PC; }
+
+  /// Branch helper - if condition is true, set next PC to NextPC + sign-extended offset.
+  void doBranch(bool Cond, uint8_t Offset) {
+    if (Cond) {
+      setNextPC(NextPC + (int8_t)Offset);
+      Cycles++; // Taken branch adds 1 cycle
+    }
+  }
 
   /// Get processor status as a byte.
   uint8_t getP() const;
@@ -105,12 +127,78 @@ public:
   /// SBC with decimal mode support.
   void doSBC(uint8_t Val);
 
+  /// Compare helper - sets N, Z, C flags based on Reg - Val.
+  void doCMP(uint8_t Reg, uint8_t Val) {
+    uint8_t Result = Reg - Val;
+    C = Reg >= Val;
+    setNZ(Result);
+  }
+
+  /// BIT test helper - sets N, V, Z flags.
+  void doBIT(uint8_t Val) {
+    N = (Val >> 7) & 1;
+    V = (Val >> 6) & 1;
+    Z = (A & Val) == 0;
+  }
+
+  /// Memory increment helper.
+  void doIncMem(uint16_t EA) {
+    uint8_t Val = readMem(EA) + 1;
+    writeMem(EA, Val);
+    setNZ(Val);
+  }
+
+  /// Memory decrement helper.
+  void doDecMem(uint16_t EA) {
+    uint8_t Val = readMem(EA) - 1;
+    writeMem(EA, Val);
+    setNZ(Val);
+  }
+
+  /// ASL memory helper.
+  void doASLMem(uint16_t EA) {
+    uint8_t Val = readMem(EA);
+    C = (Val >> 7) & 1;
+    Val <<= 1;
+    writeMem(EA, Val);
+    setNZ(Val);
+  }
+
+  /// LSR memory helper.
+  void doLSRMem(uint16_t EA) {
+    uint8_t Val = readMem(EA);
+    C = Val & 1;
+    Val >>= 1;
+    writeMem(EA, Val);
+    setNZ(Val);
+  }
+
+  /// ROL memory helper.
+  void doROLMem(uint16_t EA) {
+    uint8_t Val = readMem(EA);
+    bool OldC = C;
+    C = (Val >> 7) & 1;
+    Val = (Val << 1) | OldC;
+    writeMem(EA, Val);
+    setNZ(Val);
+  }
+
+  /// ROR memory helper.
+  void doRORMem(uint16_t EA) {
+    uint8_t Val = readMem(EA);
+    bool OldC = C;
+    C = Val & 1;
+    Val = (Val >> 1) | (OldC << 7);
+    writeMem(EA, Val);
+    setNZ(Val);
+  }
+
 private:
   const MCDisassembler *Disassembler;
   const MCInstrInfo *InstrInfo;
 
   /// Execute a single decoded instruction.
-  /// Sets PCModified if the instruction changes PC (JMP, JSR, branches, etc.)
+  /// Branches/jumps call set_next_pc() to override the default next PC.
   void execute(const MCInst &Inst);
 };
 
