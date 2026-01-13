@@ -13,6 +13,7 @@
 
 #include "Disassembler.h"
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/BinaryFormat/Magic.h"
 #include "llvm/DWARFCFIChecker/DWARFCFIFunctionFrameAnalyzer.h"
 #include "llvm/DWARFCFIChecker/DWARFCFIFunctionFrameStreamer.h"
 #include "llvm/Emulator/Context.h"
@@ -235,7 +236,6 @@ enum ActionType {
   AC_Disassemble,
   AC_MDisassemble,
   AC_CDisassemble,
-  AC_Run,
 };
 
 static cl::opt<ActionType> Action(
@@ -248,10 +248,13 @@ static cl::opt<ActionType> Action(
                clEnumValN(AC_MDisassemble, "mdis",
                           "Marked up disassembly of strings of hex bytes"),
                clEnumValN(AC_CDisassemble, "cdis",
-                          "Colored disassembly of strings of hex bytes"),
-               clEnumValN(AC_Run, "run",
-                          "Load and execute an ELF file")),
+                          "Colored disassembly of strings of hex bytes")),
     cl::cat(MCCategory));
+
+static cl::opt<bool>
+    RunAfterAssembly("run",
+                     cl::desc("Execute the result after assembly/loading"),
+                     cl::cat(MCCategory));
 
 static cl::opt<bool>
     EmulatorTrace("trace", cl::desc("Trace instruction execution"),
@@ -262,6 +265,12 @@ static cl::opt<std::string>
                      cl::desc("Enable semihosting with sandbox directory for file I/O"),
                      cl::value_desc("sandbox-dir"),
                      cl::cat(MCCategory));
+
+static cl::opt<uint64_t>
+    RunMaxCycles("run-max-cycles",
+                 cl::desc("Maximum cycles to run before stopping (default 1M)"),
+                 cl::init(1000000),
+                 cl::cat(MCCategory));
 
 enum TraceFormatType {
   TF_Text,
@@ -543,11 +552,14 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
     TraceWriter->traceStart();
   }
 
-  // Run until halt
-  if (!Emu->run()) {
+  // Run until halt or cycle limit
+  Emu->executeFor(RunMaxCycles);
+  if (!Emu->isHalted()) {
     if (TraceWriter)
       TraceWriter->traceEnd();
-    WithColor::error(errs(), ProgName) << "emulator execution failed\n";
+    WithColor::error(errs(), ProgName)
+        << "emulator reached cycle limit (" << RunMaxCycles
+        << ") without halting\n";
     return 1;
   }
 
@@ -811,7 +823,9 @@ int main(int argc, char **argv) {
   } else {
     assert(FileType == OFT_ObjectFile && "Invalid file type!");
 
-    if (!Out->os().supportsSeeking()) {
+    // Use a buffer if the output doesn't support seeking, OR if we need to
+    // run the result (so we can pass it to the emulator after writing)
+    if (!Out->os().supportsSeeking() || RunAfterAssembly) {
       BOS = std::make_unique<buffer_ostream>(Out->os());
       OS = BOS.get();
     }
@@ -832,32 +846,64 @@ int main(int argc, char **argv) {
 
   int Res = 1;
   bool disassemble = false;
-  switch (Action) {
-  case AC_AsLex:
-    Res = AsLexInput(SrcMgr, *MAI, Out->os());
-    break;
-  case AC_Assemble:
-    Res = AssembleInput(ProgName, TheTarget, SrcMgr, Ctx, *Str, *MAI, *STI,
-                        *MCII, MCOptions);
-    break;
-  case AC_MDisassemble:
-  case AC_CDisassemble:
-  case AC_Disassemble:
-    disassemble = true;
-    break;
-  case AC_Run:
-    Res = RunObject(ProgName, TheTarget, *STI, *Buffer, Ctx, *MAI, *MCII, *MRI);
-    break;
-  }
-  if (disassemble)
-    Res = Disassembler::disassemble(*TheTarget, *STI, *Str, *Buffer, SrcMgr,
-                                    Ctx, MCOptions, HexBytes, NumBenchmarkRuns);
 
-  // Keep output if no errors.
-  if (Res == 0) {
-    Out->keep();
-    if (DwoOut)
-      DwoOut->keep();
+  // Check if input is already an object file (ELF, MachO, COFF, etc.)
+  // If so and --run is specified, skip assembly and run directly
+  file_magic Magic = identify_magic(Buffer->getBuffer());
+  bool IsObjectFile = Magic.is_object();
+
+  if (RunAfterAssembly && IsObjectFile) {
+    // Input is already an object file - run it directly
+    Res = RunObject(ProgName, TheTarget, *STI, *Buffer, Ctx, *MAI, *MCII, *MRI);
+  } else {
+    switch (Action) {
+    case AC_AsLex:
+      Res = AsLexInput(SrcMgr, *MAI, Out->os());
+      break;
+    case AC_Assemble:
+      Res = AssembleInput(ProgName, TheTarget, SrcMgr, Ctx, *Str, *MAI, *STI,
+                          *MCII, MCOptions);
+      break;
+    case AC_MDisassemble:
+    case AC_CDisassemble:
+    case AC_Disassemble:
+      disassemble = true;
+      break;
+    }
+    if (disassemble)
+      Res = Disassembler::disassemble(*TheTarget, *STI, *Str, *Buffer, SrcMgr,
+                                      Ctx, MCOptions, HexBytes, NumBenchmarkRuns);
+
+    // If --run was specified and we just assembled to an object file, run it
+    // We need to do this BEFORE destroying BOS so we can get the buffer contents
+    if (Res == 0 && RunAfterAssembly && Action == AC_Assemble &&
+        FileType == OFT_ObjectFile && BOS) {
+      // Finalize the streamer to flush all data to the buffer
+      Str.reset();
+
+      // Copy the assembled object from the buffer (must copy before reset)
+      std::string ObjData = BOS->str().str();
+
+      // Flush the buffer to the output file before running
+      // This writes the data to Out->os() and resets the buffer
+      BOS.reset();
+
+      // Now keep the output file
+      Out->keep();
+      if (DwoOut)
+        DwoOut->keep();
+
+      // Run the object
+      auto ObjBuffer = MemoryBuffer::getMemBuffer(ObjData, "", false);
+      Res = RunObject(ProgName, TheTarget, *STI, *ObjBuffer, Ctx, *MAI, *MCII,
+                      *MRI);
+    } else if (Res == 0) {
+      // No --run, just keep the output file
+      // If BOS exists, it will flush when destroyed
+      Out->keep();
+      if (DwoOut)
+        DwoOut->keep();
+    }
   }
 
   return Res;
