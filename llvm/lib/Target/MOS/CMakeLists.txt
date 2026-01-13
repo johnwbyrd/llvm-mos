@@ -7,7 +7,10 @@ tablegen(LLVM MOSGenAsmWriter.inc -gen-asm-writer)
 tablegen(LLVM MOSGenCallingConv.inc -gen-callingconv)
 tablegen(LLVM MOSGenDAGISel.inc -gen-dag-isel)
 tablegen(LLVM MOSGenDisassemblerTables.inc -gen-disassembler)
-tablegen(LLVM MOSGenEmulator.inc -gen-emulator)
+# Generate emulator with SAIL semantics
+# The IR file is checked into the repo - regenerate with 'ninja mos-sail-ir'
+set(MOS_SAIL_IR ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502.ir)
+tablegen(LLVM MOSGenEmulator.inc -gen-emulator -sail-ir=${MOS_SAIL_IR} DEPENDS ${MOS_SAIL_IR})
 tablegen(LLVM MOSGenGICombiner.inc -gen-global-isel-combiner -combiners="MOSCombiner")
 tablegen(LLVM MOSGenGlobalISel.inc -gen-global-isel)
 tablegen(LLVM MOSGenInstrInfo.inc -gen-instr-info)
@@ -86,3 +89,18 @@ add_subdirectory(AsmParser)
 add_subdirectory(Disassembler)
 add_subdirectory(MCTargetDesc)
 add_subdirectory(TargetInfo)
+
+# Optional target to regenerate SAIL IR from source
+# Requires sail and isla-sail plugin (from https://github.com/rems-project/isla)
+# Usage: ninja mos-sail-ir
+set(MOS_SAIL_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502.sail)
+set(MOS_SAIL_IR ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502.ir)
+set(ISLA_PLUGIN "$ENV{HOME}/git/isla/isla-sail/_build/default/sail_plugin_isla.cmxs")
+
+add_custom_target(mos-sail-ir
+  COMMAND sail -plugin ${ISLA_PLUGIN} -isla -o ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502 ${MOS_SAIL_SOURCE}
+  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Sail
+  COMMENT "Regenerating MOS SAIL IR from mos6502.sail"
+  SOURCES ${MOS_SAIL_SOURCE}
+)
+set_target_properties(mos-sail-ir PROPERTIES EXCLUDE_FROM_ALL TRUE)
