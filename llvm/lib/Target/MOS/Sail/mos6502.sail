@@ -91,6 +91,10 @@ register I : bits(1)    // Interrupt disable (bit 2)
 register Z : bits(1)    // Zero (bit 1)
 register C : bits(1)    // Carry (bit 0)
 
+// Interrupt state (directly set by external hardware/devices)
+register IRQPending : bits(1)  // Hardware IRQ line asserted
+register NMIPending : bits(1)  // Non-maskable interrupt pending
+
 // =============================================================================
 // Memory Interface
 // =============================================================================
@@ -200,6 +204,58 @@ function pull16() = {
     let lo = pull();
     let hi = pull();
     hi @ lo
+}
+
+// =============================================================================
+// Interrupt Handling
+// =============================================================================
+
+// IRQ vector addresses
+let IrqVector : bits(16) = 0xFFFE
+let NmiVector : bits(16) = 0xFFFA
+
+// Check for and handle pending IRQ.
+// Returns true if an IRQ was handled, false otherwise.
+// Called by the emulator before each instruction fetch.
+val checkAndHandleIRQ : unit -> bool
+function checkAndHandleIRQ() = {
+    if IRQPending == 0b1 & I == 0b0 then {
+        // Hardware IRQ sequence:
+        // 1. Push PC (high byte first, then low)
+        push16(PC);
+        // 2. Push P with B flag clear (bit 4 = 0 for hardware IRQ)
+        push(getP() & 0xEF);
+        // 3. Set interrupt disable flag
+        I = 0b1;
+        // 4. Load PC from IRQ vector
+        PC = readMem16(IrqVector);
+        NextPC = PC;
+        // Note: IRQPending is NOT cleared here - it's level-triggered.
+        // The device must clear it (e.g., by acknowledging the interrupt).
+        true
+    } else {
+        false
+    }
+}
+
+// Check for and handle pending NMI.
+// NMI is edge-triggered and cannot be masked.
+// Returns true if an NMI was handled, false otherwise.
+val checkAndHandleNMI : unit -> bool
+function checkAndHandleNMI() = {
+    if NMIPending == 0b1 then {
+        // NMI sequence (same as IRQ but uses NMI vector)
+        push16(PC);
+        push(getP() & 0xEF);  // B flag clear
+        I = 0b1;
+        PC = readMem16(NmiVector);
+        NextPC = PC;
+        // NMI is edge-triggered, clear the pending flag
+        NMIPending = 0b0;
+        true
+    } else {
+        false
+    }
 }
 
 // =============================================================================
