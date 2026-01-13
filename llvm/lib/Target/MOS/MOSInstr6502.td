@@ -19,7 +19,8 @@ let Predicates = [Has6502] in {
 
 // BRK - Break (software interrupt)
 // Pushes PC+2 and P (with B flag set), then loads IRQ/BRK vector
-let Cycles6502 = 7, FlagB = 2, FlagI = 2,
+// HaltEmulation=1: halts the emulator after execution
+let Cycles6502 = 7, FlagB = 2, FlagI = 2, HaltEmulation = 1,
     Emulate = [{
   uint16_t ret = PC + 2;
   push((ret >> 8) & 0xFF);

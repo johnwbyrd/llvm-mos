@@ -85,14 +85,15 @@ enum OperandType : unsigned {
 namespace MOS {
 
 //===----------------------------------------------------------------------===//
-// TSFlags Layout
+// TSFlags Layout (28 bits used)
 //===----------------------------------------------------------------------===//
 // The TSFlags field in MCInstrDesc encodes instruction metadata:
 //
 // Bits 0-3:   65816 M/X flag requirements
-// Bits 4-11:  Base cycle count (8 bits, 0-255)
-// Bits 12-15: Page cross penalty cycles (4 bits, 0-15)
-// Bits 16-29: Flag effects (2 bits each × 7 flags)
+// Bits 4-8:   Base cycle count (5 bits, 0-31)
+// Bits 9-12:  Page cross penalty cycles (4 bits, 0-15)
+// Bits 13-26: Flag effects (2 bits each × 7 flags)
+// Bit 27:     HaltEmulation
 //
 // Flag effect encoding:
 //   0 = unaffected
@@ -110,22 +111,26 @@ enum TSFlag {
 
 // TSFlags bit positions and masks
 namespace TSFlagBits {
-  // Cycle counts
+  // Cycle counts (bits 4-12)
   constexpr unsigned CyclesShift = 4;
-  constexpr uint64_t CyclesMask = 0xFFULL << CyclesShift;  // bits 4-11
+  constexpr uint64_t CyclesMask = 0x1FULL << CyclesShift;  // bits 4-8
 
-  constexpr unsigned PageCrossShift = 12;
-  constexpr uint64_t PageCrossMask = 0xFULL << PageCrossShift;  // bits 12-15
+  constexpr unsigned PageCrossShift = 9;
+  constexpr uint64_t PageCrossMask = 0xFULL << PageCrossShift;  // bits 9-12
 
-  // Flag effects (2 bits each)
-  constexpr unsigned FlagNShift = 16;
-  constexpr unsigned FlagVShift = 18;
-  constexpr unsigned FlagBShift = 20;
-  constexpr unsigned FlagDShift = 22;
-  constexpr unsigned FlagIShift = 24;
-  constexpr unsigned FlagZShift = 26;
-  constexpr unsigned FlagCShift = 28;
+  // Flag effects (2 bits each, bits 13-26)
+  constexpr unsigned FlagNShift = 13;
+  constexpr unsigned FlagVShift = 15;
+  constexpr unsigned FlagBShift = 17;
+  constexpr unsigned FlagDShift = 19;
+  constexpr unsigned FlagIShift = 21;
+  constexpr unsigned FlagZShift = 23;
+  constexpr unsigned FlagCShift = 25;
   constexpr uint64_t FlagMask = 0x3ULL;  // 2-bit mask for each flag
+
+  // Halt emulation flag (bit 27)
+  constexpr unsigned HaltEmulationShift = 27;
+  constexpr uint64_t HaltEmulationMask = 1ULL << HaltEmulationShift;
 } // namespace TSFlagBits
 
 // Flag effect values
@@ -178,6 +183,11 @@ inline FlagEffect getFlagZ(uint64_t TSFlags) {
 inline FlagEffect getFlagC(uint64_t TSFlags) {
   return static_cast<FlagEffect>(
       (TSFlags >> TSFlagBits::FlagCShift) & TSFlagBits::FlagMask);
+}
+
+/// Returns true if executing this instruction should halt the emulator.
+inline bool getHaltEmulation(uint64_t TSFlags) {
+  return (TSFlags & TSFlagBits::HaltEmulationMask) != 0;
 }
 
 // Convenience helpers for common flag queries
