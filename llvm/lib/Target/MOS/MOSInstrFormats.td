@@ -202,12 +202,13 @@ class Inst<string asmstr> : Instruction {
   let DecoderNamespace = "MOS";
 
   //=========================================================================
-  // TSFlags Layout (30 bits used)
+  // TSFlags Layout (28 bits used)
   //=========================================================================
   // Bits 0-3:   65816 M/X flag requirements
-  // Bits 4-11:  Base cycle count (8 bits, 0-255)
-  // Bits 12-15: Page cross penalty cycles (4 bits, 0-15)
-  // Bits 16-29: Flag effects (2 bits each, 7 flags)
+  // Bits 4-8:   Base cycle count (5 bits, 0-31)
+  // Bits 9-12:  Page cross penalty cycles (4 bits, 0-15)
+  // Bits 13-26: Flag effects (2 bits each, 7 flags)
+  // Bit 27:     HaltEmulation
   //
   // Flag effect encoding: 0=unaffected, 1=modified, 2=set, 3=cleared
 
@@ -221,13 +222,13 @@ class Inst<string asmstr> : Instruction {
   let TSFlags{2} = XLow;
   let TSFlags{3} = XHigh;
 
-  // Cycle counts (bits 4-15)
-  // Base cycle count for NMOS 6502
-  bits<8> Cycles6502 = 0;
+  // Cycle counts (bits 4-12)
+  // Base cycle count for NMOS 6502 (5 bits, max 31 cycles)
+  bits<5> Cycles6502 = 0;
   // Additional cycles when crossing page boundary (for indexed modes)
   bits<4> PageCrossCycles = 0;
-  let TSFlags{11-4} = Cycles6502;
-  let TSFlags{15-12} = PageCrossCycles;
+  let TSFlags{8-4} = Cycles6502;
+  let TSFlags{12-9} = PageCrossCycles;
 
   // Per-variant cycle overrides (not in TSFlags - for documentation/analysis only)
   // 0 = use Cycles6502, -1 = not available on this variant
@@ -235,7 +236,7 @@ class Inst<string asmstr> : Instruction {
   int Cycles65816 = 0;
   int CyclesSPC700 = 0;
 
-  // Flag effects (bits 16-29)
+  // Flag effects (bits 13-26)
   // 2-bit encoding per flag: 0=unaffected, 1=modified, 2=set, 3=cleared
   bits<2> FlagN = 0;  // Negative
   bits<2> FlagV = 0;  // Overflow
@@ -244,13 +245,20 @@ class Inst<string asmstr> : Instruction {
   bits<2> FlagI = 0;  // Interrupt disable
   bits<2> FlagZ = 0;  // Zero
   bits<2> FlagC = 0;  // Carry
-  let TSFlags{17-16} = FlagN;
-  let TSFlags{19-18} = FlagV;
-  let TSFlags{21-20} = FlagB;
-  let TSFlags{23-22} = FlagD;
-  let TSFlags{25-24} = FlagI;
-  let TSFlags{27-26} = FlagZ;
-  let TSFlags{29-28} = FlagC;
+  let TSFlags{14-13} = FlagN;
+  let TSFlags{16-15} = FlagV;
+  let TSFlags{18-17} = FlagB;
+  let TSFlags{20-19} = FlagD;
+  let TSFlags{22-21} = FlagI;
+  let TSFlags{24-23} = FlagZ;
+  let TSFlags{26-25} = FlagC;
+
+  //=========================================================================
+  // Emulator Halt Flag (bit 27)
+  //=========================================================================
+  // When set, executing this instruction halts the emulator.
+  bit HaltEmulation = 0;
+  let TSFlags{27} = HaltEmulation;
 
   //=========================================================================
   // Emulation Support
