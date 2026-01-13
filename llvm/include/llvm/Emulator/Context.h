@@ -75,6 +75,22 @@ public:
   /// Get the exit code (valid only when halted).
   virtual int getExitCode() const { return 0; }
 
+  //===--------------------------------------------------------------------===//
+  // Interrupt Support
+  //===--------------------------------------------------------------------===//
+
+  /// Assert the IRQ line (level-triggered).
+  /// The CPU will check this before each instruction and vector if enabled.
+  /// Default implementation does nothing (for CPUs without IRQ support).
+  virtual void assertIRQ() {}
+
+  /// Deassert the IRQ line.
+  virtual void deassertIRQ() {}
+
+  /// Assert NMI (edge-triggered).
+  /// The CPU will handle this before the next instruction.
+  virtual void assertNMI() {}
+
   /// Get the address bus width in bits.
   /// Used to determine the memory size for emulation.
   /// Subclasses should override this if different from 32 bits.
