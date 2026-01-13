@@ -14,3 +14,9 @@ add_llvm_component_library(LLVMEmulatorSemihost
   LINK_COMPONENTS
   Support
   )
+
+# Enable ZBC logging for debugging
+# target_compile_definitions(LLVMEmulatorSemihost PRIVATE
+#  ZBC_LOG_ENABLE=1
+#  ZBC_LOG_LEVEL=4
+#  )
