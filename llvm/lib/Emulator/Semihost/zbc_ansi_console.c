@@ -279,8 +279,17 @@ static int console_get_errno(void *ctx) {
 }
 
 static int console_timer_config(void *ctx, unsigned int rate_hz) {
-    (void)ctx;
-    (void)rate_hz;
+    zbc_ansi_console_state_t *state = (zbc_ansi_console_state_t *)ctx;
+
+    if (!state) {
+        return 0;
+    }
+
+    /* Call the timer config callback if set */
+    if (state->on_timer_config) {
+        state->on_timer_config(state->timer_callback_ctx, rate_hz);
+    }
+
     return 0;
 }
 
@@ -319,6 +328,17 @@ void zbc_ansi_console_set_exit_callback(
     }
     state->on_exit = on_exit;
     state->callback_ctx = ctx;
+}
+
+void zbc_ansi_console_set_timer_callback(
+    zbc_ansi_console_state_t *state,
+    void (*on_timer_config)(void *ctx, unsigned int rate_hz),
+    void *ctx) {
+    if (!state) {
+        return;
+    }
+    state->on_timer_config = on_timer_config;
+    state->timer_callback_ctx = ctx;
 }
 
 void zbc_ansi_console_cleanup(zbc_ansi_console_state_t *state) {
