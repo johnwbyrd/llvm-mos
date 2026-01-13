@@ -92,14 +92,6 @@ def HasGPRStackRegs : Predicate<"Subtarget->hasGPRStackRegs()">;
 def HasGPRIncDec : Predicate<"Subtarget->hasGPRIncDec()">;
 def HasJMPIdxIndir : Predicate<"Subtarget->hasJMPIdxIndir()">;
 
-/// These instruction format definitions exist, thanks to Neil Parker's
-/// analysis of the 65xx instruction set, at:
-/// http://nparker.llx.com/a2/opcodes.html
-/// Parker's analysis is closely reflected in the structure of this file, and
-/// his words are quoted liberally herein.  Parker's sense-making of the 6502
-/// and family was critical in creating these format definitions, and we're
-/// indebted to him for the excellent analysis.
-
 //===----------------------------------------------------------------------===//
 // Flag Effect Constants
 //===----------------------------------------------------------------------===//
@@ -277,10 +269,11 @@ class Inst<string asmstr> : Instruction {
 
   // Addressing mode emulation fields (propagated from AddressingMode)
   // These are inherited by instruction classes and can be referenced as
-  // $EA, $Value, $Base in Emulate code.
+  // $EA, $Value, $Base, $PageCross in Emulate code.
   code EA = [{}];
   code Value = [{}];
   code Base = [{}];
+  code PageCross = [{}];
 }
 
 //===----------------------------------------------------------------------===//
@@ -306,6 +299,47 @@ class TraitReturn {
   bit isBarrier = true;
   bit isReturn = true;
   bit isTerminator = true;
+}
+
+//===----------------------------------------------------------------------===//
+// Page-Cross Penalty Support
+//===----------------------------------------------------------------------===//
+//
+// On the 6502, indexed addressing modes (abs,X / abs,Y / (zp),Y) have different
+// cycle timing depending on whether they cross a page boundary:
+//
+//   READ instructions:  Base cycles if no page cross, +1 if page cross
+//   WRITE instructions: Always take the extra cycle (no penalty - fixed timing)
+//   RMW instructions:   Always take the extra cycle (no penalty - fixed timing)
+//
+// This is because:
+//   - Reads can speculatively fetch from the unindexed address, then re-fetch
+//     if the index caused a carry into the high byte (page cross)
+//   - Writes and RMW must always compute the correct address first, so they
+//     always pay the "penalty" cycle regardless of page crossing
+//
+// CHOOSING BETWEEN Op AND OpPgX:
+//
+//   Op    - Use for: stores, RMW, non-indexed modes, or indexed reads without
+//           page-cross penalty (rare). The instruction has fixed cycle timing.
+//
+//   OpPgX - Use for: indexed READ instructions that have +1 cycle penalty on
+//           page boundary crossing. Sets PageCrossCycles=1 and instruments
+//           the Value expression to detect page crosses at runtime.
+//
+// Examples:
+//   defm LDA : Op<0xAD, "lda", Absolute>;       // Not indexed - use Op
+//   defm LDA : OpPgX<0xBD, "lda", AbsoluteX>;   // Indexed read - use OpPgX
+//   defm STA : Op<0x9D, "sta", AbsoluteX>;      // Store - use Op (no penalty)
+//   defm INC : Op<0xFE, "inc", AbsoluteX>;      // RMW - use Op (no penalty)
+//
+// The "PgX" suffix stands for "Page-cross (eXtra cycle)".
+
+/// Mixin that adds page-cross penalty support to an instruction.
+/// Sets PageCrossCycles=1 and overrides Value to set DidPageCross flag.
+class WithPageCross {
+  int PageCrossCycles = 1;
+  code Value = [{ (DidPageCross = pageCrossed($Base, $EA), read($EA)) }];
 }
 
 /// Makes sure that immediate mode operands fit into the required bit field
@@ -483,6 +517,11 @@ class AddressingMode<int size> {
 
   // Base address before indexing (for page-cross detection)
   code Base = [{}];
+
+  // Page-cross detection for indexed modes. Instructions with PageCrossCycles > 0
+  // should include $PageCross in their Emulate code. This sets DidPageCross when
+  // the indexed addressing crosses a page boundary.
+  code PageCross = [{}];
 }
 
 //===----------------------------------------------------------------------===//
@@ -572,6 +611,7 @@ def AbsoluteX : AddressingMode<2> {
   let Base = [{ (uint16_t)Inst.getOperand(0).getImm() }];
   let EA = [{ (uint16_t)($Base + X) }];
   let Value = [{ read($EA) }];
+  let PageCross = [{ DidPageCross = pageCrossed($Base, $EA) }];
 }
 
 def AbsoluteXLong : AddressingMode<3> {
@@ -588,6 +628,7 @@ def AbsoluteY : AddressingMode<2> {
   let Base = [{ (uint16_t)Inst.getOperand(0).getImm() }];
   let EA = [{ (uint16_t)($Base + Y) }];
   let Value = [{ read($EA) }];
+  let PageCross = [{ DidPageCross = pageCrossed($Base, $EA) }];
 }
 
 def Indirect : AddressingMode<1> {
@@ -653,6 +694,7 @@ def IndirectIndexed : AddressingMode<1> {
   }];
   let EA = [{ (uint16_t)($Base + Y) }];
   let Value = [{ read($EA) }];
+  let PageCross = [{ DidPageCross = pageCrossed($Base, $EA) }];
 }
 
 def IndirectIndexedLong : AddressingMode<1> {
@@ -761,6 +803,7 @@ def AbsoluteXAt2 : AddressingMode<2> {
   let Base = [{ (uint16_t)Inst.getOperand(1).getImm() }];
   let EA = [{ (uint16_t)($Base + X) }];
   let Value = [{ read($EA) }];
+  let PageCross = [{ DidPageCross = pageCrossed($Base, $EA) }];
 }
 
 /// An unsized MOS instruction, to which an addressing mode may be applied.
@@ -774,6 +817,7 @@ class InstAddressMode<string asmstr, Opcode op = DefaultOpcode,
   let EA = mode.EA;
   let Value = mode.Value;
   let Base = mode.Base;
+  let PageCross = mode.PageCross;
 }
 
 /// An 8 bit real MOS instruction.
@@ -858,14 +902,41 @@ class MOSInst<bits<8> opcode, string mnemonic, AddressingMode mode>
   let EA = mode.EA;
   let Value = mode.Value;
   let Base = mode.Base;
+  let PageCross = mode.PageCross;
 }
 
-/// Op - Generate instruction with standard naming: MNEMONIC_AddressingMode
+/// Op - Generate instruction with fixed cycle timing.
+///
+/// Use this for:
+///   - Non-indexed addressing modes (Immediate, ZeroPage, Absolute, etc.)
+///   - Store instructions (STA, STX, STY) - even indexed ones have fixed timing
+///   - Read-Modify-Write instructions (INC, DEC, ASL, etc.) - fixed timing
+///
+/// For indexed READ instructions with page-cross penalty, use OpPgX instead.
+/// See the "Page-Cross Penalty Support" section above for detailed guidance.
+///
 /// Size is automatically derived from the addressing mode's OperandSize.
 /// Note: "Implicit" mode generates "_Implied" suffix per 6502 Programming Manual.
 multiclass Op<bits<8> opcode, string mnemonic, AddressingMode mode> {
   defvar suffix = !if(!eq(!cast<string>(mode), "Implicit"), "Implied", !cast<string>(mode));
   def NAME # _ # suffix : MOSInst<opcode, mnemonic, mode>;
+}
+
+/// OpPgX - Op with Page-cross eXtra cycle penalty.
+///
+/// Use this for indexed READ instructions that incur +1 cycle when the
+/// indexed address crosses a page boundary. See the "Page-Cross Penalty
+/// Support" section above for detailed guidance on when to use Op vs OpPgX.
+///
+/// This multiclass:
+///   1. Sets PageCrossCycles = 1 in TSFlags
+///   2. Instruments Value to set DidPageCross flag during emulation
+///
+/// Example:
+///   defm LDA : OpPgX<0xBD, "lda", AbsoluteX>;  // LDA $addr,X - +1 on page cross
+multiclass OpPgX<bits<8> opcode, string mnemonic, AddressingMode mode> {
+  defvar suffix = !cast<string>(mode);
+  def NAME # _ # suffix : MOSInst<opcode, mnemonic, mode>, WithPageCross;
 }
 
 //===----------------------------------------------------------------------===//

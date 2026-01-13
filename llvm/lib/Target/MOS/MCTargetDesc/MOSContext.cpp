@@ -12,20 +12,37 @@
 //===----------------------------------------------------------------------===//
 
 #include "MOSContext.h"
+#include "MOSMCTargetDesc.h"
 #include "llvm/Emulator/Trace.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "mos-context"
 
-// Include the generated instruction enum
-#define GET_INSTRINFO_ENUM
-#include "MOSGenInstrInfo.inc"
+// Note: MOSMCTargetDesc.h already includes MOSGenInstrInfo.inc with GET_INSTRINFO_ENUM
 
 using namespace llvm;
 using namespace llvm::MOS;
+
+//===----------------------------------------------------------------------===//
+// Construction / Destruction
+//===----------------------------------------------------------------------===//
+
+Context::Context(const MCDisassembler *Disasm, const MCInstrInfo *II)
+    : Disassembler(Disasm), InstrInfo(II) {}
+
+Context::~Context() {
+  delete Disassembler;
+  delete InstrInfo;
+}
+
+//===----------------------------------------------------------------------===//
+// Context Interface Implementation
+//===----------------------------------------------------------------------===//
 
 void Context::reset() {
   A = 0;
@@ -39,6 +56,11 @@ void Context::reset() {
 
   // Load reset vector
   PC = read16(0xFFFC);
+}
+
+void Context::halt(int ExitCode) {
+  Halted = true;
+  ExitCode_ = ExitCode;
 }
 
 bool Context::step() {
@@ -92,14 +114,139 @@ bool Context::step() {
 
   // Execute the instruction
   PCModified = false;
+  DidPageCross = false;
+  uint16_t PrePC = PC;
   execute(Inst);
+
+  // Accumulate cycles from instruction TSFlags
+  const MCInstrDesc &Desc = InstrInfo->get(Inst.getOpcode());
+  uint64_t TSFlags = Desc.TSFlags;
+  unsigned BaseCycles = MOS::getCycles(TSFlags);
+  unsigned PageCrossPenalty = DidPageCross ? MOS::getPageCrossCycles(TSFlags) : 0;
+  Cycles += BaseCycles + PageCrossPenalty;
+
+  // Handle branch page-cross penalty
+  // Branch Emulate code already adds +1 for taken (via Cycles++).
+  // We add another +1 if the branch crossed a page boundary.
+  if (Desc.isBranch() && PCModified) {
+    uint16_t NextPC = PrePC + Desc.getSize();
+    if (pageCrossed(NextPC, PC)) {
+      Cycles += 1;
+    }
+  }
 
   // Advance PC if instruction didn't modify it
   if (!PCModified)
-    PC += InstrInfo->get(Inst.getOpcode()).getSize();
+    PC += Desc.getSize();
 
   return true;
 }
+
+//===----------------------------------------------------------------------===//
+// Helper Methods
+//===----------------------------------------------------------------------===//
+
+void Context::setNZ(uint8_t Val) {
+  N = (Val >> 7) & 1;
+  Z = Val == 0;
+}
+
+void Context::push(uint8_t Val) { write(0x100 + S--, Val); }
+
+uint8_t Context::pull() { return read(0x100 + ++S); }
+
+void Context::push16(uint16_t Val) {
+  push(Val >> 8);
+  push(Val & 0xFF);
+}
+
+uint16_t Context::pull16() {
+  uint8_t Lo = pull();
+  return Lo | (pull() << 8);
+}
+
+bool Context::pageCrossed(uint16_t Addr1, uint16_t Addr2) {
+  return (Addr1 & 0xFF00) != (Addr2 & 0xFF00);
+}
+
+uint8_t Context::getP() const {
+  return (N << 7) | (V << 6) | (1 << 5) | (B << 4) | (D << 3) | (I << 2) |
+         (Z << 1) | C;
+}
+
+void Context::setP(uint8_t P) {
+  N = (P >> 7) & 1;
+  V = (P >> 6) & 1;
+  B = (P >> 4) & 1;
+  D = (P >> 3) & 1;
+  I = (P >> 2) & 1;
+  Z = (P >> 1) & 1;
+  C = P & 1;
+}
+
+void Context::doADC(uint8_t Val) {
+  if (D) {
+    // Decimal mode
+    uint8_t Lo = (A & 0x0F) + (Val & 0x0F) + C;
+    uint8_t Hi = (A >> 4) + (Val >> 4);
+    if (Lo > 9) {
+      Lo -= 10;
+      Hi++;
+    }
+    Z = ((A + Val + C) & 0xFF) == 0;
+    N = Hi & 0x08;
+    V = ~(A ^ Val) & (A ^ (Hi << 4)) & 0x80;
+    if (Hi > 9) {
+      Hi -= 10;
+      C = true;
+    } else {
+      C = false;
+    }
+    A = (Hi << 4) | (Lo & 0x0F);
+  } else {
+    // Binary mode
+    uint16_t Sum = A + Val + C;
+    C = Sum > 0xFF;
+    V = ~(A ^ Val) & (A ^ Sum) & 0x80;
+    A = Sum & 0xFF;
+    setNZ(A);
+  }
+}
+
+void Context::doSBC(uint8_t Val) {
+  if (D) {
+    // Decimal mode
+    int Lo = (A & 0x0F) - (Val & 0x0F) - !C;
+    int Hi = (A >> 4) - (Val >> 4);
+    if (Lo < 0) {
+      Lo += 10;
+      Hi--;
+    }
+    if (Hi < 0) {
+      Hi += 10;
+      C = false;
+    } else {
+      C = true;
+    }
+    A = (Hi << 4) | (Lo & 0x0F);
+    // N, Z, V set based on binary result
+    uint16_t Diff = A - Val - !C;
+    Z = (Diff & 0xFF) == 0;
+    N = Diff & 0x80;
+    V = (A ^ Val) & (A ^ Diff) & 0x80;
+  } else {
+    // Binary mode
+    uint16_t Diff = A - Val - !C;
+    C = Diff <= 0xFF; // No borrow
+    V = (A ^ Val) & (A ^ Diff) & 0x80;
+    A = Diff & 0xFF;
+    setNZ(A);
+  }
+}
+
+//===----------------------------------------------------------------------===//
+// Instruction Execution
+//===----------------------------------------------------------------------===//
 
 void Context::execute(const MCInst &Inst) {
   unsigned Opcode = Inst.getOpcode();

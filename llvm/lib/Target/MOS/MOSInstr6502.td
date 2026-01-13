@@ -45,14 +45,15 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ A |= $Value; setNZ(A); }] in {
   defm ORA           : Op<0x15, "ora", ZeroPageX>;
   let Cycles6502 = 4 in
   defm ORA           : Op<0x0D, "ora", Absolute>;
-  let Cycles6502 = 4, PageCrossCycles = 1 in {
-  defm ORA           : Op<0x1D, "ora", AbsoluteX>;
-  defm ORA           : Op<0x19, "ora", AbsoluteY>;
-  }
   let Cycles6502 = 6 in
   defm ORA           : Op<0x01, "ora", IndexedIndirect>;
-  let Cycles6502 = 5, PageCrossCycles = 1 in
-  defm ORA           : Op<0x11, "ora", IndirectIndexed>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in {
+    defm ORA           : OpPgX<0x1D, "ora", AbsoluteX>;
+    defm ORA           : OpPgX<0x19, "ora", AbsoluteY>;
+  }
+  let Cycles6502 = 5 in
+  defm ORA           : OpPgX<0x11, "ora", IndirectIndexed>;
 }
 
 // AND - Logical AND with Accumulator
@@ -65,14 +66,15 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ A &= $Value; setNZ(A); }] in {
   defm AND           : Op<0x35, "and", ZeroPageX>;
   let Cycles6502 = 4 in
   defm AND           : Op<0x2D, "and", Absolute>;
-  let Cycles6502 = 4, PageCrossCycles = 1 in {
-  defm AND           : Op<0x3D, "and", AbsoluteX>;
-  defm AND           : Op<0x39, "and", AbsoluteY>;
-  }
   let Cycles6502 = 6 in
   defm AND           : Op<0x21, "and", IndexedIndirect>;
-  let Cycles6502 = 5, PageCrossCycles = 1 in
-  defm AND           : Op<0x31, "and", IndirectIndexed>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in {
+    defm AND           : OpPgX<0x3D, "and", AbsoluteX>;
+    defm AND           : OpPgX<0x39, "and", AbsoluteY>;
+  }
+  let Cycles6502 = 5 in
+  defm AND           : OpPgX<0x31, "and", IndirectIndexed>;
 }
 
 // EOR - Exclusive OR with Accumulator
@@ -85,14 +87,15 @@ let FlagN = 1, FlagZ = 1, Emulate = [{ A ^= $Value; setNZ(A); }] in {
   defm EOR           : Op<0x55, "eor", ZeroPageX>;
   let Cycles6502 = 4 in
   defm EOR           : Op<0x4D, "eor", Absolute>;
-  let Cycles6502 = 4, PageCrossCycles = 1 in {
-  defm EOR           : Op<0x5D, "eor", AbsoluteX>;
-  defm EOR           : Op<0x59, "eor", AbsoluteY>;
-  }
   let Cycles6502 = 6 in
   defm EOR           : Op<0x41, "eor", IndexedIndirect>;
-  let Cycles6502 = 5, PageCrossCycles = 1 in
-  defm EOR           : Op<0x51, "eor", IndirectIndexed>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in {
+    defm EOR           : OpPgX<0x5D, "eor", AbsoluteX>;
+    defm EOR           : OpPgX<0x59, "eor", AbsoluteY>;
+  }
+  let Cycles6502 = 5 in
+  defm EOR           : OpPgX<0x51, "eor", IndirectIndexed>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -112,14 +115,15 @@ let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1, Emulate = [{ doADC($Value); }] i
   defm ADC           : Op<0x75, "adc", ZeroPageX>;
   let Cycles6502 = 4 in
   defm ADC           : Op<0x6D, "adc", Absolute>;
-  let Cycles6502 = 4, PageCrossCycles = 1 in {
-  defm ADC           : Op<0x7D, "adc", AbsoluteX>;
-  defm ADC           : Op<0x79, "adc", AbsoluteY>;
-  }
   let Cycles6502 = 6 in
   defm ADC           : Op<0x61, "adc", IndexedIndirect>;
-  let Cycles6502 = 5, PageCrossCycles = 1 in
-  defm ADC           : Op<0x71, "adc", IndirectIndexed>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in {
+    defm ADC           : OpPgX<0x7D, "adc", AbsoluteX>;
+    defm ADC           : OpPgX<0x79, "adc", AbsoluteY>;
+  }
+  let Cycles6502 = 5 in
+  defm ADC           : OpPgX<0x71, "adc", IndirectIndexed>;
 }
 
 // SBC - Subtract with Carry
@@ -132,14 +136,15 @@ let FlagN = 1, FlagV = 1, FlagZ = 1, FlagC = 1, Emulate = [{ doSBC($Value); }] i
   defm SBC           : Op<0xF5, "sbc", ZeroPageX>;
   let Cycles6502 = 4 in
   defm SBC           : Op<0xED, "sbc", Absolute>;
-  let Cycles6502 = 4, PageCrossCycles = 1 in {
-  defm SBC           : Op<0xFD, "sbc", AbsoluteX>;
-  defm SBC           : Op<0xF9, "sbc", AbsoluteY>;
-  }
   let Cycles6502 = 6 in
   defm SBC           : Op<0xE1, "sbc", IndexedIndirect>;
-  let Cycles6502 = 5, PageCrossCycles = 1 in
-  defm SBC           : Op<0xF1, "sbc", IndirectIndexed>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in {
+    defm SBC           : OpPgX<0xFD, "sbc", AbsoluteX>;
+    defm SBC           : OpPgX<0xF9, "sbc", AbsoluteY>;
+  }
+  let Cycles6502 = 5 in
+  defm SBC           : OpPgX<0xF1, "sbc", IndirectIndexed>;
 }
 
 //===----------------------------------------------------------------------===//
@@ -159,14 +164,15 @@ let FlagN = 1, FlagZ = 1, FlagC = 1,
   defm CMP           : Op<0xD5, "cmp", ZeroPageX>;
   let Cycles6502 = 4 in
   defm CMP           : Op<0xCD, "cmp", Absolute>;
-  let Cycles6502 = 4, PageCrossCycles = 1 in {
-  defm CMP           : Op<0xDD, "cmp", AbsoluteX>;
-  defm CMP           : Op<0xD9, "cmp", AbsoluteY>;
-  }
   let Cycles6502 = 6 in
   defm CMP           : Op<0xC1, "cmp", IndexedIndirect>;
-  let Cycles6502 = 5, PageCrossCycles = 1 in
-  defm CMP           : Op<0xD1, "cmp", IndirectIndexed>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in {
+    defm CMP           : OpPgX<0xDD, "cmp", AbsoluteX>;
+    defm CMP           : OpPgX<0xD9, "cmp", AbsoluteY>;
+  }
+  let Cycles6502 = 5 in
+  defm CMP           : OpPgX<0xD1, "cmp", IndirectIndexed>;
 }
 
 // CPX - Compare X Register
@@ -214,83 +220,53 @@ let FlagN = 1, FlagV = 1, FlagZ = 1,
 
 // LDA - Load Accumulator (all variants share emulation behavior)
 let FlagN = 1, FlagZ = 1, Emulate = [{ A = $Value; setNZ(A); }] in {
-  // Immediate: 2 cycles
   let Cycles6502 = 2 in
   def LDA_Immediate  : MOSInst<0xA9, "lda", Immediate> { let MHigh = 1; }
-
-  // Zero Page: 3 cycles
   let Cycles6502 = 3 in
   defm LDA           : Op<0xA5, "lda", ZeroPage>;
-
-  // Zero Page,X: 4 cycles
   let Cycles6502 = 4 in
   defm LDA           : Op<0xB5, "lda", ZeroPageX>;
-
-  // Absolute: 4 cycles
   let Cycles6502 = 4 in
   defm LDA           : Op<0xAD, "lda", Absolute>;
-
-  // Absolute,X: 4 cycles (+1 on page cross)
-  let Cycles6502 = 4, PageCrossCycles = 1 in
-  defm LDA           : Op<0xBD, "lda", AbsoluteX>;
-
-  // Absolute,Y: 4 cycles (+1 on page cross)
-  let Cycles6502 = 4, PageCrossCycles = 1 in
-  defm LDA           : Op<0xB9, "lda", AbsoluteY>;
-
-  // Indexed Indirect (d,X): 6 cycles
   let Cycles6502 = 6 in
   defm LDA           : Op<0xA1, "lda", IndexedIndirect>;
-
-  // Indirect Indexed (d),Y: 5 cycles (+1 on page cross)
-  let Cycles6502 = 5, PageCrossCycles = 1 in
-  defm LDA           : Op<0xB1, "lda", IndirectIndexed>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in {
+    defm LDA           : OpPgX<0xBD, "lda", AbsoluteX>;
+    defm LDA           : OpPgX<0xB9, "lda", AbsoluteY>;
+  }
+  let Cycles6502 = 5 in
+  defm LDA           : OpPgX<0xB1, "lda", IndirectIndexed>;
 }
 
 // LDX - Load X Register (all variants share emulation behavior)
 let FlagN = 1, FlagZ = 1, Emulate = [{ X = $Value; setNZ(X); }] in {
-  // Immediate: 2 cycles
   let Cycles6502 = 2 in
   def LDX_Immediate  : MOSInst<0xA2, "ldx", Immediate> { let XHigh = 1; }
-
-  // Zero Page: 3 cycles
   let Cycles6502 = 3 in
   defm LDX           : Op<0xA6, "ldx", ZeroPage>;
-
-  // Zero Page,Y: 4 cycles
   let Cycles6502 = 4 in
   defm LDX           : Op<0xB6, "ldx", ZeroPageY>;
-
-  // Absolute: 4 cycles
   let Cycles6502 = 4 in
   defm LDX           : Op<0xAE, "ldx", Absolute>;
-
-  // Absolute,Y: 4 cycles (+1 on page cross)
-  let Cycles6502 = 4, PageCrossCycles = 1 in
-  defm LDX           : Op<0xBE, "ldx", AbsoluteY>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in
+  defm LDX           : OpPgX<0xBE, "ldx", AbsoluteY>;
 }
 
 // LDY - Load Y Register (all variants share emulation behavior)
 let FlagN = 1, FlagZ = 1, Emulate = [{ Y = $Value; setNZ(Y); }] in {
-  // Immediate: 2 cycles
   let Cycles6502 = 2 in
   def LDY_Immediate  : MOSInst<0xA0, "ldy", Immediate> { let XHigh = 1; }
-
-  // Zero Page: 3 cycles
   let Cycles6502 = 3 in
   defm LDY           : Op<0xA4, "ldy", ZeroPage>;
-
-  // Zero Page,X: 4 cycles
   let Cycles6502 = 4 in
   defm LDY           : Op<0xB4, "ldy", ZeroPageX>;
-
-  // Absolute: 4 cycles
   let Cycles6502 = 4 in
   defm LDY           : Op<0xAC, "ldy", Absolute>;
-
-  // Absolute,X: 4 cycles (+1 on page cross)
-  let Cycles6502 = 4, PageCrossCycles = 1 in
-  defm LDY           : Op<0xBC, "ldy", AbsoluteX>;
+  // Indexed modes with page-cross penalty
+  let Cycles6502 = 4 in
+  defm LDY           : OpPgX<0xBC, "ldy", AbsoluteX>;
 }
 
 //===----------------------------------------------------------------------===//
