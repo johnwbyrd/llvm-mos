@@ -1,4 +1,4 @@
-//===- EmulatorEmitter.cpp - Generate instruction emulator ----------------===//
+//===- EmulatorEmitter.cpp - Generate emulator from SAIL IR ---------------===//
 //
 // Part of LLVM-MOS, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,84 +6,11 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// OVERVIEW
-// ========
-// This TableGen backend generates C++ switch cases for instruction emulation.
-// It is completely architecture-agnostic - it knows nothing about specific
-// instruction sets, addressing modes, or CPU architectures.
+// This TableGen backend generates C++ emulator code from SAIL Jib IR.
+// It is completely target-agnostic.
 //
-// INPUT FORMAT
-// ============
-// The backend processes Instruction records that have a non-empty "Emulate"
-// field. It also supports EmulatorInst records for backward compatibility.
-//
-// The Emulate code can contain $Variable references. When the backend sees
-// $Foo, it looks up "Foo" as a field on the same record. This lookup follows
-// TableGen inheritance, so variables can come from parent classes (like
-// AddressingMode providing $EA, $Value, $Base).
-//
-// Variables can reference other variables, creating a dependency chain.
-// The backend resolves these dependencies and emits them in the correct order.
-//
-// For multi-line variable definitions:
-//   - All lines except the last are emitted as setup statements
-//   - The last line is treated as an expression and assigned to the variable
-//
-// Example TableGen input (DRY style - emulation in Instruction):
-//
-//   let Emulate = [{ A = $Value; setNZ(A); }] in {
-//     defm LDA : Op<0xA9, "lda", Immediate>;  // EA/Value from Immediate mode
-//     defm LDA : Op<0xA5, "lda", ZeroPage>;   // EA/Value from ZeroPage mode
-//   }
-//
-// OUTPUT FORMAT
-// =============
-// The backend emits C++ switch cases wrapped in #ifdef GET_EMULATOR_CASES:
-//
-//   #ifdef GET_EMULATOR_CASES
-//   case MOS::LDA_ZeroPage: {
-//     auto EA = (uint16_t)Inst.getOperand(0).getImm();
-//     auto Value = read(EA);
-//     A = Value;
-//     setNZ(A);
-//     break;
-//   }
-//   #endif
-//
-// FEATURE PREDICATES
-// ==================
-// The backend reads the "Predicates" field from the Instruction.
-// For each predicate that has a "PredicateName" field, it emits a runtime
-// feature check:
-//
-//   if (!hasFeature(Namespace::FeatureName)) goto unhandled;
-//
-// This allows the emulator to reject instructions not valid for the current
-// CPU configuration, even if they made it through the disassembler.
-//
-// This behavior is controlled by the -emulator-feature-checks flag:
-//   -emulator-feature-checks=true   Emit checks on every instruction
-//   -emulator-feature-checks=false  (default) Skip checks (trust disassembler)
-//
-// USAGE
-// =====
-// The generated code is meant to be included inside a switch statement:
-//
-//   bool MyEmulator::execute(const MCInst &Inst) {
-//     switch (Inst.getOpcode()) {
-//     #define GET_EMULATOR_CASES
-//     #include "MyTargetEmulator.inc"
-//     #undef GET_EMULATOR_CASES
-//     default:
-//     unhandled:
-//       return handleUnknownInstruction(Inst);
-//     }
-//     return true;
-//   }
-//
-// The including code must provide:
-//   - Any functions/variables referenced in the Emulate code (read, write,
-//     registers like A/X/Y, helper functions like setNZ, etc.)
+// Architecture:
+//   Source --> Lexer --> Parser --> AST --> CodeGen --> C++
 //
 //===----------------------------------------------------------------------===//
 
@@ -94,1643 +21,1270 @@
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include <string>
-#include <vector>
 
 using namespace llvm;
 
-#define DEBUG_TYPE "emulator-emitter"
-
-static cl::opt<bool> EmitFeatureChecks(
-    "emulator-feature-checks",
-    cl::desc("Emit hasFeature() checks for each instruction (default: false)"),
-    cl::init(false));
-
-static cl::opt<std::string>
-    SailIRFile("sail-ir",
-               cl::desc("Path to SAIL-generated Jib IR file for instruction "
-                        "semantics (optional)"),
-               cl::init(""));
+static cl::opt<std::string> SailIRFile(
+    "sail-ir", cl::desc("Path to SAIL Jib IR file"), cl::init(""));
 
 namespace {
 
 //===----------------------------------------------------------------------===//
-// Z-encoding decoder (from SAIL's zencode.rs)
+// Part 1: Name handling
 //===----------------------------------------------------------------------===//
 
-/// Decode a z-encoded identifier back to its original form.
-/// SAIL uses z-encoding to represent all ASCII characters using only
-/// C-identifier-safe characters. The scheme prefixes all names with 'z'
-/// and encodes special characters as 'zX' where X maps to the original.
-static std::string zdecode(StringRef Input) {
-  if (Input.empty() || Input[0] != 'z')
-    return Input.str();
+/// Convert a SAIL z-encoded identifier to a valid C++ identifier.
+/// SAIL encodes all identifiers with a 'z' prefix and special char sequences.
+std::string toCppIdent(StringRef S) {
+  // Handle $-prefixed temporaries (e.g., $0, $1077)
+  if (!S.empty() && S[0] == '$')
+    return ("tmp" + S.substr(1)).str();
 
-  std::string Output;
-  Output.reserve(Input.size());
-  bool NextEncoded = false;
+  // Not z-encoded
+  if (S.empty() || S[0] != 'z')
+    return S.str();
 
-  for (size_t I = 1; I < Input.size(); ++I) {
-    char C = Input[I];
-    if (NextEncoded) {
-      // Decode the character based on zencode.rs logic
-      if (C <= '9') // '0'-'9' -> ' '-')' (ASCII 32-41)
-        Output.push_back(C - 16);
-      else if (C <= 'F') // 'A'-'F' -> '*'-'/' (ASCII 42-47)
-        Output.push_back(C - 23);
-      else if (C <= 'M') // 'G'-'M' -> ':'-'@' (ASCII 58-64)
-        Output.push_back(C - 13);
-      else if (C <= 'S') // 'N'-'S' -> '['-'`' (ASCII 91-96)
-        Output.push_back(C + 13);
-      else if (C == 'z') // 'z' -> 'z'
-        Output.push_back('z');
-      else // 'T'-'W' -> '{'-'~' (ASCII 123-126)
-        Output.push_back(C + 39);
-      NextEncoded = false;
-    } else if (C == 'z') {
-      NextEncoded = true;
-    } else {
-      Output.push_back(C);
+  // First pass: decode z-sequences to get the original identifier
+  std::string Decoded;
+  Decoded.reserve(S.size());
+
+  for (size_t I = 1; I < S.size(); ++I) {
+    char C = S[I];
+    if (C != 'z') {
+      Decoded += C;
+      continue;
     }
+    // Decode z-sequence
+    if (++I >= S.size())
+      break;
+    C = S[I];
+    // Decode based on SAIL's zencode.rs
+    if (C >= '0' && C <= '9')
+      Decoded += (C - '0') + ' ';      // '0'-'9' -> ' '-')'
+    else if (C >= 'A' && C <= 'F')
+      Decoded += (C - 'A') + '*';      // 'A'-'F' -> '*'-'/'
+    else if (C >= 'G' && C <= 'M')
+      Decoded += (C - 'G') + ':';      // 'G'-'M' -> ':'-'@'
+    else if (C >= 'N' && C <= 'S')
+      Decoded += (C - 'N') + '[';      // 'N'-'S' -> '['-'`'
+    else if (C >= 'T' && C <= 'W')
+      Decoded += (C - 'T') + '{';      // 'T'-'W' -> '{'-'~'
+    else if (C == 'z')
+      Decoded += 'z';
   }
-  return Output;
-}
 
-/// Mangle a decoded SAIL identifier into a valid C++ identifier.
-/// Handles operators and type conversion functions that contain special chars.
-static std::string mangleForCpp(StringRef Decoded) {
+  // Second pass: convert to valid C++ identifier
   std::string Result;
   Result.reserve(Decoded.size() * 2);
 
   for (size_t I = 0; I < Decoded.size(); ++I) {
     char C = Decoded[I];
-
-    // Handle multi-character sequences first
-    if (I + 1 < Decoded.size()) {
-      StringRef Rest = Decoded.substr(I);
-      if (Rest.starts_with("->")) {
+    if (isalnum(C)) {
+      Result += C;
+    } else if (C == '_') {
+      Result += '_';
+    } else if (C == '>') {
+      // Check for -> (arrow)
+      if (I > 0 && Decoded[I - 1] == '-') {
+        if (!Result.empty() && Result.back() == '_')
+          Result.pop_back();
         Result += "_to_";
-        I += 1;
-        continue;
+      } else {
+        Result += "_gt_";
       }
-      if (Rest.starts_with(">=")) {
-        Result += "_geq_";
-        I += 1;
-        continue;
-      }
-      if (Rest.starts_with("<=")) {
-        Result += "_leq_";
-        I += 1;
-        continue;
-      }
+    } else if (C == '<') {
+      Result += "_lt_";
+    } else if (C == '=') {
+      Result += "_eq_";
+    } else if (C == '-') {
+      // Don't add yet - might be part of ->
+      if (I + 1 < Decoded.size() && Decoded[I + 1] == '>')
+        continue; // Skip, will be handled by >
+      Result += '_';
+    } else if (C == ' ' || C == '(' || C == ')') {
+      // Skip whitespace and parens
+    } else {
+      Result += '_';
+    }
+  }
+
+  // Clean up multiple underscores and leading/trailing underscores
+  std::string Clean;
+  for (char C : Result) {
+    if (C == '_' && !Clean.empty() && Clean.back() == '_')
+      continue;
+    Clean += C;
+  }
+  while (!Clean.empty() && Clean.back() == '_')
+    Clean.pop_back();
+  while (!Clean.empty() && Clean.front() == '_')
+    Clean.erase(0, 1);
+
+  // If result starts with a digit, prefix with tmp
+  if (!Clean.empty() && isdigit(Clean[0]))
+    Clean = "tmp" + Clean;
+
+  // Handle C++ reserved words
+  if (Clean == "unsigned" || Clean == "signed" || Clean == "int" ||
+      Clean == "bool" || Clean == "char" || Clean == "void" ||
+      Clean == "return" || Clean == "if" || Clean == "else" ||
+      Clean == "for" || Clean == "while" || Clean == "do" ||
+      Clean == "switch" || Clean == "case" || Clean == "break" ||
+      Clean == "continue" || Clean == "goto" || Clean == "default")
+    Clean = "_" + Clean;
+
+  return Clean;
+}
+
+//===----------------------------------------------------------------------===//
+// Part 2: Tokens and Lexer
+//===----------------------------------------------------------------------===//
+
+enum class Tok {
+  // Literals
+  Id, Nat, Hex, Bin, String,
+  // Keywords
+  KwFn, KwVal, KwEnum, KwUnion, KwRegister, KwJump, KwGoto, KwEnd,
+  KwTrue, KwFalse, KwIs, KwAs, KwReturn,
+  // Types (%-prefixed)
+  TyI, TyI64, TyBv, TyUnit, TyBool, TyEnum, TyStruct,
+  // Operators (@-prefixed)
+  Op,
+  // Punctuation
+  LParen, RParen, LBrace, RBrace, Colon, Eq, Comma, Semi, Arrow, Dot,
+  // Special
+  Eof, Error
+};
+
+class Lexer {
+  StringRef Input;
+  size_t Pos = 0;
+  Tok CurTok = Tok::Eof;
+  std::string CurText;
+  int64_t CurNum = 0;
+
+public:
+  explicit Lexer(StringRef S) : Input(S) { advance(); }
+
+  Tok tok() const { return CurTok; }
+  StringRef text() const { return CurText; }
+  int64_t num() const { return CurNum; }
+
+  Tok advance() {
+    skipWhitespace();
+    if (Pos >= Input.size())
+      return CurTok = Tok::Eof;
+
+    char C = Input[Pos];
+
+    // Single-char tokens
+    if (C == '(') { ++Pos; return CurTok = Tok::LParen; }
+    if (C == ')') { ++Pos; return CurTok = Tok::RParen; }
+    if (C == '{') { ++Pos; return CurTok = Tok::LBrace; }
+    if (C == '}') { ++Pos; return CurTok = Tok::RBrace; }
+    if (C == ':') { ++Pos; return CurTok = Tok::Colon; }
+    if (C == ',') { ++Pos; return CurTok = Tok::Comma; }
+    if (C == ';') { ++Pos; return CurTok = Tok::Semi; }
+    if (C == '.') { ++Pos; return CurTok = Tok::Dot; }
+
+    // Arrow ->
+    if (C == '-' && Pos + 1 < Input.size() && Input[Pos + 1] == '>') {
+      Pos += 2;
+      return CurTok = Tok::Arrow;
     }
 
-    // Single character replacements
-    switch (C) {
-    case '%':
-      Result += "pct_";
+    // Equals
+    if (C == '=') { ++Pos; return CurTok = Tok::Eq; }
+
+    // String literal
+    if (C == '"') {
+      ++Pos;
+      size_t Start = Pos;
+      while (Pos < Input.size() && Input[Pos] != '"')
+        ++Pos;
+      CurText = Input.substr(Start, Pos - Start).str();
+      if (Pos < Input.size())
+        ++Pos;
+      return CurTok = Tok::String;
+    }
+
+    // Hex literal 0x...
+    if (C == '0' && Pos + 1 < Input.size() && Input[Pos + 1] == 'x') {
+      size_t Start = Pos;
+      Pos += 2;
+      while (Pos < Input.size() && isxdigit(Input[Pos]))
+        ++Pos;
+      CurText = Input.substr(Start, Pos - Start).str();
+      CurNum = std::strtoll(CurText.c_str() + 2, nullptr, 16);
+      return CurTok = Tok::Hex;
+    }
+
+    // Binary literal 0b...
+    if (C == '0' && Pos + 1 < Input.size() && Input[Pos + 1] == 'b') {
+      size_t Start = Pos;
+      Pos += 2;
+      while (Pos < Input.size() && (Input[Pos] == '0' || Input[Pos] == '1'))
+        ++Pos;
+      CurText = Input.substr(Start, Pos - Start).str();
+      CurNum = std::strtoll(CurText.c_str() + 2, nullptr, 2);
+      return CurTok = Tok::Bin;
+    }
+
+    // Number (including negative)
+    if (isdigit(C) || (C == '-' && Pos + 1 < Input.size() && isdigit(Input[Pos + 1]))) {
+      size_t Start = Pos;
+      if (C == '-')
+        ++Pos;
+      while (Pos < Input.size() && isdigit(Input[Pos]))
+        ++Pos;
+      CurText = Input.substr(Start, Pos - Start).str();
+      CurNum = std::strtoll(CurText.c_str(), nullptr, 10);
+      return CurTok = Tok::Nat;
+    }
+
+    // Type (%-prefixed)
+    if (C == '%') {
+      size_t Start = Pos;
+      ++Pos;
+      while (Pos < Input.size() && (isalnum(Input[Pos]) || Input[Pos] == '_'))
+        ++Pos;
+      CurText = Input.substr(Start, Pos - Start).str();
+      StringRef T = CurText;
+      if (T == "%i")
+        return CurTok = Tok::TyI;
+      if (T == "%i64")
+        return CurTok = Tok::TyI64;
+      if (T.starts_with("%bv"))
+        return CurTok = Tok::TyBv;
+      if (T == "%unit")
+        return CurTok = Tok::TyUnit;
+      if (T == "%bool")
+        return CurTok = Tok::TyBool;
+      if (T.starts_with("%enum"))
+        return CurTok = Tok::TyEnum;
+      if (T.starts_with("%struct"))
+        return CurTok = Tok::TyStruct;
+      return CurTok = Tok::TyBv; // Default for unknown %types
+    }
+
+    // Operator (@-prefixed)
+    if (C == '@') {
+      size_t Start = Pos;
+      ++Pos;
+      // Handle turbofish: @op::<N>
+      while (Pos < Input.size() && (isalnum(Input[Pos]) || Input[Pos] == '_' ||
+                                     Input[Pos] == ':' || Input[Pos] == '<' ||
+                                     Input[Pos] == '>'))
+        ++Pos;
+      CurText = Input.substr(Start, Pos - Start).str();
+      return CurTok = Tok::Op;
+    }
+
+    // Backtick (source location) - skip to end of line
+    if (C == '`') {
+      while (Pos < Input.size() && Input[Pos] != '\n' && Input[Pos] != ';')
+        ++Pos;
+      return advance(); // Get next real token
+    }
+
+    // Identifier or keyword
+    if (isalpha(C) || C == '_' || C == '$') {
+      size_t Start = Pos;
+      while (Pos < Input.size() && (isalnum(Input[Pos]) || Input[Pos] == '_' ||
+                                     Input[Pos] == '$' || Input[Pos] == '\''))
+        ++Pos;
+      CurText = Input.substr(Start, Pos - Start).str();
+      StringRef T = CurText;
+      if (T == "fn")
+        return CurTok = Tok::KwFn;
+      if (T == "val")
+        return CurTok = Tok::KwVal;
+      if (T == "enum")
+        return CurTok = Tok::KwEnum;
+      if (T == "union")
+        return CurTok = Tok::KwUnion;
+      if (T == "register")
+        return CurTok = Tok::KwRegister;
+      if (T == "jump")
+        return CurTok = Tok::KwJump;
+      if (T == "goto")
+        return CurTok = Tok::KwGoto;
+      if (T == "end")
+        return CurTok = Tok::KwEnd;
+      if (T == "true")
+        return CurTok = Tok::KwTrue;
+      if (T == "false")
+        return CurTok = Tok::KwFalse;
+      if (T == "is")
+        return CurTok = Tok::KwIs;
+      if (T == "as")
+        return CurTok = Tok::KwAs;
+      if (T == "return")
+        return CurTok = Tok::KwReturn;
+      return CurTok = Tok::Id;
+    }
+
+    // Unknown - skip
+    ++Pos;
+    return advance();
+  }
+
+  bool at(Tok T) const { return CurTok == T; }
+  bool atEnd() const { return CurTok == Tok::Eof; }
+
+  bool consume(Tok T) {
+    if (CurTok == T) {
+      advance();
+      return true;
+    }
+    return false;
+  }
+
+private:
+  void skipWhitespace() {
+    while (Pos < Input.size()) {
+      char C = Input[Pos];
+      if (C == ' ' || C == '\t' || C == '\n' || C == '\r') {
+        ++Pos;
+        continue;
+      }
+      // Skip // comments
+      if (C == '/' && Pos + 1 < Input.size() && Input[Pos + 1] == '/') {
+        while (Pos < Input.size() && Input[Pos] != '\n')
+          ++Pos;
+        continue;
+      }
       break;
-    case '>':
-      Result += "_gt_";
+    }
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Part 3: AST
+//===----------------------------------------------------------------------===//
+
+struct Type {
+  enum Kind { I, I64, Bv, Unit, Bool, Enum, Struct } K;
+  int Width = 0;        // For Bv types: 8, 16, 32, 64, or 0 (unspecified)
+  std::string Name;     // For Enum types
+
+  std::string toCpp() const {
+    switch (K) {
+    case I:
+    case I64:
+      return "int64_t";
+    case Bv:
+      if (Width == 1) return "uint8_t";
+      if (Width == 8) return "uint8_t";
+      if (Width == 16) return "uint16_t";
+      if (Width == 32) return "uint32_t";
+      return "uint64_t";
+    case Unit:
+      return "void";
+    case Bool:
+      return "bool";
+    case Enum:
+    case Struct:
+      return "int";
+    }
+    return "uint64_t";
+  }
+};
+
+struct Exp {
+  enum Kind {
+    Ident, Nat, Hex, Bin, True, False, Unit,
+    Op, Call, Field, Is, As
+  } K;
+  std::string Text;
+  int64_t Num = 0;
+  std::vector<Exp> Args;
+  std::string OpName;   // For Op: the operator name (without @)
+  int OpWidth = 0;      // For Op with turbofish: the width parameter
+};
+
+struct Instr {
+  enum Kind { Decl, Init, Copy, Jump, Goto, End, Return } K;
+  std::string Name;     // Variable name for Decl/Init/Copy
+  Type Ty;              // Type for Decl/Init
+  Exp Value;            // RHS for Init/Copy, condition for Jump
+  int64_t Target = 0;   // Jump/Goto target
+  int Line = 0;         // Source line number (for label generation)
+};
+
+struct FnDef {
+  std::string Name;
+  std::vector<std::string> Params;
+  std::vector<Type> ParamTypes;
+  Type ReturnType;
+  std::vector<Instr> Body;
+};
+
+struct ValDecl {
+  std::string Name;
+  std::string ExternalName; // For external functions
+  std::vector<Type> ParamTypes;
+  Type ReturnType;
+};
+
+struct EnumDef {
+  std::string Name;
+  std::vector<std::string> Variants;
+};
+
+struct UnionDef {
+  std::string Name;
+  std::vector<std::pair<std::string, Type>> Variants;
+};
+
+struct RegisterDef {
+  std::string Name;
+  Type Ty;
+};
+
+struct JibIR {
+  std::vector<RegisterDef> Registers;
+  std::vector<EnumDef> Enums;
+  std::vector<UnionDef> Unions;
+  std::vector<ValDecl> Vals;
+  std::vector<FnDef> Functions;
+};
+
+//===----------------------------------------------------------------------===//
+// Part 4: Parser
+//===----------------------------------------------------------------------===//
+
+class Parser {
+  Lexer &L;
+  int LineNum = 0;
+
+public:
+  explicit Parser(Lexer &L) : L(L) {}
+
+  JibIR parse() {
+    JibIR IR;
+    while (!L.atEnd()) {
+      if (L.at(Tok::KwRegister)) {
+        IR.Registers.push_back(parseRegister());
+      } else if (L.at(Tok::KwEnum)) {
+        IR.Enums.push_back(parseEnum());
+      } else if (L.at(Tok::KwUnion)) {
+        IR.Unions.push_back(parseUnion());
+      } else if (L.at(Tok::KwVal)) {
+        IR.Vals.push_back(parseVal());
+      } else if (L.at(Tok::KwFn)) {
+        IR.Functions.push_back(parseFn());
+      } else {
+        L.advance();
+      }
+    }
+    return IR;
+  }
+
+private:
+  Type parseType() {
+    Type T;
+    switch (L.tok()) {
+    case Tok::TyI:
+      T.K = Type::I;
       break;
-    case '<':
-      Result += "_lt_";
+    case Tok::TyI64:
+      T.K = Type::I64;
       break;
-    case '(':
-    case ')':
-    case ' ':
-      // Skip parentheses and spaces
+    case Tok::TyBv: {
+      T.K = Type::Bv;
+      // Extract width from %bvN
+      StringRef S = L.text();
+      if (S.size() > 3)
+        S.substr(3).getAsInteger(10, T.Width);
       break;
-    case ':':
-      Result += "_";
+    }
+    case Tok::TyUnit:
+      T.K = Type::Unit;
       break;
-    case '-':
-      Result += "_";
+    case Tok::TyBool:
+      T.K = Type::Bool;
       break;
-    case '+':
-      Result += "_plus_";
+    case Tok::TyEnum:
+      T.K = Type::Enum;
       break;
-    case '*':
-      Result += "_star_";
-      break;
-    case '/':
-      Result += "_slash_";
-      break;
-    case '=':
-      Result += "_eq_";
-      break;
-    case '!':
-      Result += "_not_";
-      break;
-    case '&':
-      Result += "_and_";
-      break;
-    case '|':
-      Result += "_or_";
-      break;
-    case '^':
-      Result += "_xor_";
-      break;
-    case '~':
-      Result += "_inv_";
-      break;
-    case '@':
-      Result += "_at_";
-      break;
-    case '#':
-      Result += "_hash_";
-      break;
-    case '$':
-      Result += "_dollar_";
-      break;
-    case '[':
-    case ']':
-      Result += "_";
+    case Tok::TyStruct:
+      T.K = Type::Struct;
       break;
     default:
-      if (isalnum(C) || C == '_')
-        Result += C;
-      else
-        Result += "_";
-      break;
+      T.K = Type::Bv; // Default
     }
+    L.advance();
+    // Handle "%enum id" form
+    if (T.K == Type::Enum && L.at(Tok::Id)) {
+      T.Name = L.text().str();
+      L.advance();
+    }
+    return T;
   }
 
-  // Clean up multiple consecutive underscores
-  std::string Cleaned;
-  Cleaned.reserve(Result.size());
-  bool LastWasUnderscore = false;
-  for (char C : Result) {
-    if (C == '_') {
-      if (!LastWasUnderscore && !Cleaned.empty())
-        Cleaned += C;
-      LastWasUnderscore = true;
+  Exp parseExp() {
+    Exp E;
+
+    // Literals
+    if (L.at(Tok::KwTrue)) {
+      E.K = Exp::True;
+      L.advance();
+    } else if (L.at(Tok::KwFalse)) {
+      E.K = Exp::False;
+      L.advance();
+    } else if (L.at(Tok::Nat)) {
+      E.K = Exp::Nat;
+      E.Num = L.num();
+      E.Text = L.text().str();
+      L.advance();
+    } else if (L.at(Tok::Hex)) {
+      E.K = Exp::Hex;
+      E.Num = L.num();
+      E.Text = L.text().str();
+      L.advance();
+    } else if (L.at(Tok::Bin)) {
+      E.K = Exp::Bin;
+      E.Num = L.num();
+      E.Text = L.text().str();
+      L.advance();
+    } else if (L.at(Tok::LParen) && peekUnit()) {
+      // Unit literal ()
+      E.K = Exp::Unit;
+      L.advance(); // (
+      L.advance(); // )
+    } else if (L.at(Tok::Op)) {
+      // Operator: @op(args) or @op::<N>(args)
+      E.K = Exp::Op;
+      StringRef OpText = L.text();
+      // Parse @op or @op::<N>
+      size_t ColonPos = OpText.find("::<");
+      if (ColonPos != StringRef::npos) {
+        E.OpName = OpText.substr(1, ColonPos - 1).str();
+        size_t EndPos = OpText.find('>');
+        if (EndPos != StringRef::npos) {
+          StringRef WidthStr = OpText.substr(ColonPos + 3, EndPos - ColonPos - 3);
+          WidthStr.getAsInteger(10, E.OpWidth);
+        }
+      } else {
+        E.OpName = OpText.substr(1).str();
+      }
+      L.advance();
+      E.Args = parseArgList();
+    } else if (L.at(Tok::Id)) {
+      E.K = Exp::Ident;
+      E.Text = L.text().str();
+      L.advance();
+      // Check for function call: id(args)
+      if (L.at(Tok::LParen)) {
+        E.K = Exp::Call;
+        E.Args = parseArgList();
+      }
     } else {
-      Cleaned += C;
-      LastWasUnderscore = false;
+      // Unknown - return empty ident
+      E.K = Exp::Ident;
+      E.Text = "";
     }
+
+    // Postfix: .field, is id, as id
+    while (true) {
+      if (L.at(Tok::Dot)) {
+        L.advance();
+        Exp Field;
+        Field.K = Exp::Field;
+        Field.Args.push_back(std::move(E));
+        Field.Text = L.text().str();
+        L.advance();
+        E = std::move(Field);
+      } else if (L.at(Tok::KwIs)) {
+        L.advance();
+        Exp Is;
+        Is.K = Exp::Is;
+        Is.Args.push_back(std::move(E));
+        Is.Text = L.text().str();
+        L.advance();
+        E = std::move(Is);
+      } else if (L.at(Tok::KwAs)) {
+        L.advance();
+        Exp As;
+        As.K = Exp::As;
+        As.Args.push_back(std::move(E));
+        As.Text = L.text().str();
+        L.advance();
+        E = std::move(As);
+      } else {
+        break;
+      }
+    }
+
+    return E;
   }
 
-  // Remove trailing underscore
-  while (!Cleaned.empty() && Cleaned.back() == '_')
-    Cleaned.pop_back();
-
-  // Ensure it starts with a letter or underscore
-  if (!Cleaned.empty() && isdigit(Cleaned[0]))
-    Cleaned = "_" + Cleaned;
-
-  // Handle C++ reserved keywords by prefixing with underscore
-  static const char *Keywords[] = {
-      "unsigned", "signed", "int", "char", "short", "long", "float", "double",
-      "void", "bool", "true", "false", "class", "struct", "union", "enum",
-      "const", "volatile", "static", "extern", "register", "auto", "inline",
-      "virtual", "explicit", "friend", "public", "private", "protected",
-      "namespace", "using", "typedef", "template", "typename", "this",
-      "new", "delete", "return", "if", "else", "for", "while", "do",
-      "switch", "case", "default", "break", "continue", "goto", "throw",
-      "try", "catch", "operator", "sizeof", "alignof", "decltype", "nullptr"};
-  for (const char *Kw : Keywords) {
-    if (Cleaned == Kw) {
-      Cleaned = "_" + Cleaned;
-      break;
+  std::vector<Exp> parseArgList() {
+    std::vector<Exp> Args;
+    if (!L.consume(Tok::LParen))
+      return Args;
+    if (!L.at(Tok::RParen)) {
+      Args.push_back(parseExp());
+      while (L.consume(Tok::Comma))
+        Args.push_back(parseExp());
     }
+    L.consume(Tok::RParen);
+    return Args;
   }
 
-  return Cleaned;
-}
-
-//===----------------------------------------------------------------------===//
-// Jib IR Parser
-//===----------------------------------------------------------------------===//
-
-/// Represents a parsed instruction body from the zexecute function.
-/// Contains the raw IR lines that implement the instruction semantics.
-struct JibInstructionBody {
-  std::string Name;              // Decoded instruction name (e.g., "LDA_imm")
-  std::string OperandType;       // Type of operand (%bv8, %bv16, %unit)
-  std::vector<std::string> Body; // IR lines for this instruction
-};
-
-/// Represents a parsed function definition from the IR.
-struct JibFunction {
-  std::string Name;                // Decoded function name
-  std::vector<std::string> Params; // Parameter names (decoded)
-  std::string ReturnType;          // Return type (e.g., "%bool", "%bv8", "%unit")
-  std::vector<std::string> Body;   // IR lines for the function body
-};
-
-/// Represents a parsed enum definition from the IR.
-struct JibEnum {
-  std::string Name;                    // Decoded enum name
-  std::vector<std::string> Variants;   // Enum variant names (decoded)
-};
-
-/// Parsed Jib IR file containing instruction semantics.
-struct JibIR {
-  StringMap<std::string> Registers; // register name -> type
-  StringMap<JibInstructionBody> Instructions; // decoded name -> body
-  StringMap<std::string> ExternalFunctions; // z-encoded name -> external name
-  StringMap<JibFunction> Functions; // decoded name -> function definition
-  StringMap<JibEnum> Enums; // decoded name -> enum definition
-  StringMap<std::string> FunctionReturnTypes; // decoded function name -> return type
-  StringMap<std::vector<std::string>> FunctionParamTypes; // decoded name -> param types
-
-  bool empty() const { return Instructions.empty(); }
-};
-
-/// Parse a Jib IR file and extract instruction bodies from zexecute.
-static JibIR parseJibIR(StringRef Path) {
-  JibIR IR;
-
-  // Read the file
-  ErrorOr<std::unique_ptr<MemoryBuffer>> BufOrErr =
-      MemoryBuffer::getFile(Path);
-  if (!BufOrErr) {
-    PrintError("Failed to open SAIL IR file: " + Path);
-    return IR;
+  bool peekUnit() {
+    // Save position and check for ()
+    // This is a simple lookahead for unit literal
+    return L.at(Tok::LParen);
   }
 
-  StringRef Content = (*BufOrErr)->getBuffer();
-  SmallVector<StringRef, 1024> Lines;
-  Content.split(Lines, '\n');
+  Instr parseInstr() {
+    Instr I;
+    I.Line = LineNum++;
 
-  // First pass: collect register definitions, external functions, and find zexecute
-  size_t ExecuteStart = 0;
-  for (size_t I = 0; I < Lines.size(); ++I) {
-    StringRef Line = Lines[I].trim();
-
-    // Parse register definitions: "register zName : %type"
-    if (Line.starts_with("register ")) {
-      StringRef Rest = Line.drop_front(9).trim();
-      size_t ColonPos = Rest.find(':');
-      if (ColonPos != StringRef::npos) {
-        StringRef Name = Rest.substr(0, ColonPos).trim();
-        StringRef Type = Rest.substr(ColonPos + 1).trim();
-        std::string DecodedName = zdecode(Name);
-        IR.Registers[DecodedName] = Type.str();
+    if (L.at(Tok::KwJump)) {
+      I.K = Instr::Jump;
+      L.advance();
+      I.Value = parseExp();
+      L.consume(Tok::KwGoto);
+      if (L.at(Tok::Nat)) {
+        I.Target = L.num();
+        L.advance();
       }
-    }
-
-    // Parse external function declarations: "val zfoo = "external_name" : ..."
-    // Format: val <z-encoded-name> = "<external-name>" : (types) -> type
-    if (Line.starts_with("val ") && Line.contains(" = \"")) {
-      StringRef Rest = Line.drop_front(4).trim();
-      size_t EqPos = Rest.find(" = ");
-      if (EqPos != StringRef::npos) {
-        StringRef ZEncodedName = Rest.substr(0, EqPos).trim();
-        StringRef AfterEq = Rest.substr(EqPos + 3).trim();
-        // Extract the quoted external name
-        if (AfterEq.starts_with("\"")) {
-          size_t EndQuote = AfterEq.find('"', 1);
-          if (EndQuote != StringRef::npos) {
-            StringRef ExternalName = AfterEq.substr(1, EndQuote - 1);
-            IR.ExternalFunctions[ZEncodedName] = ExternalName.str();
-
-            // Also parse the type signature: : (types) -> return_type
-            StringRef AfterQuote = AfterEq.substr(EndQuote + 1).trim();
-            if (AfterQuote.starts_with(":")) {
-              StringRef Signature = AfterQuote.drop_front(1).trim();
-              size_t ArrowPos = Signature.find("->");
-              if (ArrowPos != StringRef::npos) {
-                StringRef ParamsStr = Signature.substr(0, ArrowPos).trim();
-                StringRef ReturnType = Signature.substr(ArrowPos + 2).trim();
-
-                // Store using the external name as key (since that's what we'll use later)
-                IR.FunctionReturnTypes[ExternalName.str()] = ReturnType.str();
-
-                // Parse parameter types
-                if (ParamsStr.starts_with("(") && ParamsStr.ends_with(")")) {
-                  StringRef ParamsInner = ParamsStr.drop_front(1).drop_back(1);
-                  std::vector<std::string> ParamTypes;
-                  SmallVector<StringRef, 4> TypeList;
-                  ParamsInner.split(TypeList, ',');
-                  for (StringRef T : TypeList) {
-                    T = T.trim();
-                    if (!T.empty() && T != "%unit")
-                      ParamTypes.push_back(T.str());
-                  }
-                  IR.FunctionParamTypes[ExternalName.str()] = std::move(ParamTypes);
-                }
-              }
-            }
-          }
-        }
+    } else if (L.at(Tok::KwGoto)) {
+      I.K = Instr::Goto;
+      L.advance();
+      if (L.at(Tok::Nat)) {
+        I.Target = L.num();
+        L.advance();
       }
-    }
+    } else if (L.at(Tok::KwEnd)) {
+      I.K = Instr::End;
+      L.advance();
+    } else if (L.at(Tok::KwReturn)) {
+      I.K = Instr::Return;
+      L.advance();
+      if (L.consume(Tok::Eq))
+        I.Value = parseExp();
+    } else if (L.at(Tok::Id)) {
+      std::string Name = L.text().str();
+      L.advance();
 
-    // Parse function signatures (non-external): "val zname : (params) -> return_type"
-    // Format: val <z-encoded-name> : (types) -> type
-    if (Line.starts_with("val z") && !Line.contains(" = \"") && Line.contains(" : ")) {
-      StringRef Rest = Line.drop_front(4).trim();
-      size_t ColonPos = Rest.find(" : ");
-      if (ColonPos != StringRef::npos) {
-        StringRef ZEncodedName = Rest.substr(0, ColonPos).trim();
-        StringRef Signature = Rest.substr(ColonPos + 3).trim();
-        // Extract return type after "->"
-        size_t ArrowPos = Signature.find("->");
-        if (ArrowPos != StringRef::npos) {
-          StringRef ParamsStr = Signature.substr(0, ArrowPos).trim();
-          StringRef ReturnType = Signature.substr(ArrowPos + 2).trim();
-          std::string DecodedName = zdecode(ZEncodedName);
-          IR.FunctionReturnTypes[DecodedName] = ReturnType.str();
-
-          // Parse parameter types from "(type1, type2, ...)"
-          if (ParamsStr.starts_with("(") && ParamsStr.ends_with(")")) {
-            StringRef ParamsInner = ParamsStr.drop_front(1).drop_back(1);
-            std::vector<std::string> ParamTypes;
-            SmallVector<StringRef, 4> TypeList;
-            ParamsInner.split(TypeList, ',');
-            for (StringRef T : TypeList) {
-              T = T.trim();
-              if (!T.empty() && T != "%unit")
-                ParamTypes.push_back(T.str());
-            }
-            IR.FunctionParamTypes[DecodedName] = std::move(ParamTypes);
-          }
-        }
-      }
-    }
-
-    // Parse enum definitions: "enum zName {"
-    if (Line.starts_with("enum z")) {
-      size_t BracePos = Line.find('{');
-      if (BracePos != StringRef::npos) {
-        StringRef EnumName = Line.substr(5, BracePos - 5).trim(); // Skip "enum "
-        JibEnum Enum;
-        Enum.Name = zdecode(EnumName);
-
-        // Collect enum variants until closing brace
-        for (size_t J = I + 1; J < Lines.size(); ++J) {
-          StringRef EnumLine = Lines[J].trim();
-          if (EnumLine == "}")
-            break;
-          // Variants may have trailing comma
-          StringRef Variant = EnumLine.rtrim(",").trim();
-          if (!Variant.empty())
-            Enum.Variants.push_back(zdecode(Variant));
-        }
-
-        IR.Enums[Enum.Name] = std::move(Enum);
-      }
-    }
-
-    // Find the start of fn zexecute
-    if (Line.starts_with("fn zexecute(")) {
-      ExecuteStart = I;
-    }
-
-    // Parse function definitions: "fn zname(params) {"
-    // Skip zexecute (handled separately) and zmain/zinitializze_registers
-    if (Line.starts_with("fn z") && !Line.starts_with("fn zexecute") &&
-        !Line.starts_with("fn zmain") && !Line.starts_with("fn zinitializze")) {
-      size_t ParenPos = Line.find('(');
-      size_t CloseParenPos = Line.find(')');
-      if (ParenPos != StringRef::npos && CloseParenPos != StringRef::npos) {
-        StringRef FuncName = Line.substr(3, ParenPos - 3); // Skip "fn "
-        StringRef ParamsStr = Line.substr(ParenPos + 1, CloseParenPos - ParenPos - 1);
-
-        JibFunction Func;
-        Func.Name = zdecode(FuncName);
-
-        // Parse parameters
-        SmallVector<StringRef, 4> Params;
-        ParamsStr.split(Params, ',');
-        for (StringRef P : Params) {
-          P = P.trim();
-          if (!P.empty())
-            Func.Params.push_back(zdecode(P));
-        }
-
-        // Collect function body including "end;" (for label emission)
-        for (size_t J = I + 1; J < Lines.size(); ++J) {
-          StringRef BodyLine = Lines[J].trim();
-          if (BodyLine == "}") {
-            break;
-          }
-          Func.Body.push_back(BodyLine.str());
-          if (BodyLine == "end;") {
-            break;
-          }
-        }
-
-        IR.Functions[Func.Name] = std::move(Func);
-      }
-    }
-  }
-
-  if (ExecuteStart == 0) {
-    PrintError("Could not find zexecute function in SAIL IR file");
-    return IR;
-  }
-
-  // Second pass: parse the zexecute function body
-  // The structure is:
-  //   jump zmergez3var is zINSTR_variant goto N  <- marks start of instruction
-  //   ...                                         <- instruction body
-  //   goto END                                    <- marks end of instruction
-  //   jump zmergez3var is zNEXT_variant goto M   <- next instruction
-
-  std::string CurrentInstr;
-  std::string CurrentOperandType;
-  std::vector<std::string> CurrentBody;
-  bool InExecute = false;
-
-  for (size_t I = ExecuteStart + 1; I < Lines.size(); ++I) {
-    StringRef Line = Lines[I].trim();
-
-    // End of function
-    if (Line == "end" || Line == "}") {
-      // Save last instruction if any
-      if (!CurrentInstr.empty() && !CurrentBody.empty()) {
-        JibInstructionBody Body;
-        Body.Name = CurrentInstr;
-        Body.OperandType = CurrentOperandType;
-        Body.Body = std::move(CurrentBody);
-        IR.Instructions[CurrentInstr] = std::move(Body);
-      }
-      break;
-    }
-
-    // Check for instruction start: "jump zmergez3var is zINSTR goto N"
-    if (Line.starts_with("jump ") && Line.contains(" is ") &&
-        Line.contains(" goto ")) {
-      // Save previous instruction
-      if (!CurrentInstr.empty() && !CurrentBody.empty()) {
-        JibInstructionBody Body;
-        Body.Name = CurrentInstr;
-        Body.OperandType = CurrentOperandType;
-        Body.Body = std::move(CurrentBody);
-        IR.Instructions[CurrentInstr] = std::move(Body);
-      }
-
-      // Extract instruction name: "jump zmergez3var is zINSTR goto N"
-      size_t IsPos = Line.find(" is ");
-      size_t GotoPos = Line.find(" goto ");
-      if (IsPos != StringRef::npos && GotoPos != StringRef::npos) {
-        StringRef EncodedName = Line.substr(IsPos + 4, GotoPos - IsPos - 4);
-        CurrentInstr = zdecode(EncodedName);
-        CurrentBody.clear();
-        CurrentOperandType.clear();
-        InExecute = true;
-      }
-      continue;
-    }
-
-    // Collect instruction body lines
-    if (InExecute && !CurrentInstr.empty()) {
-      // Skip unconditional gotos (they just mark end of instruction block)
-      if (Line.starts_with("goto "))
-        continue;
-
-      // Extract operand type from "zmergez3var as zINSTR" lines
-      if (Line.contains(" as ") && CurrentOperandType.empty()) {
-        // The type comes from the union definition, but we can infer from usage
-        // For now, just collect the body
-      }
-
-      CurrentBody.push_back(Line.str());
-    }
-  }
-
-  return IR;
-}
-
-// Forward declaration
-static std::string translateJibExp(StringRef Exp, const JibIR &IR);
-
-/// Sanitize a Jib IR variable name for C++.
-/// Decodes z-encoding and gives temporaries meaningful prefixes.
-static std::string sanitizeVarName(StringRef Name) {
-  std::string Decoded = zdecode(Name);
-  // SAIL temporaries start with $ (e.g., $1077) - give them a meaningful prefix
-  if (!Decoded.empty() && Decoded[0] == '$')
-    return "tmp" + Decoded.substr(1);
-  return Decoded;
-}
-
-/// Check if this is an internal/uninteresting assignment we should skip.
-/// Returns 0 if should not skip, 1 if should skip entirely, 2 if should emit
-/// expression for side effects but not assign.
-static int shouldSkipAssignment(StringRef Loc, StringRef Exp) {
-  std::string DecodedLoc = sanitizeVarName(Loc);
-  // Skip unit assignments (exp = ())
-  if (Exp.trim() == "()")
-    return 1;
-  // Skip assignments to internal return value ($0 -> tmp0, or literal "return")
-  // But if the expression is a function call, emit it for side effects
-  if (DecodedLoc == "tmp0" || Loc.trim() == "return") {
-    // Check if Exp looks like a function call (contains '(' and isn't a cast)
-    if (Exp.contains('(') && !Exp.starts_with("("))
-      return 2; // Emit for side effects
-    return 1;   // Skip entirely
-  }
-  return 0;
-}
-
-/// Translate a Jib IR instruction body to C++ code.
-/// This performs the mechanical translation from Jib IR to C++.
-static std::string translateJibToC(const JibInstructionBody &Instr,
-                                   const JibIR &IR) {
-  std::string Result;
-  raw_string_ostream OS(Result);
-
-  // Track unit-type variables so we can skip assignments to them
-  StringSet<> UnitVars;
-
-  for (const std::string &Line : Instr.Body) {
-    StringRef L = StringRef(Line).trim();
-
-    // Skip empty lines
-    if (L.empty())
-      continue;
-
-    // Declaration: "id : %type"
-    if (L.contains(" : %") && !L.contains(" = ")) {
-      size_t ColonPos = L.find(" : ");
-      if (ColonPos != StringRef::npos) {
-        StringRef VarName = L.substr(0, ColonPos);
-        StringRef Type = L.substr(ColonPos + 3);
-        // Remove source location suffix if present
-        size_t BacktickPos = Type.find('`');
-        if (BacktickPos != StringRef::npos)
-          Type = Type.substr(0, BacktickPos).trim();
-
-        // Skip unit type declarations but remember them
-        if (Type.starts_with("%unit")) {
-          UnitVars.insert(sanitizeVarName(VarName));
-          continue;
-        }
-
-        std::string SanitizedVar = sanitizeVarName(VarName);
-        // Skip internal variables
-        if (SanitizedVar == "tmp0")
-          continue;
-
-        std::string CppType = "uint64_t"; // Default for untyped %bv
-        if (Type.starts_with("%bv16") || Type.starts_with("%i16"))
-          CppType = "uint16_t";
-        else if (Type.starts_with("%bv32") || Type.starts_with("%i") ||
-                 Type.starts_with("%i64"))
-          CppType = "uint32_t";
-        else if (Type.starts_with("%bool"))
-          CppType = "bool";
-        else if (Type.starts_with("%enum"))
-          continue; // Skip enum declarations (like ExecutionResult)
-
-        OS << "    " << CppType << " " << SanitizedVar << ";\n";
-        continue;
-      }
-    }
-
-    // Init: "id : %type = exp"
-    if (L.contains(" : %") && L.contains(" = ")) {
-      size_t ColonPos = L.find(" : ");
-      size_t EqPos = L.find(" = ");
-      if (ColonPos != StringRef::npos && EqPos != StringRef::npos) {
-        StringRef VarName = L.substr(0, ColonPos);
-        StringRef Type = L.substr(ColonPos + 3, EqPos - ColonPos - 3).trim();
-        StringRef Exp = L.substr(EqPos + 3);
-
-        // Remove source location suffix
-        size_t BacktickPos = Exp.find('`');
-        if (BacktickPos != StringRef::npos)
-          Exp = Exp.substr(0, BacktickPos).trim();
-
-        // Skip unit type initializations and internal vars
-        if (Type.starts_with("%unit")) {
-          UnitVars.insert(sanitizeVarName(VarName));
-          continue;
-        }
-        if (Type.starts_with("%enum"))
-          continue;
-        int SkipResult = shouldSkipAssignment(VarName, Exp);
-        if (SkipResult == 1)
-          continue;
-
-        std::string SanitizedVar = sanitizeVarName(VarName);
-        std::string CppExp = translateJibExp(Exp, IR);
-
-        // Skip if expression translates to nothing useful
-        if (CppExp.empty() || CppExp == "{}")
-          continue;
-
-        if (SkipResult == 2) {
-          // Emit for side effects only
-          OS << "    " << CppExp << ";\n";
+      if (L.at(Tok::Colon)) {
+        // Decl or Init: id : Ty [= Exp]
+        L.advance();
+        Type Ty = parseType();
+        if (L.consume(Tok::Eq)) {
+          I.K = Instr::Init;
+          I.Name = Name;
+          I.Ty = Ty;
+          I.Value = parseExp();
         } else {
-          OS << "    auto " << SanitizedVar << " = " << CppExp << ";\n";
+          I.K = Instr::Decl;
+          I.Name = Name;
+          I.Ty = Ty;
         }
-        continue;
+      } else if (L.consume(Tok::Eq)) {
+        // Copy: id = Exp
+        I.K = Instr::Copy;
+        I.Name = Name;
+        I.Value = parseExp();
       }
     }
 
-    // Assignment: "loc = exp"
-    if (L.contains(" = ") && !L.contains(" : ")) {
-      size_t EqPos = L.find(" = ");
-      if (EqPos != StringRef::npos) {
-        StringRef Loc = L.substr(0, EqPos);
-        StringRef Exp = L.substr(EqPos + 3);
-
-        // Remove source location suffix
-        size_t BacktickPos = Exp.find('`');
-        if (BacktickPos != StringRef::npos)
-          Exp = Exp.substr(0, BacktickPos).trim();
-
-        // Skip uninteresting assignments
-        int SkipResult = shouldSkipAssignment(Loc, Exp);
-        if (SkipResult == 1)
-          continue;
-
-        std::string SanitizedLoc = sanitizeVarName(Loc);
-        std::string CppExp = translateJibExp(Exp, IR);
-
-        // Skip if expression translates to nothing useful
-        if (CppExp.empty() || CppExp == "{}")
-          continue;
-
-        // Emit for side effects only (e.g., function call whose return value is discarded)
-        if (SkipResult == 2) {
-          OS << "    " << CppExp << ";\n";
-          continue;
-        }
-
-        // For unit-type variables, emit the expression as a statement (for side effects)
-        // but don't assign it to anything
-        if (UnitVars.count(SanitizedLoc)) {
-          OS << "    " << CppExp << ";\n";
-          continue;
-        }
-
-        OS << "    " << SanitizedLoc << " = " << CppExp << ";\n";
-        continue;
-      }
-    }
-
-    // Skip lines we don't understand yet
-    OS << "    // TODO: " << L << "\n";
+    L.consume(Tok::Semi);
+    return I;
   }
 
-  return Result;
-}
+  RegisterDef parseRegister() {
+    RegisterDef R;
+    L.advance(); // register
+    R.Name = toCppIdent(L.text());
+    L.advance();
+    L.consume(Tok::Colon);
+    R.Ty = parseType();
+    return R;
+  }
 
-/// Translate a Jib IR expression to C++.
-static std::string translateJibExp(StringRef Exp, const JibIR &IR) {
-  Exp = Exp.trim();
-
-  // Boolean literals
-  if (Exp == "true")
-    return "true";
-  if (Exp == "false")
-    return "false";
-
-  // Unit
-  if (Exp == "()")
-    return "{}";
-
-  // Hex bitvector literal: 0xNNN
-  if (Exp.starts_with("0x"))
-    return Exp.str();
-
-  // Binary bitvector literal: 0bNNN
-  if (Exp.starts_with("0b"))
-    return Exp.str();
-
-  // Integer literal: N
-  if (!Exp.empty() && (isdigit(Exp[0]) || Exp[0] == '-'))
-    return Exp.str();
-
-  // Builtin operations: @op(args)
-  if (Exp.starts_with("@")) {
-    size_t ParenPos = Exp.find('(');
-    if (ParenPos != StringRef::npos) {
-      StringRef Op = Exp.substr(1, ParenPos - 1);
-      StringRef Args = Exp.substr(ParenPos + 1).drop_back(); // remove ')'
-
-      // Handle turbofish syntax: @op::<N>(args)
-      size_t TurboPos = Op.find("::<");
-      std::string Width;
-      if (TurboPos != StringRef::npos) {
-        size_t EndPos = Op.find('>');
-        Width = Op.substr(TurboPos + 3, EndPos - TurboPos - 3).str();
-        Op = Op.substr(0, TurboPos);
+  EnumDef parseEnum() {
+    EnumDef E;
+    L.advance(); // enum
+    E.Name = toCppIdent(L.text());
+    L.advance();
+    L.consume(Tok::LBrace);
+    while (!L.at(Tok::RBrace) && !L.atEnd()) {
+      if (L.at(Tok::Id)) {
+        E.Variants.push_back(toCppIdent(L.text()));
+        L.advance();
       }
+      L.consume(Tok::Comma);
+    }
+    L.consume(Tok::RBrace);
+    return E;
+  }
 
-      // Parse args (simple comma-split for now)
-      SmallVector<StringRef, 4> ArgList;
-      Args.split(ArgList, ',');
-      for (auto &A : ArgList)
-        A = A.trim();
+  UnionDef parseUnion() {
+    UnionDef U;
+    L.advance(); // union
+    U.Name = toCppIdent(L.text());
+    L.advance();
+    L.consume(Tok::LBrace);
+    while (!L.at(Tok::RBrace) && !L.atEnd()) {
+      if (L.at(Tok::Id)) {
+        std::string Name = toCppIdent(L.text());
+        L.advance();
+        L.consume(Tok::Colon);
+        Type Ty = parseType();
+        U.Variants.emplace_back(Name, Ty);
+      }
+      L.consume(Tok::Comma);
+    }
+    L.consume(Tok::RBrace);
+    return U;
+  }
 
-      // Translate operations
-      if (Op == "bvadd" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " + " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "bvsub" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " - " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "bvand" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " & " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "bvor" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " | " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "bvxor" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " ^ " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "bvnot" && ArgList.size() == 1)
-        return "(~" + translateJibExp(ArgList[0], IR) + ")";
-      if (Op == "not" && ArgList.size() == 1)
-        return "(!" + translateJibExp(ArgList[0], IR) + ")";
-      if (Op == "and" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " && " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "or" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " || " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "eq" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " == " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "neq" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " != " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "lt" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " < " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "lteq" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " <= " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "gt" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " > " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "gteq" && ArgList.size() == 2)
-        return "(" + translateJibExp(ArgList[0], IR) + " >= " +
-               translateJibExp(ArgList[1], IR) + ")";
-      if (Op == "concat" && ArgList.size() == 2) {
-        // Need to know widths for shift amount - default to 8
-        return "((" + translateJibExp(ArgList[0], IR) + " << 8) | " +
-               translateJibExp(ArgList[1], IR) + ")";
-      }
-      if (Op == "slice" && !Width.empty() && ArgList.size() == 2) {
-        // @slice::<N>(val, start) extracts N bits starting at start
-        return "((" + translateJibExp(ArgList[0], IR) + " >> " +
-               translateJibExp(ArgList[1], IR) + ") & ((1 << " + Width +
-               ") - 1))";
-      }
-      if (Op == "zero_extend" && !Width.empty() && ArgList.size() == 1) {
-        // Zero extension is a no-op in C++ with unsigned types
-        return translateJibExp(ArgList[0], IR);
-      }
-      if (Op == "signed" && !Width.empty() && ArgList.size() == 1) {
-        return "(int" + Width + "_t)" + translateJibExp(ArgList[0], IR);
-      }
-      if (Op == "unsigned" && !Width.empty() && ArgList.size() == 1) {
-        return "(uint" + Width + "_t)" + translateJibExp(ArgList[0], IR);
-      }
+  ValDecl parseVal() {
+    ValDecl V;
+    L.advance(); // val
+    V.Name = toCppIdent(L.text());
+    L.advance();
 
-      // Unknown op - return as-is with comment
-      return "/* @" + Op.str() + " */ " + Exp.str();
+    // Check for external: val id = "name" : ...
+    if (L.consume(Tok::Eq)) {
+      if (L.at(Tok::String)) {
+        V.ExternalName = L.text().str();
+        L.advance();
+      }
+    }
+
+    L.consume(Tok::Colon);
+
+    // Parse (params) -> return
+    if (L.consume(Tok::LParen)) {
+      while (!L.at(Tok::RParen) && !L.atEnd()) {
+        V.ParamTypes.push_back(parseType());
+        L.consume(Tok::Comma);
+      }
+      L.consume(Tok::RParen);
+    }
+    L.consume(Tok::Arrow);
+    V.ReturnType = parseType();
+
+    return V;
+  }
+
+  FnDef parseFn() {
+    FnDef F;
+    L.advance(); // fn
+    F.Name = toCppIdent(L.text());
+    L.advance();
+
+    // Parse parameters
+    L.consume(Tok::LParen);
+    while (!L.at(Tok::RParen) && !L.atEnd()) {
+      if (L.at(Tok::Id)) {
+        F.Params.push_back(toCppIdent(L.text()));
+        L.advance();
+      }
+      L.consume(Tok::Comma);
+    }
+    L.consume(Tok::RParen);
+
+    // Parse body
+    L.consume(Tok::LBrace);
+    LineNum = 0;
+    while (!L.at(Tok::RBrace) && !L.atEnd()) {
+      F.Body.push_back(parseInstr());
+    }
+    L.consume(Tok::RBrace);
+
+    return F;
+  }
+};
+
+//===----------------------------------------------------------------------===//
+// Part 5: Code Generator
+//===----------------------------------------------------------------------===//
+
+class CodeGen {
+  const JibIR &IR;
+  raw_ostream &OS;
+
+  // Maps for lookups
+  StringMap<const ValDecl *> ValsByName;
+  StringMap<const UnionDef *> UnionsByName;
+
+public:
+  CodeGen(const JibIR &IR, raw_ostream &OS) : IR(IR), OS(OS) {
+    // Build lookup maps
+    for (const auto &V : IR.Vals)
+      ValsByName[V.Name] = &V;
+    for (const auto &U : IR.Unions)
+      UnionsByName[U.Name] = &U;
+  }
+
+  void emit() {
+    // Find instruction union and execute function
+    const UnionDef *InstrUnion = nullptr;
+    const FnDef *ExecuteFn = nullptr;
+
+    for (const auto &U : IR.Unions)
+      if (U.Name == "instruction")
+        InstrUnion = &U;
+    for (const auto &F : IR.Functions)
+      if (F.Name == "execute")
+        ExecuteFn = &F;
+
+    if (!InstrUnion || !ExecuteFn) {
+      OS << "// No instruction union or execute function found\n";
+      return;
+    }
+
+    // Count instructions
+    size_t NumInstr = InstrUnion->Variants.size();
+    OS << "// Generated from SAIL Jib IR\n";
+    OS << "// Instructions: " << NumInstr << " from SAIL\n\n";
+
+    // Emit instruction cases
+    OS << "#ifdef GET_EMULATOR_CASES\n";
+    emitInstructionCases(*ExecuteFn, *InstrUnion);
+    OS << "#endif // GET_EMULATOR_CASES\n\n";
+
+    // Emit enums
+    OS << "#ifdef GET_EMULATOR_ENUMS\n";
+    emitEnums();
+    OS << "#endif // GET_EMULATOR_ENUMS\n\n";
+
+    // Emit functions
+    OS << "#ifdef GET_EMULATOR_FUNCTIONS\n";
+    emitFunctions();
+    OS << "#endif // GET_EMULATOR_FUNCTIONS\n";
+  }
+
+private:
+  void emitInstructionCases(const FnDef &Execute, const UnionDef &InstrUnion) {
+    // The execute function has a pattern:
+    //   jump arg is INSTR goto N
+    //   ... instruction body ...
+    //   goto END
+
+    std::string ArgName = Execute.Params.empty() ? "arg" : Execute.Params[0];
+
+    // Extract instruction bodies by parsing the execute function
+    struct InstrBody {
+      std::string Name;
+      std::vector<Instr> Body;
+    };
+    std::vector<InstrBody> Bodies;
+
+    InstrBody *Current = nullptr;
+    for (const auto &I : Execute.Body) {
+      if (I.K == Instr::Jump && I.Value.K == Exp::Is) {
+        // Start of new instruction
+        Bodies.emplace_back();
+        Current = &Bodies.back();
+        Current->Name = toCppIdent(I.Value.Text);
+      } else if (I.K == Instr::Goto) {
+        // End of instruction - skip
+        Current = nullptr;
+      } else if (Current) {
+        Current->Body.push_back(I);
+      }
+    }
+
+    // Emit each instruction
+    for (const auto &B : Bodies) {
+      OS << "case " << B.Name << ": {\n";
+      emitInstrBody(B.Body, ArgName, B.Name);
+      OS << "  break;\n}\n";
     }
   }
 
-  // Function call: id(args) or $id(args)
-  if (Exp.contains('(') && Exp.ends_with(')')) {
-    bool External = Exp.starts_with("$");
-    size_t ParenPos = Exp.find('(');
-    StringRef FuncName = Exp.substr(External ? 1 : 0, ParenPos - (External ? 1 : 0));
-    StringRef Args = Exp.substr(ParenPos + 1).drop_back();
+  void emitInstrBody(const std::vector<Instr> &Body, StringRef ArgName,
+                     StringRef InstrName) {
+    // Collect jump targets for label emission
+    DenseSet<int64_t> JumpTargets;
+    for (const auto &I : Body) {
+      if (I.K == Instr::Jump || I.K == Instr::Goto)
+        JumpTargets.insert(I.Target);
+    }
 
-    std::string DecodedFunc = zdecode(FuncName);
+    // Track unit-type variables
+    StringSet<> UnitVars;
 
-    // Handle SAIL type conversion functions like %i64->%i, %bv->%i
-    // These just extract the value
-    if (DecodedFunc.find("->") != std::string::npos ||
-        StringRef(DecodedFunc).starts_with("%")) {
-      // Type conversion - just return the argument
-      SmallVector<StringRef, 4> ArgList;
-      Args.split(ArgList, ',');
-      if (ArgList.size() == 1)
-        return translateJibExp(ArgList[0].trim(), IR);
-      // Multiple args - just return first for now
-      if (!ArgList.empty())
-        return translateJibExp(ArgList[0].trim(), IR);
+    for (const auto &I : Body) {
+      // Emit label if needed
+      if (JumpTargets.contains(I.Line))
+        OS << "L" << I.Line << ":;\n";
+
+      switch (I.K) {
+      case Instr::Decl:
+        if (I.Ty.K == Type::Unit) {
+          UnitVars.insert(toCppIdent(I.Name));
+        } else if (I.Ty.K != Type::Enum) {
+          OS << "  " << I.Ty.toCpp() << " " << toCppIdent(I.Name) << ";\n";
+        }
+        break;
+
+      case Instr::Init: {
+        std::string Name = toCppIdent(I.Name);
+        std::string Val = emitExp(I.Value, ArgName, InstrName);
+        if (I.Ty.K == Type::Unit) {
+          UnitVars.insert(Name);
+          if (!Val.empty() && Val != "{}")
+            OS << "  " << Val << ";\n";
+        } else if (I.Ty.K != Type::Enum && !Val.empty()) {
+          OS << "  auto " << Name << " = " << Val << ";\n";
+        }
+        break;
+      }
+
+      case Instr::Copy: {
+        std::string Name = toCppIdent(I.Name);
+        std::string Val = emitExp(I.Value, ArgName, InstrName);
+        // In instruction bodies (InstrName non-empty), tmp0 and return are
+        // internal values we don't need to keep. In helper functions, they're
+        // regular variables.
+        bool IsInstrBody = !InstrName.empty();
+        if (IsInstrBody && (Name == "tmp0" || Name == "return")) {
+          // Internal return value - emit for side effects only
+          if (!Val.empty() && Val != "{}")
+            OS << "  " << Val << ";\n";
+        } else if (UnitVars.contains(Name)) {
+          if (!Val.empty() && Val != "{}")
+            OS << "  " << Val << ";\n";
+        } else if (!Val.empty()) {
+          OS << "  " << Name << " = " << Val << ";\n";
+        }
+        break;
+      }
+
+      case Instr::Jump:
+        OS << "  if (" << emitExp(I.Value, ArgName, InstrName)
+           << ") goto L" << I.Target << ";\n";
+        break;
+
+      case Instr::Goto:
+        OS << "  goto L" << I.Target << ";\n";
+        break;
+
+      case Instr::Return: {
+        std::string Val = emitExp(I.Value, ArgName, InstrName);
+        if (Val.empty() || Val == "{}")
+          OS << "  return;\n";
+        else
+          OS << "  return " << Val << ";\n";
+        break;
+      }
+
+      case Instr::End:
+        break;
+      }
+    }
+  }
+
+  std::string emitExp(const Exp &E, StringRef ArgName, StringRef InstrName) {
+    switch (E.K) {
+    case Exp::Ident: {
+      std::string Name = toCppIdent(E.Text);
+      // Check if it's the instruction operand extraction
+      if (Name == "mergez3var" || Name.find("merge") != std::string::npos)
+        return "Inst.getOperand(0).getImm()";
+      return Name;
+    }
+
+    case Exp::Nat:
+    case Exp::Hex:
+    case Exp::Bin:
+      return E.Text;
+
+    case Exp::True:
+      return "true";
+
+    case Exp::False:
+      return "false";
+
+    case Exp::Unit:
+      return "{}";
+
+    case Exp::Op:
+      return emitOp(E, ArgName, InstrName);
+
+    case Exp::Call:
+      return emitCall(E, ArgName, InstrName);
+
+    case Exp::Field:
+      return emitExp(E.Args[0], ArgName, InstrName) + "." + toCppIdent(E.Text);
+
+    case Exp::Is:
+      // Used for instruction dispatch - just return condition
+      return "(" + emitExp(E.Args[0], ArgName, InstrName) + ".is<" +
+             toCppIdent(E.Text) + ">())";
+
+    case Exp::As:
+      // Operand extraction
+      if (toCppIdent(E.Args[0].Text).find("merge") != std::string::npos)
+        return "Inst.getOperand(0).getImm()";
+      return emitExp(E.Args[0], ArgName, InstrName);
+    }
+    return "";
+  }
+
+  std::string emitOp(const Exp &E, StringRef ArgName, StringRef InstrName) {
+    StringRef Op = E.OpName;
+    auto &A = E.Args;
+
+    // Binary operations
+    if (A.size() == 2) {
+      std::string L = emitExp(A[0], ArgName, InstrName);
+      std::string R = emitExp(A[1], ArgName, InstrName);
+      if (Op == "bvadd") return "(" + L + " + " + R + ")";
+      if (Op == "bvsub") return "(" + L + " - " + R + ")";
+      if (Op == "bvand") return "(" + L + " & " + R + ")";
+      if (Op == "bvor")  return "(" + L + " | " + R + ")";
+      if (Op == "bvxor") return "(" + L + " ^ " + R + ")";
+      if (Op == "and")   return "(" + L + " && " + R + ")";
+      if (Op == "or")    return "(" + L + " || " + R + ")";
+      if (Op == "eq")    return "(" + L + " == " + R + ")";
+      if (Op == "neq")   return "(" + L + " != " + R + ")";
+      if (Op == "lt")    return "(" + L + " < " + R + ")";
+      if (Op == "lteq")  return "(" + L + " <= " + R + ")";
+      if (Op == "gt")    return "(" + L + " > " + R + ")";
+      if (Op == "gteq")  return "(" + L + " >= " + R + ")";
+      if (Op == "concat")
+        return "((" + L + " << 8) | " + R + ")";
+      if (Op == "slice" && E.OpWidth > 0)
+        return "((" + L + " >> " + R + ") & ((1 << " +
+               std::to_string(E.OpWidth) + ") - 1))";
+    }
+
+    // Unary operations
+    if (A.size() == 1) {
+      std::string X = emitExp(A[0], ArgName, InstrName);
+      if (Op == "bvnot") return "(~" + X + ")";
+      if (Op == "not")   return "(!" + X + ")";
+      if (Op == "zero_extend") return X;
+      if (Op == "signed" && E.OpWidth > 0)
+        return "(int" + std::to_string(E.OpWidth) + "_t)" + X;
+      if (Op == "unsigned" && E.OpWidth > 0)
+        return "(uint" + std::to_string(E.OpWidth) + "_t)" + X;
+    }
+
+    // Unknown - emit as comment
+    return "/* @" + E.OpName + " */";
+  }
+
+  std::string emitCall(const Exp &E, StringRef ArgName, StringRef InstrName) {
+    std::string FnName = toCppIdent(E.Text);
+
+    // Type conversion functions - just return the argument
+    if (FnName.find("_to_") != std::string::npos ||
+        StringRef(FnName).starts_with("pct_")) {
+      if (!E.Args.empty())
+        return emitExp(E.Args[0], ArgName, InstrName);
       return "0";
     }
 
-    // Parse arguments first
-    SmallVector<StringRef, 4> ArgList;
-    Args.split(ArgList, ',');
-    std::vector<std::string> TransArgs;
-    for (StringRef Arg : ArgList) {
-      Arg = Arg.trim();
-      if (Arg == "()")
-        continue;
-      std::string TransArg = translateJibExp(Arg, IR);
-      if (TransArg == "{}")
-        continue;
-      TransArgs.push_back(TransArg);
-    }
-
-    // For function calls, just use the decoded z-encoded name.
-    // The "external name" in val declarations is SAIL metadata, not the C++ name.
-    // Example: val zsail_sign_extend = "sign_extend" -> C++ name is sail_sign_extend
-    // (The external name is only used to generate builtin implementations.)
-
-    // Join translated args
-    std::string ArgsStr;
-    for (size_t I = 0; I < TransArgs.size(); ++I) {
+    // Build argument list
+    std::string Args;
+    for (size_t I = 0; I < E.Args.size(); ++I) {
       if (I > 0)
-        ArgsStr += ", ";
-      ArgsStr += TransArgs[I];
+        Args += ", ";
+      std::string Arg = emitExp(E.Args[I], ArgName, InstrName);
+      if (Arg != "{}")
+        Args += Arg;
     }
 
-    // Mangle function name to be a valid C++ identifier
-    std::string MangledFunc = mangleForCpp(DecodedFunc);
-    return MangledFunc + "(" + ArgsStr + ")";
+    return FnName + "(" + Args + ")";
   }
 
-  // Field access: exp.field
-  if (Exp.contains('.')) {
-    size_t DotPos = Exp.rfind('.');
-    StringRef Base = Exp.substr(0, DotPos);
-    StringRef Field = Exp.substr(DotPos + 1);
-    return translateJibExp(Base, IR) + "." + zdecode(Field);
-  }
-
-  // Union unwrap: exp as variant
-  if (Exp.contains(" as ")) {
-    size_t AsPos = Exp.find(" as ");
-    StringRef Base = Exp.substr(0, AsPos);
-    // StringRef Variant = Exp.substr(AsPos + 4);
-    // For instruction operand extraction, this is just getting the operand
-    std::string DecodedBase = zdecode(Base);
-    // If this is the merged argument, it's the instruction operand
-    if (DecodedBase == "mergez3var" || StringRef(DecodedBase).contains("merge"))
-      return "Inst.getOperand(0).getImm()";
-    return translateJibExp(Base, IR);
-  }
-
-  // Union check: exp is variant
-  if (Exp.contains(" is ")) {
-    size_t IsPos = Exp.find(" is ");
-    StringRef Base = Exp.substr(0, IsPos);
-    StringRef Variant = Exp.substr(IsPos + 4);
-    return "(" + translateJibExp(Base, IR) + ".is<" + zdecode(Variant) + ">())";
-  }
-
-  // Simple identifier - sanitize it (handles $-prefixed temps)
-  std::string Sanitized = sanitizeVarName(Exp);
-
-  return Sanitized;
-}
-
-/// Translate a JibFunction (standalone function) to C++ code.
-/// Labels are implicit in the IR (jump targets are line numbers).
-static std::string translateJibFunctionToC(const JibFunction &Func,
-                                           const JibIR &IR) {
-  std::string Result;
-  raw_string_ostream OS(Result);
-
-  // First pass: collect all jump targets
-  DenseSet<size_t> JumpTargets;
-  for (const std::string &Line : Func.Body) {
-    StringRef L = StringRef(Line).trim();
-    if (L.starts_with("goto ")) {
-      StringRef Target = L.substr(5);
-      // Strip backtick annotation and semicolon
-      size_t BacktickPos = Target.find('`');
-      if (BacktickPos != StringRef::npos)
-        Target = Target.substr(0, BacktickPos);
-      Target = Target.rtrim(";").trim();
-      size_t TargetNum;
-      if (!Target.getAsInteger(10, TargetNum))
-        JumpTargets.insert(TargetNum);
-    } else if (L.starts_with("jump ")) {
-      size_t GotoPos = L.find(" goto ");
-      if (GotoPos != StringRef::npos) {
-        StringRef Target = L.substr(GotoPos + 6);
-        // Strip backtick annotation and semicolon
-        size_t BacktickPos = Target.find('`');
-        if (BacktickPos != StringRef::npos)
-          Target = Target.substr(0, BacktickPos);
-        Target = Target.rtrim(";").trim();
-        size_t TargetNum;
-        if (!Target.getAsInteger(10, TargetNum))
-          JumpTargets.insert(TargetNum);
-      }
+  void emitEnums() {
+    for (const auto &E : IR.Enums) {
+      OS << "// " << E.Name << "\n";
+      for (size_t I = 0; I < E.Variants.size(); ++I)
+        OS << "static constexpr int " << E.Variants[I] << " = " << I << ";\n";
+      OS << "\n";
     }
   }
 
-  // Track unit-type variables - we still emit their RHS for side effects
-  StringSet<> UnitVars;
+  void emitFunctions() {
+    OS << "// Helper functions from SAIL\n\n";
 
-  // Second pass: generate code, only emitting labels for jump targets
-  size_t LineNum = 0;
-  for (const std::string &Line : Func.Body) {
-    StringRef L = StringRef(Line).trim();
+    // Track which functions have IR bodies
+    StringSet<> HasBody;
+    for (const auto &F : IR.Functions)
+      HasBody.insert(F.Name);
 
-    // Only emit label if this line is a jump target
-    if (JumpTargets.contains(LineNum))
-      OS << "L" << LineNum << ":;\n";
-    ++LineNum;
-
-    // Skip empty lines
-    if (L.empty())
-      continue;
-
-    // Handle return statement: "return = exp"
-    if (L.starts_with("return = ")) {
-      StringRef Exp = L.substr(9);
-      size_t BacktickPos = Exp.find('`');
-      if (BacktickPos != StringRef::npos)
-        Exp = Exp.substr(0, BacktickPos).trim();
-      // Unit return () becomes just "return;" for void functions
-      if (Exp == "()" || Exp == "{}") {
-        OS << "  return;\n";
-      } else {
-        std::string CppExp = translateJibExp(Exp, IR);
-        OS << "  return " << CppExp << ";\n";
-      }
-      continue;
-    }
-
-    // Declaration: "id : %type"
-    if (L.contains(" : %") && !L.contains(" = ")) {
-      size_t ColonPos = L.find(" : ");
-      if (ColonPos != StringRef::npos) {
-        StringRef VarName = L.substr(0, ColonPos);
-        StringRef Type = L.substr(ColonPos + 3);
-        size_t BacktickPos = Type.find('`');
-        if (BacktickPos != StringRef::npos)
-          Type = Type.substr(0, BacktickPos).trim();
-
-        std::string SanitizedVar = sanitizeVarName(VarName);
-
-        if (Type.starts_with("%unit")) {
-          UnitVars.insert(SanitizedVar);
-          continue;
-        }
-
-        std::string CppType = "uint64_t";
-        if (Type.starts_with("%bv16") || Type.starts_with("%i16"))
-          CppType = "uint16_t";
-        else if (Type.starts_with("%bv8"))
-          CppType = "uint8_t";
-        else if (Type.starts_with("%bv32") || Type.starts_with("%i") ||
-                 Type.starts_with("%i64"))
-          CppType = "uint32_t";
-        else if (Type.starts_with("%bool"))
-          CppType = "bool";
-        else if (Type.starts_with("%enum"))
-          continue;
-
-        OS << "  " << CppType << " " << SanitizedVar << ";\n";
+    // First emit external primitives (val declarations without fn bodies)
+    for (const auto &V : IR.Vals) {
+      if (V.ExternalName.empty())
         continue;
+      if (HasBody.contains(V.Name))
+        continue; // Has IR body, will be emitted below
+
+      std::string Ret = V.ReturnType.toCpp();
+      std::string Params;
+      for (size_t I = 0; I < V.ParamTypes.size(); ++I) {
+        if (I > 0)
+          Params += ", ";
+        Params += V.ParamTypes[I].toCpp() + " p" + std::to_string(I);
       }
+
+      // Generate body based on external name
+      StringRef Ext = V.ExternalName;
+      std::string Body = getPrimitiveBody(Ext, V.ParamTypes.size());
+      if (Body.empty())
+        continue; // Unknown primitive - skip
+
+      OS << Ret << " " << V.Name << "(" << Params << ") { " << Body << " }\n";
     }
+    OS << "\n";
 
-    // Init: "id : %type = exp"
-    if (L.contains(" : %") && L.contains(" = ")) {
-      size_t ColonPos = L.find(" : ");
-      size_t EqPos = L.find(" = ");
-      if (ColonPos != StringRef::npos && EqPos != StringRef::npos) {
-        StringRef VarName = L.substr(0, ColonPos);
-        StringRef Type = L.substr(ColonPos + 3, EqPos - ColonPos - 3).trim();
-        StringRef Exp = L.substr(EqPos + 3);
-
-        size_t BacktickPos = Exp.find('`');
-        if (BacktickPos != StringRef::npos)
-          Exp = Exp.substr(0, BacktickPos).trim();
-
-        std::string SanitizedVar = sanitizeVarName(VarName);
-        std::string CppExp = translateJibExp(Exp, IR);
-
-        // For unit types, emit RHS for side effects (function calls like push)
-        if (Type.starts_with("%unit")) {
-          UnitVars.insert(SanitizedVar);
-          if (!CppExp.empty() && CppExp != "{}" && CppExp != "()")
-            OS << "  " << CppExp << ";\n";
-          continue;
-        }
-        if (Type.starts_with("%enum"))
-          continue;
-
-        if (CppExp.empty() || CppExp == "{}")
-          continue;
-
-        OS << "  auto " << SanitizedVar << " = " << CppExp << ";\n";
+    // Then emit functions with IR bodies
+    for (const auto &F : IR.Functions) {
+      // Skip execute, main, and initialize functions
+      if (F.Name == "execute" || F.Name == "main" ||
+          StringRef(F.Name).starts_with("initialize"))
         continue;
+
+      // Find return type from val declarations
+      Type RetType;
+      RetType.K = Type::Unit;
+      std::vector<Type> ParamTypes;
+      if (auto *V = ValsByName.lookup(F.Name)) {
+        RetType = V->ReturnType;
+        ParamTypes = V->ParamTypes;
       }
-    }
 
-    // Assignment: "loc = exp"
-    if (L.contains(" = ") && !L.contains(" : ")) {
-      size_t EqPos = L.find(" = ");
-      if (EqPos != StringRef::npos) {
-        StringRef Loc = L.substr(0, EqPos);
-        StringRef Exp = L.substr(EqPos + 3);
-
-        size_t BacktickPos = Exp.find('`');
-        if (BacktickPos != StringRef::npos)
-          Exp = Exp.substr(0, BacktickPos).trim();
-
-        std::string SanitizedLoc = sanitizeVarName(Loc);
-        std::string CppExp = translateJibExp(Exp, IR);
-
-        // For unit vars, emit RHS for side effects
-        if (UnitVars.contains(SanitizedLoc)) {
-          if (!CppExp.empty() && CppExp != "{}" && CppExp != "()")
-            OS << "  " << CppExp << ";\n";
+      // Emit function signature
+      OS << RetType.toCpp() << " " << F.Name << "(";
+      bool First = true;
+      for (size_t I = 0; I < F.Params.size(); ++I) {
+        Type PT = I < ParamTypes.size() ? ParamTypes[I] : Type{Type::Bv, 64, ""};
+        // Skip void/unit parameters
+        if (PT.K == Type::Unit)
           continue;
-        }
-
-        if (CppExp.empty() || CppExp == "{}")
-          continue;
-
-        OS << "  " << SanitizedLoc << " = " << CppExp << ";\n";
-        continue;
+        if (!First)
+          OS << ", ";
+        First = false;
+        OS << PT.toCpp() << " " << F.Params[I];
       }
-    }
+      OS << ") {\n";
 
-    // Control flow: goto, jump, end
-    if (L.starts_with("goto ")) {
-      StringRef Target = L.substr(5);
-      size_t BacktickPos = Target.find('`');
-      if (BacktickPos != StringRef::npos)
-        Target = Target.substr(0, BacktickPos).trim();
-      OS << "  goto L" << Target << ";\n";
-      continue;
-    }
+      // Emit body
+      emitInstrBody(F.Body, "", "");
 
-    if (L.starts_with("jump ")) {
-      size_t GotoPos = L.find(" goto ");
-      if (GotoPos != StringRef::npos) {
-        StringRef Cond = L.substr(5, GotoPos - 5);
-        StringRef Target = L.substr(GotoPos + 6);
-        size_t BacktickPos = Target.find('`');
-        if (BacktickPos != StringRef::npos)
-          Target = Target.substr(0, BacktickPos).trim();
-        std::string CppCond = translateJibExp(Cond, IR);
-        OS << "  if (" << CppCond << ") goto L" << Target << ";\n";
-        continue;
-      }
+      OS << "}\n\n";
     }
-
-    if (L == "end;")
-      continue;
   }
 
-  return Result;
-}
+  /// Get C++ implementation for a SAIL primitive based on its external name.
+  std::string getPrimitiveBody(StringRef Ext, size_t NumParams) {
+    // Arithmetic
+    if (Ext == "add_bits" || Ext == "add_bits_int")
+      return "return p0 + p1;";
+    if (Ext == "sub_bits" || Ext == "sub_bits_int")
+      return "return p0 - p1;";
+
+    // Bitwise
+    if (Ext == "and_bits")
+      return "return p0 & p1;";
+    if (Ext == "or_bits")
+      return "return p0 | p1;";
+    if (Ext == "xor_bits")
+      return "return p0 ^ p1;";
+    if (Ext == "not_bits")
+      return "return ~p0;";
+
+    // Shifts
+    if (Ext == "shiftl")
+      return "return p0 << p1;";
+    if (Ext == "shiftr")
+      return "return p0 >> p1;";
+
+    // Concatenation
+    if (Ext == "append")
+      return "return (p0 << 8) | p1;";
+    if (Ext == "append_64")
+      return "(void)p0; return p1;";
+
+    // Comparison
+    if (Ext == "eq_bits")
+      return "return p0 == p1;";
+    if (Ext == "neq_bits")
+      return "return p0 != p1;";
+    if (Ext == "gteq")
+      return "return p0 >= p1;";
+    if (Ext == "lteq")
+      return "return p0 <= p1;";
+    if (Ext == "gt_int")
+      return "return p0 > p1;";
+    if (Ext == "lt_int")
+      return "return p0 < p1;";
+
+    // Type conversions
+    if (Ext == "sail_unsigned" || Ext == "unsigned")
+      return "return p0;";
+    if (Ext == "sail_signed" || Ext == "signed")
+      return "return (int64_t)p0;";
+    if (Ext == "sign_extend")
+      return "return (int64_t)(int8_t)p0;";
+
+    // Bit extraction
+    if (Ext == "vector_subrange")
+      return "return (p0 >> p2) & ((1ULL << (p1 - p2 + 1)) - 1);";
+
+    // Boolean
+    if (Ext == "and_bool")
+      return "return p0 && p1;";
+    if (Ext == "or_bool")
+      return "return p0 || p1;";
+
+    // Misc
+    if (Ext == "undefined_bitvector")
+      return "return 0;";
+
+    return ""; // Unknown
+  }
+};
 
 //===----------------------------------------------------------------------===//
-// EmulatorEmitter class
+// Part 6: EmulatorEmitter Entry Point
 //===----------------------------------------------------------------------===//
 
 class EmulatorEmitter {
-  const RecordKeeper &Records;
-  JibIR SailIR; // Parsed SAIL IR (if provided)
-
 public:
-  EmulatorEmitter(const RecordKeeper &R) : Records(R) {
-    // Load SAIL IR if specified
-    if (!SailIRFile.empty()) {
-      SailIR = parseJibIR(SailIRFile);
-      if (!SailIR.empty()) {
-        errs() << "Loaded " << SailIR.Instructions.size()
-               << " instruction semantics, " << SailIR.Functions.size()
-               << " helper functions from SAIL IR\n";
-      }
+  EmulatorEmitter(const RecordKeeper &) {}
+
+  void run(raw_ostream &OS) {
+    emitSourceFileHeader("Instruction Emulator", OS);
+
+    if (SailIRFile.empty()) {
+      OS << "// No SAIL IR file provided (-sail-ir=<path>)\n";
+      return;
     }
+
+    // Read IR file
+    ErrorOr<std::unique_ptr<MemoryBuffer>> BufOrErr =
+        MemoryBuffer::getFile(SailIRFile);
+    if (!BufOrErr) {
+      PrintError("Failed to open SAIL IR file: " + SailIRFile);
+      return;
+    }
+
+    // Parse
+    Lexer L((*BufOrErr)->getBuffer());
+    Parser P(L);
+    JibIR IR = P.parse();
+
+    // Generate
+    CodeGen CG(IR, OS);
+    CG.emit();
   }
-
-  void run(raw_ostream &OS);
-
-private:
-  /// Find all $Variable references in code, skipping comments.
-  StringSet<> findVariableRefs(StringRef Code);
-
-  /// Look up a variable's code from the record, searching through all fields.
-  StringRef lookupVariable(const Record *Rec, StringRef VarName);
-
-  /// Emit code for a variable, resolving dependencies first.
-  void emitVariable(raw_ostream &OS, StringRef VarName, const Record *Rec,
-                    StringSet<> &Emitted);
-
-  /// Substitute $Var with Var in code.
-  std::string substituteVars(StringRef Code);
-
-  /// Emit code for one Instruction (from Emulate field or SAIL IR).
-  void emitInstructionCase(raw_ostream &OS, const Record *Inst);
-
-  /// Try to find SAIL semantics for an instruction.
-  /// Returns the C++ code if found, empty string otherwise.
-  std::string getSailSemantics(StringRef InstName);
 };
 
 } // end anonymous namespace
 
-StringSet<> EmulatorEmitter::findVariableRefs(StringRef Code) {
-  StringSet<> Refs;
-  size_t Pos = 0;
-  while (Pos < Code.size()) {
-    // Skip // comments
-    if (Pos + 1 < Code.size() && Code[Pos] == '/' && Code[Pos + 1] == '/') {
-      while (Pos < Code.size() && Code[Pos] != '\n')
-        ++Pos;
-      continue;
-    }
-    // Skip /* */ comments
-    if (Pos + 1 < Code.size() && Code[Pos] == '/' && Code[Pos + 1] == '*') {
-      Pos += 2;
-      while (Pos + 1 < Code.size() &&
-             !(Code[Pos] == '*' && Code[Pos + 1] == '/'))
-        ++Pos;
-      Pos += 2;
-      continue;
-    }
-    // Look for $Variable
-    if (Code[Pos] == '$') {
-      size_t Start = Pos + 1;
-      size_t End = Start;
-      // Variable names start with a letter or underscore
-      if (End < Code.size() && (isalpha(Code[End]) || Code[End] == '_')) {
-        while (End < Code.size() && (isalnum(Code[End]) || Code[End] == '_'))
-          ++End;
-        Refs.insert(Code.substr(Start, End - Start));
-        Pos = End;
-        continue;
-      }
-    }
-    ++Pos;
-  }
-  return Refs;
-}
-
-std::string EmulatorEmitter::substituteVars(StringRef Code) {
-  std::string Result;
-  size_t Pos = 0;
-  while (Pos < Code.size()) {
-    if (Code[Pos] == '$') {
-      // Extract variable name
-      size_t Start = Pos + 1;
-      size_t End = Start;
-      while (End < Code.size() && (isalnum(Code[End]) || Code[End] == '_'))
-        ++End;
-      if (End > Start) {
-        // Just use the variable name without the $
-        Result += Code.substr(Start, End - Start);
-        Pos = End;
-        continue;
-      }
-    }
-    Result += Code[Pos++];
-  }
-  return Result;
-}
-
-StringRef EmulatorEmitter::lookupVariable(const Record *Rec, StringRef VarName) {
-  // Try to get this variable as a string field from the record
-  // This will search through the record and all its superclasses
-  const RecordVal *RV = Rec->getValue(VarName);
-  if (!RV || !RV->getValue())
-    return StringRef();
-
-  // Check if value is unset
-  if (isa<UnsetInit>(RV->getValue()))
-    return StringRef();
-
-  // Must be a code or string type
-  if (const auto *SI = dyn_cast<StringInit>(RV->getValue()))
-    return SI->getValue();
-
-  return StringRef();
-}
-
-void EmulatorEmitter::emitVariable(raw_ostream &OS, StringRef VarName,
-                                   const Record *Rec, StringSet<> &Emitted) {
-  // Already emitted?
-  if (Emitted.count(VarName))
-    return;
-
-  // Look up the variable's code from the record
-  StringRef Code = lookupVariable(Rec, VarName);
-  if (Code.empty() || Code.trim().empty()) {
-    PrintFatalError(Rec->getLoc(),
-                    "Variable $" + VarName + " referenced but not defined");
-  }
-
-  // First, emit any variables this one depends on
-  StringSet<> Deps = findVariableRefs(Code);
-  for (const auto &Dep : Deps) {
-    emitVariable(OS, Dep.getKey(), Rec, Emitted);
-  }
-
-  // Now emit this variable's code
-  std::string Substituted = substituteVars(Code.trim());
-
-  // Split into lines - all but last are setup, last is the expression
-  SmallVector<StringRef, 8> Lines;
-  StringRef(Substituted).split(Lines, '\n', -1, false);
-
-  // Remove empty lines
-  SmallVector<StringRef, 8> NonEmpty;
-  for (StringRef L : Lines) {
-    if (!L.trim().empty())
-      NonEmpty.push_back(L.trim());
-  }
-
-  if (NonEmpty.empty()) {
-    PrintFatalError(Rec->getLoc(), "Variable $" + VarName + " has empty code");
-  }
-
-  // Emit setup lines as-is
-  for (size_t i = 0; i + 1 < NonEmpty.size(); ++i) {
-    OS << "    " << NonEmpty[i] << "\n";
-  }
-
-  // Last line is the expression - assign to variable
-  OS << "    auto " << VarName << " = " << NonEmpty.back() << ";\n";
-
-  Emitted.insert(VarName);
-}
-
-std::string EmulatorEmitter::getSailSemantics(StringRef InstName) {
-  if (SailIR.empty())
-    return "";
-
-  // Exact match only - SAIL instruction names must match TableGen names exactly
-  auto It = SailIR.Instructions.find(InstName);
-  if (It != SailIR.Instructions.end()) {
-    return translateJibToC(It->second, SailIR);
-  }
-
-  return "";
-}
-
-void EmulatorEmitter::emitInstructionCase(raw_ostream &OS,
-                                          const Record *Inst) {
-  StringRef EmulateCode = lookupVariable(Inst, "Emulate");
-  std::string SailCode;
-
-  // Check if we have SAIL semantics for this instruction
-  if (!SailIR.empty()) {
-    SailCode = getSailSemantics(Inst->getName());
-  }
-
-  // If no Emulate field and no SAIL code, skip
-  bool HasManualCode = !EmulateCode.empty() && !EmulateCode.trim().empty();
-  bool HasSailCode = !SailCode.empty();
-
-  if (!HasManualCode && !HasSailCode)
-    return;
-
-  StringRef Namespace = Inst->getValueAsString("Namespace");
-  OS << "  case " << Namespace << "::" << Inst->getName() << ": {\n";
-
-  // Check feature predicates if enabled
-  if (EmitFeatureChecks) {
-    std::vector<const Record *> Predicates =
-        Inst->getValueAsListOfDefs("Predicates");
-    for (const Record *Pred : Predicates) {
-      if (!Pred->isValueUnset("PredicateName")) {
-        StringRef FeatureName = Pred->getValueAsString("PredicateName");
-        OS << "    if (!hasFeature(" << Namespace << "::" << FeatureName
-           << ")) goto unhandled;\n";
-      }
-    }
-  }
-
-  // Manual Emulate field takes priority over SAIL-generated code
-  if (HasManualCode) {
-    // Find and emit variable dependencies
-    StringSet<> Refs = findVariableRefs(EmulateCode);
-    StringSet<> Emitted;
-    for (const auto &Ref : Refs) {
-      emitVariable(OS, Ref.getKey(), Inst, Emitted);
-    }
-
-    // Emit the emulate code
-    std::string Code = substituteVars(EmulateCode.trim());
-    SmallVector<StringRef, 16> Lines;
-    StringRef(Code).split(Lines, '\n', -1, false);
-    for (StringRef Line : Lines) {
-      StringRef Trimmed = Line.trim();
-      if (!Trimmed.empty())
-        OS << "    " << Trimmed << "\n";
-    }
-  } else {
-    // Use SAIL-generated code
-    OS << "    // Generated from SAIL specification\n";
-    OS << SailCode;
-  }
-
-  OS << "    break;\n";
-  OS << "  }\n";
-}
-
-void EmulatorEmitter::run(raw_ostream &OS) {
-  emitSourceFileHeader("Instruction Emulator", OS);
-
-  // Collect Instruction records that have either:
-  // 1. Non-empty Emulate field, OR
-  // 2. SAIL semantics available
-  std::vector<const Record *> RecordsToProcess;
-  size_t ManualCount = 0;
-  size_t SailCount = 0;
-
-  ArrayRef<const Record *> Instructions =
-      Records.getAllDerivedDefinitions("Instruction");
-  for (const Record *Inst : Instructions) {
-    bool HasEmulate = false;
-    bool HasSail = false;
-
-    // Check for manual Emulate field
-    const RecordVal *EmuField = Inst->getValue("Emulate");
-    if (EmuField) {
-      StringRef EmulateCode = lookupVariable(Inst, "Emulate");
-      if (!EmulateCode.empty() && !EmulateCode.trim().empty()) {
-        HasEmulate = true;
-        ManualCount++;
-      }
-    }
-
-    // Check for SAIL semantics
-    if (!SailIR.empty()) {
-      std::string SailCode = getSailSemantics(Inst->getName());
-      if (!SailCode.empty()) {
-        HasSail = true;
-        if (!HasEmulate)
-          SailCount++;
-      }
-    }
-
-    if (HasEmulate || HasSail) {
-      RecordsToProcess.push_back(Inst);
-    }
-  }
-
-  if (RecordsToProcess.empty()) {
-    OS << "// No emulatable instructions found.\n";
-    OS << "// Add 'let Emulate = [{ ... }]' to instruction definitions,\n";
-    OS << "// or provide a SAIL IR file with -sail-ir=<path>.\n";
-    return;
-  }
-
-  OS << "// Generated instruction emulation switch cases.\n";
-  OS << "// Include this file inside a switch(Inst.getOpcode()) block.\n";
-  OS << "// Instructions: " << Instructions.size() << " total, "
-     << RecordsToProcess.size() << " emulatable";
-  if (!SailIR.empty()) {
-    OS << " (" << ManualCount << " manual, " << SailCount << " from SAIL)";
-  }
-  OS << "\n\n";
-
-  OS << "#ifdef GET_EMULATOR_CASES\n";
-
-  for (const Record *Rec : RecordsToProcess) {
-    emitInstructionCase(OS, Rec);
-  }
-
-  OS << "#endif // GET_EMULATOR_CASES\n";
-
-  // Emit enums from SAIL IR as constexpr int values
-  // Using plain ints avoids namespace qualification issues
-  if (!SailIR.empty() && !SailIR.Enums.empty()) {
-    OS << "\n#ifdef GET_EMULATOR_ENUMS\n";
-    OS << "// Enum values generated from SAIL specification.\n\n";
-
-    for (const auto &Entry : SailIR.Enums) {
-      const JibEnum &Enum = Entry.second;
-      OS << "// " << mangleForCpp(Enum.Name) << " values\n";
-      for (size_t I = 0; I < Enum.Variants.size(); ++I) {
-        std::string MangledVariant = mangleForCpp(Enum.Variants[I]);
-        OS << "static constexpr int " << MangledVariant << " = " << I << ";\n";
-      }
-      OS << "\n";
-    }
-
-    OS << "#endif // GET_EMULATOR_ENUMS\n";
-  }
-
-  // Emit all helper functions from SAIL IR
-  // These are functions defined in the SAIL specification that implement
-  // CPU operations like push, pull, setNZ, getP, setP, etc.
-  if (!SailIR.empty() && !SailIR.Functions.empty()) {
-    // Collect names of functions already defined from SAIL fn definitions
-    StringSet<> DefinedFunctions;
-    for (const auto &Entry : SailIR.Functions) {
-      DefinedFunctions.insert(mangleForCpp(Entry.second.Name));
-    }
-
-    // Helper struct to hold function signature info
-    struct FuncSig {
-      std::string MangledName;
-      std::string ReturnType;
-      std::string ParamList;
-      std::string Body; // Empty for declarations
-    };
-    std::vector<FuncSig> AllFunctions;
-
-    // Collect SAIL fn definitions
-    for (const auto &Entry : SailIR.Functions) {
-      const JibFunction &Func = Entry.second;
-      FuncSig Sig;
-      Sig.MangledName = mangleForCpp(Func.Name);
-      Sig.Body = translateJibFunctionToC(Func, SailIR);
-
-      // Determine return type from FunctionReturnTypes map
-      Sig.ReturnType = "void";
-      auto RetIt = SailIR.FunctionReturnTypes.find(Func.Name);
-      if (RetIt != SailIR.FunctionReturnTypes.end()) {
-        StringRef SailType = RetIt->second;
-        if (SailType.starts_with("%bool"))
-          Sig.ReturnType = "bool";
-        else if (SailType.starts_with("%bv8"))
-          Sig.ReturnType = "uint8_t";
-        else if (SailType.starts_with("%bv16"))
-          Sig.ReturnType = "uint16_t";
-        else if (SailType.starts_with("%bv32"))
-          Sig.ReturnType = "uint32_t";
-        else if (SailType.starts_with("%bv64") || SailType.starts_with("%bv"))
-          Sig.ReturnType = "uint64_t";
-        else if (SailType.starts_with("%i"))
-          Sig.ReturnType = "int64_t";
-        else if (SailType.starts_with("%unit"))
-          Sig.ReturnType = "void";
-        else if (SailType.starts_with("%enum"))
-          Sig.ReturnType = "int"; // Enums are emitted as constexpr int
-      }
-
-      // Build parameter list by combining param names from fn with types from val
-      auto ParamTypesIt = SailIR.FunctionParamTypes.find(Func.Name);
-      if (ParamTypesIt != SailIR.FunctionParamTypes.end()) {
-        const auto &ParamTypes = ParamTypesIt->second;
-        for (size_t I = 0; I < ParamTypes.size() && I < Func.Params.size(); ++I) {
-          if (I > 0)
-            Sig.ParamList += ", ";
-
-          // Convert SAIL type to C++ type
-          StringRef SailType = ParamTypes[I];
-          std::string CppType;
-          if (SailType.starts_with("%bv8"))
-            CppType = "uint8_t";
-          else if (SailType.starts_with("%bv16"))
-            CppType = "uint16_t";
-          else if (SailType.starts_with("%bv32"))
-            CppType = "uint32_t";
-          else if (SailType.starts_with("%bv64") || SailType.starts_with("%bv"))
-            CppType = "uint64_t";
-          else if (SailType.starts_with("%i"))
-            CppType = "int64_t";
-          else if (SailType.starts_with("%bool"))
-            CppType = "bool";
-          else
-            CppType = "uint64_t"; // Default
-
-          std::string ParamName = mangleForCpp(Func.Params[I]);
-          Sig.ParamList += CppType + " " + ParamName;
-        }
-      }
-
-      AllFunctions.push_back(std::move(Sig));
-    }
-
-    // Collect SAIL library builtin functions (external functions from val declarations)
-    for (const auto &Entry : SailIR.ExternalFunctions) {
-      StringRef ZEncodedName = Entry.first();
-      StringRef ExtName = Entry.second;
-
-      // The C++ function name is the decoded z-encoded name
-      std::string DecodedName = zdecode(ZEncodedName);
-
-      // Skip type conversion functions (contain -> or start with %)
-      if (DecodedName.find("->") != std::string::npos ||
-          (!DecodedName.empty() && DecodedName[0] == '%'))
-        continue;
-
-      // Skip if a SAIL fn already defines this function
-      std::string MangledName = mangleForCpp(DecodedName);
-      if (DefinedFunctions.contains(MangledName))
-        continue;
-
-      // Get parameter types from val declaration (keyed by external name)
-      auto ParamTypesIt = SailIR.FunctionParamTypes.find(ExtName);
-      auto ReturnTypeIt = SailIR.FunctionReturnTypes.find(ExtName);
-      if (ParamTypesIt == SailIR.FunctionParamTypes.end() ||
-          ReturnTypeIt == SailIR.FunctionReturnTypes.end())
-        continue;
-
-      const auto &ParamTypes = ParamTypesIt->second;
-      StringRef ReturnType = ReturnTypeIt->second;
-
-      FuncSig Sig;
-      Sig.MangledName = MangledName;
-
-      // Determine C++ return type
-      Sig.ReturnType = "uint64_t";
-      if (ReturnType.starts_with("%bool"))
-        Sig.ReturnType = "bool";
-      else if (ReturnType.starts_with("%bv8"))
-        Sig.ReturnType = "uint8_t";
-      else if (ReturnType.starts_with("%bv16"))
-        Sig.ReturnType = "uint16_t";
-      else if (ReturnType.starts_with("%bv32"))
-        Sig.ReturnType = "uint32_t";
-      else if (ReturnType.starts_with("%unit"))
-        Sig.ReturnType = "void";
-      else if (ReturnType.starts_with("%i"))
-        Sig.ReturnType = "int64_t";
-
-      // Build parameter list
-      for (size_t I = 0; I < ParamTypes.size(); ++I) {
-        if (I > 0)
-          Sig.ParamList += ", ";
-        StringRef SailType = ParamTypes[I];
-        std::string CppType = "uint64_t";
-        if (SailType.starts_with("%bv8"))
-          CppType = "uint8_t";
-        else if (SailType.starts_with("%bv16"))
-          CppType = "uint16_t";
-        else if (SailType.starts_with("%bv32"))
-          CppType = "uint32_t";
-        else if (SailType.starts_with("%i"))
-          CppType = "int64_t";
-        else if (SailType.starts_with("%bool"))
-          CppType = "bool";
-
-        std::string ParamName = "p" + std::to_string(I);
-        Sig.ParamList += CppType + " " + ParamName;
-      }
-
-      // Generate implementation based on external name
-      if (ExtName == "add_bits" || ExtName == "add_bits_int") {
-        Sig.Body = "  return p0 + p1;\n";
-      } else if (ExtName == "sub_bits" || ExtName == "sub_bits_int") {
-        Sig.Body = "  return p0 - p1;\n";
-      } else if (ExtName == "and_bits") {
-        Sig.Body = "  return p0 & p1;\n";
-      } else if (ExtName == "or_bits") {
-        Sig.Body = "  return p0 | p1;\n";
-      } else if (ExtName == "xor_bits") {
-        Sig.Body = "  return p0 ^ p1;\n";
-      } else if (ExtName == "not_bits") {
-        Sig.Body = "  return ~p0;\n";
-      } else if (ExtName == "shiftl") {
-        Sig.Body = "  return p0 << p1;\n";
-      } else if (ExtName == "shiftr") {
-        Sig.Body = "  return p0 >> p1;\n";
-      } else if (ExtName == "append") {
-        Sig.Body = "  return (p0 << 8) | p1;\n";
-      } else if (ExtName == "append_64") {
-        Sig.Body = "  (void)p0; return p1;\n";
-      } else if (ExtName == "eq_bits") {
-        Sig.Body = "  return p0 == p1;\n";
-      } else if (ExtName == "neq_bits") {
-        Sig.Body = "  return p0 != p1;\n";
-      } else if (ExtName == "sail_unsigned" || ExtName == "unsigned") {
-        Sig.Body = "  return p0;\n";
-      } else if (ExtName == "sail_signed" || ExtName == "signed") {
-        Sig.Body = "  return (int64_t)(int8_t)p0;\n";
-      } else if (ExtName == "gteq") {
-        Sig.Body = "  return p0 >= p1;\n";
-      } else if (ExtName == "lteq") {
-        Sig.Body = "  return p0 <= p1;\n";
-      } else if (ExtName == "gt_int") {
-        Sig.Body = "  return p0 > p1;\n";
-      } else if (ExtName == "lt_int") {
-        Sig.Body = "  return p0 < p1;\n";
-      } else if (ExtName == "sign_extend") {
-        Sig.Body = "  return (int64_t)(int8_t)p0;\n";
-      } else if (ExtName == "vector_subrange") {
-        Sig.Body = "  return (p0 >> p2) & ((1ULL << (p1 - p2 + 1)) - 1);\n";
-      } else if (ExtName == "and_bool") {
-        Sig.Body = "  return p0 && p1;\n";
-      } else if (ExtName == "or_bool") {
-        Sig.Body = "  return p0 || p1;\n";
-      } else if (ExtName == "undefined_bitvector") {
-        Sig.Body = "  return 0;\n";
-      } else {
-        // Unknown external - skip it
-        continue;
-      }
-
-      AllFunctions.push_back(std::move(Sig));
-    }
-
-    // Emit inline member function definitions for inclusion in header
-    OS << "\n#ifdef GET_EMULATOR_FUNCTIONS\n";
-    OS << "// Helper functions generated from SAIL specification.\n";
-    OS << "// Include inside class definition to create inline member functions.\n\n";
-
-    for (const FuncSig &Sig : AllFunctions) {
-      OS << Sig.ReturnType << " " << Sig.MangledName << "(" << Sig.ParamList << ") {\n";
-      OS << Sig.Body;
-      OS << "}\n\n";
-    }
-
-    OS << "#endif // GET_EMULATOR_FUNCTIONS\n";
-  }
-}
-
 static TableGen::Emitter::OptClass<EmulatorEmitter>
-    X("gen-emulator", "Generate instruction emulator");
+    X("gen-emulator", "Generate instruction emulator from SAIL IR");
