@@ -156,6 +156,149 @@ static std::string zdecode(StringRef Input) {
   return Output;
 }
 
+/// Mangle a decoded SAIL identifier into a valid C++ identifier.
+/// Handles operators and type conversion functions that contain special chars.
+static std::string mangleForCpp(StringRef Decoded) {
+  std::string Result;
+  Result.reserve(Decoded.size() * 2);
+
+  for (size_t I = 0; I < Decoded.size(); ++I) {
+    char C = Decoded[I];
+
+    // Handle multi-character sequences first
+    if (I + 1 < Decoded.size()) {
+      StringRef Rest = Decoded.substr(I);
+      if (Rest.starts_with("->")) {
+        Result += "_to_";
+        I += 1;
+        continue;
+      }
+      if (Rest.starts_with(">=")) {
+        Result += "_geq_";
+        I += 1;
+        continue;
+      }
+      if (Rest.starts_with("<=")) {
+        Result += "_leq_";
+        I += 1;
+        continue;
+      }
+    }
+
+    // Single character replacements
+    switch (C) {
+    case '%':
+      Result += "pct_";
+      break;
+    case '>':
+      Result += "_gt_";
+      break;
+    case '<':
+      Result += "_lt_";
+      break;
+    case '(':
+    case ')':
+    case ' ':
+      // Skip parentheses and spaces
+      break;
+    case ':':
+      Result += "_";
+      break;
+    case '-':
+      Result += "_";
+      break;
+    case '+':
+      Result += "_plus_";
+      break;
+    case '*':
+      Result += "_star_";
+      break;
+    case '/':
+      Result += "_slash_";
+      break;
+    case '=':
+      Result += "_eq_";
+      break;
+    case '!':
+      Result += "_not_";
+      break;
+    case '&':
+      Result += "_and_";
+      break;
+    case '|':
+      Result += "_or_";
+      break;
+    case '^':
+      Result += "_xor_";
+      break;
+    case '~':
+      Result += "_inv_";
+      break;
+    case '@':
+      Result += "_at_";
+      break;
+    case '#':
+      Result += "_hash_";
+      break;
+    case '$':
+      Result += "_dollar_";
+      break;
+    case '[':
+    case ']':
+      Result += "_";
+      break;
+    default:
+      if (isalnum(C) || C == '_')
+        Result += C;
+      else
+        Result += "_";
+      break;
+    }
+  }
+
+  // Clean up multiple consecutive underscores
+  std::string Cleaned;
+  Cleaned.reserve(Result.size());
+  bool LastWasUnderscore = false;
+  for (char C : Result) {
+    if (C == '_') {
+      if (!LastWasUnderscore && !Cleaned.empty())
+        Cleaned += C;
+      LastWasUnderscore = true;
+    } else {
+      Cleaned += C;
+      LastWasUnderscore = false;
+    }
+  }
+
+  // Remove trailing underscore
+  while (!Cleaned.empty() && Cleaned.back() == '_')
+    Cleaned.pop_back();
+
+  // Ensure it starts with a letter or underscore
+  if (!Cleaned.empty() && isdigit(Cleaned[0]))
+    Cleaned = "_" + Cleaned;
+
+  // Handle C++ reserved keywords by prefixing with underscore
+  static const char *Keywords[] = {
+      "unsigned", "signed", "int", "char", "short", "long", "float", "double",
+      "void", "bool", "true", "false", "class", "struct", "union", "enum",
+      "const", "volatile", "static", "extern", "register", "auto", "inline",
+      "virtual", "explicit", "friend", "public", "private", "protected",
+      "namespace", "using", "typedef", "template", "typename", "this",
+      "new", "delete", "return", "if", "else", "for", "while", "do",
+      "switch", "case", "default", "break", "continue", "goto", "throw",
+      "try", "catch", "operator", "sizeof", "alignof", "decltype", "nullptr"};
+  for (const char *Kw : Keywords) {
+    if (Cleaned == Kw) {
+      Cleaned = "_" + Cleaned;
+      break;
+    }
+  }
+
+  return Cleaned;
+}
+
 //===----------------------------------------------------------------------===//
 // Jib IR Parser
 //===----------------------------------------------------------------------===//
@@ -172,7 +315,14 @@ struct JibInstructionBody {
 struct JibFunction {
   std::string Name;                // Decoded function name
   std::vector<std::string> Params; // Parameter names (decoded)
+  std::string ReturnType;          // Return type (e.g., "%bool", "%bv8", "%unit")
   std::vector<std::string> Body;   // IR lines for the function body
+};
+
+/// Represents a parsed enum definition from the IR.
+struct JibEnum {
+  std::string Name;                    // Decoded enum name
+  std::vector<std::string> Variants;   // Enum variant names (decoded)
 };
 
 /// Parsed Jib IR file containing instruction semantics.
@@ -181,6 +331,9 @@ struct JibIR {
   StringMap<JibInstructionBody> Instructions; // decoded name -> body
   StringMap<std::string> ExternalFunctions; // z-encoded name -> external name
   StringMap<JibFunction> Functions; // decoded name -> function definition
+  StringMap<JibEnum> Enums; // decoded name -> enum definition
+  StringMap<std::string> FunctionReturnTypes; // decoded function name -> return type
+  StringMap<std::vector<std::string>> FunctionParamTypes; // decoded name -> param types
 
   bool empty() const { return Instructions.empty(); }
 };
@@ -232,8 +385,92 @@ static JibIR parseJibIR(StringRef Path) {
           if (EndQuote != StringRef::npos) {
             StringRef ExternalName = AfterEq.substr(1, EndQuote - 1);
             IR.ExternalFunctions[ZEncodedName] = ExternalName.str();
+
+            // Also parse the type signature: : (types) -> return_type
+            StringRef AfterQuote = AfterEq.substr(EndQuote + 1).trim();
+            if (AfterQuote.starts_with(":")) {
+              StringRef Signature = AfterQuote.drop_front(1).trim();
+              size_t ArrowPos = Signature.find("->");
+              if (ArrowPos != StringRef::npos) {
+                StringRef ParamsStr = Signature.substr(0, ArrowPos).trim();
+                StringRef ReturnType = Signature.substr(ArrowPos + 2).trim();
+
+                // Store using the external name as key (since that's what we'll use later)
+                IR.FunctionReturnTypes[ExternalName.str()] = ReturnType.str();
+
+                // Parse parameter types
+                if (ParamsStr.starts_with("(") && ParamsStr.ends_with(")")) {
+                  StringRef ParamsInner = ParamsStr.drop_front(1).drop_back(1);
+                  std::vector<std::string> ParamTypes;
+                  SmallVector<StringRef, 4> TypeList;
+                  ParamsInner.split(TypeList, ',');
+                  for (StringRef T : TypeList) {
+                    T = T.trim();
+                    if (!T.empty() && T != "%unit")
+                      ParamTypes.push_back(T.str());
+                  }
+                  IR.FunctionParamTypes[ExternalName.str()] = std::move(ParamTypes);
+                }
+              }
+            }
           }
         }
+      }
+    }
+
+    // Parse function signatures (non-external): "val zname : (params) -> return_type"
+    // Format: val <z-encoded-name> : (types) -> type
+    if (Line.starts_with("val z") && !Line.contains(" = \"") && Line.contains(" : ")) {
+      StringRef Rest = Line.drop_front(4).trim();
+      size_t ColonPos = Rest.find(" : ");
+      if (ColonPos != StringRef::npos) {
+        StringRef ZEncodedName = Rest.substr(0, ColonPos).trim();
+        StringRef Signature = Rest.substr(ColonPos + 3).trim();
+        // Extract return type after "->"
+        size_t ArrowPos = Signature.find("->");
+        if (ArrowPos != StringRef::npos) {
+          StringRef ParamsStr = Signature.substr(0, ArrowPos).trim();
+          StringRef ReturnType = Signature.substr(ArrowPos + 2).trim();
+          std::string DecodedName = zdecode(ZEncodedName);
+          IR.FunctionReturnTypes[DecodedName] = ReturnType.str();
+
+          // Parse parameter types from "(type1, type2, ...)"
+          if (ParamsStr.starts_with("(") && ParamsStr.ends_with(")")) {
+            StringRef ParamsInner = ParamsStr.drop_front(1).drop_back(1);
+            std::vector<std::string> ParamTypes;
+            SmallVector<StringRef, 4> TypeList;
+            ParamsInner.split(TypeList, ',');
+            for (StringRef T : TypeList) {
+              T = T.trim();
+              if (!T.empty() && T != "%unit")
+                ParamTypes.push_back(T.str());
+            }
+            IR.FunctionParamTypes[DecodedName] = std::move(ParamTypes);
+          }
+        }
+      }
+    }
+
+    // Parse enum definitions: "enum zName {"
+    if (Line.starts_with("enum z")) {
+      size_t BracePos = Line.find('{');
+      if (BracePos != StringRef::npos) {
+        StringRef EnumName = Line.substr(5, BracePos - 5).trim(); // Skip "enum "
+        JibEnum Enum;
+        Enum.Name = zdecode(EnumName);
+
+        // Collect enum variants until closing brace
+        for (size_t J = I + 1; J < Lines.size(); ++J) {
+          StringRef EnumLine = Lines[J].trim();
+          if (EnumLine == "}")
+            break;
+          // Variants may have trailing comma
+          StringRef Variant = EnumLine.rtrim(",").trim();
+          if (!Variant.empty())
+            Enum.Variants.push_back(zdecode(Variant));
+        }
+
+        IR.Enums[Enum.Name] = std::move(Enum);
       }
     }
 
@@ -693,60 +930,10 @@ static std::string translateJibExp(StringRef Exp, const JibIR &IR) {
       TransArgs.push_back(TransArg);
     }
 
-    // Check if this is an external function from val declarations
-    auto ExtIt = IR.ExternalFunctions.find(FuncName);
-    if (ExtIt != IR.ExternalFunctions.end()) {
-      StringRef ExtName = ExtIt->second;
-
-      // Map SAIL library functions to C++ operators/expressions
-      if (TransArgs.size() == 2) {
-        if (ExtName == "add_bits" || ExtName == "add_bits_int")
-          return "(" + TransArgs[0] + " + " + TransArgs[1] + ")";
-        if (ExtName == "sub_bits" || ExtName == "sub_bits_int")
-          return "(" + TransArgs[0] + " - " + TransArgs[1] + ")";
-        if (ExtName == "and_bits")
-          return "(" + TransArgs[0] + " & " + TransArgs[1] + ")";
-        if (ExtName == "or_bits")
-          return "(" + TransArgs[0] + " | " + TransArgs[1] + ")";
-        if (ExtName == "xor_bits")
-          return "(" + TransArgs[0] + " ^ " + TransArgs[1] + ")";
-        if (ExtName == "shiftl")
-          return "(" + TransArgs[0] + " << " + TransArgs[1] + ")";
-        if (ExtName == "shiftr")
-          return "(" + TransArgs[0] + " >> " + TransArgs[1] + ")";
-        if (ExtName == "append")
-          return "(((uint16_t)" + TransArgs[0] + " << 8) | " + TransArgs[1] + ")";
-        if (ExtName == "eq_bits")
-          return "(" + TransArgs[0] + " == " + TransArgs[1] + ")";
-        if (ExtName == "neq_bits")
-          return "(" + TransArgs[0] + " != " + TransArgs[1] + ")";
-        if (ExtName == "gteq")
-          return "(" + TransArgs[0] + " >= " + TransArgs[1] + ")";
-        if (ExtName == "lteq")
-          return "(" + TransArgs[0] + " <= " + TransArgs[1] + ")";
-        if (ExtName == "gt_int")
-          return "(" + TransArgs[0] + " > " + TransArgs[1] + ")";
-        if (ExtName == "lt_int")
-          return "(" + TransArgs[0] + " < " + TransArgs[1] + ")";
-      }
-      if (TransArgs.size() == 1) {
-        if (ExtName == "sail_unsigned" || ExtName == "unsigned")
-          return TransArgs[0]; // Already unsigned in C++
-        if (ExtName == "sail_signed" || ExtName == "signed")
-          return "(int8_t)(" + TransArgs[0] + ")";
-        if (ExtName == "not_bits")
-          return "(~" + TransArgs[0] + ")";
-      }
-      if (TransArgs.size() == 3) {
-        // vector_subrange(bv, hi, lo) -> extract bits
-        if (ExtName == "vector_subrange")
-          return "((" + TransArgs[0] + " >> " + TransArgs[2] + ") & ((1 << (" +
-                 TransArgs[1] + " - " + TransArgs[2] + " + 1)) - 1))";
-      }
-
-      // For unrecognized external functions, use the external name
-      DecodedFunc = ExtName.str();
-    }
+    // For function calls, just use the decoded z-encoded name.
+    // The "external name" in val declarations is SAIL metadata, not the C++ name.
+    // Example: val zsail_sign_extend = "sign_extend" -> C++ name is sail_sign_extend
+    // (The external name is only used to generate builtin implementations.)
 
     // Join translated args
     std::string ArgsStr;
@@ -756,7 +943,9 @@ static std::string translateJibExp(StringRef Exp, const JibIR &IR) {
       ArgsStr += TransArgs[I];
     }
 
-    return DecodedFunc + "(" + ArgsStr + ")";
+    // Mangle function name to be a valid C++ identifier
+    std::string MangledFunc = mangleForCpp(DecodedFunc);
+    return MangledFunc + "(" + ArgsStr + ")";
   }
 
   // Field access: exp.field
@@ -854,8 +1043,13 @@ static std::string translateJibFunctionToC(const JibFunction &Func,
       size_t BacktickPos = Exp.find('`');
       if (BacktickPos != StringRef::npos)
         Exp = Exp.substr(0, BacktickPos).trim();
-      std::string CppExp = translateJibExp(Exp, IR);
-      OS << "  return " << CppExp << ";\n";
+      // Unit return () becomes just "return;" for void functions
+      if (Exp == "()" || Exp == "{}") {
+        OS << "  return;\n";
+      } else {
+        std::string CppExp = translateJibExp(Exp, IR);
+        OS << "  return " << CppExp << ";\n";
+      }
       continue;
     }
 
@@ -1299,44 +1493,242 @@ void EmulatorEmitter::run(raw_ostream &OS) {
 
   OS << "#endif // GET_EMULATOR_CASES\n";
 
-  // Emit standalone functions from SAIL (e.g., checkAndHandleIRQ)
-  // These are functions that are not instruction execute clauses but are
-  // preserved via -isla_preserve and can be called from the emulator.
-  if (!SailIR.empty()) {
-    // List of functions to emit as standalone C++ functions
-    static const char *StandaloneFunctions[] = {
-        "checkAndHandleIRQ",
-        "checkAndHandleNMI",
-    };
+  // Emit enums from SAIL IR as constexpr int values
+  // Using plain ints avoids namespace qualification issues
+  if (!SailIR.empty() && !SailIR.Enums.empty()) {
+    OS << "\n#ifdef GET_EMULATOR_ENUMS\n";
+    OS << "// Enum values generated from SAIL specification.\n\n";
 
-    bool HasFunctions = false;
-    for (const char *FuncName : StandaloneFunctions) {
-      if (SailIR.Functions.count(FuncName)) {
-        HasFunctions = true;
-        break;
+    for (const auto &Entry : SailIR.Enums) {
+      const JibEnum &Enum = Entry.second;
+      OS << "// " << mangleForCpp(Enum.Name) << " values\n";
+      for (size_t I = 0; I < Enum.Variants.size(); ++I) {
+        std::string MangledVariant = mangleForCpp(Enum.Variants[I]);
+        OS << "static constexpr int " << MangledVariant << " = " << I << ";\n";
       }
+      OS << "\n";
     }
 
-    if (HasFunctions) {
-      OS << "\n#ifdef GET_EMULATOR_FUNCTIONS\n";
-      OS << "// Standalone functions generated from SAIL specification.\n";
-      OS << "// These are class method definitions - include after the class definition.\n\n";
+    OS << "#endif // GET_EMULATOR_ENUMS\n";
+  }
 
-      for (const char *FuncName : StandaloneFunctions) {
-        auto It = SailIR.Functions.find(FuncName);
-        if (It != SailIR.Functions.end()) {
-          const JibFunction &Func = It->second;
-          std::string Body = translateJibFunctionToC(Func, SailIR);
+  // Emit all helper functions from SAIL IR
+  // These are functions defined in the SAIL specification that implement
+  // CPU operations like push, pull, setNZ, getP, setP, etc.
+  if (!SailIR.empty() && !SailIR.Functions.empty()) {
+    // Collect names of functions already defined from SAIL fn definitions
+    StringSet<> DefinedFunctions;
+    for (const auto &Entry : SailIR.Functions) {
+      DefinedFunctions.insert(mangleForCpp(Entry.second.Name));
+    }
 
-          // Emit as class method definition - Context:: prefix
-          OS << "bool Context::" << FuncName << "() {\n";
-          OS << Body;
-          OS << "}\n\n";
+    // Helper struct to hold function signature info
+    struct FuncSig {
+      std::string MangledName;
+      std::string ReturnType;
+      std::string ParamList;
+      std::string Body; // Empty for declarations
+    };
+    std::vector<FuncSig> AllFunctions;
+
+    // Collect SAIL fn definitions
+    for (const auto &Entry : SailIR.Functions) {
+      const JibFunction &Func = Entry.second;
+      FuncSig Sig;
+      Sig.MangledName = mangleForCpp(Func.Name);
+      Sig.Body = translateJibFunctionToC(Func, SailIR);
+
+      // Determine return type from FunctionReturnTypes map
+      Sig.ReturnType = "void";
+      auto RetIt = SailIR.FunctionReturnTypes.find(Func.Name);
+      if (RetIt != SailIR.FunctionReturnTypes.end()) {
+        StringRef SailType = RetIt->second;
+        if (SailType.starts_with("%bool"))
+          Sig.ReturnType = "bool";
+        else if (SailType.starts_with("%bv8"))
+          Sig.ReturnType = "uint8_t";
+        else if (SailType.starts_with("%bv16"))
+          Sig.ReturnType = "uint16_t";
+        else if (SailType.starts_with("%bv32"))
+          Sig.ReturnType = "uint32_t";
+        else if (SailType.starts_with("%bv64") || SailType.starts_with("%bv"))
+          Sig.ReturnType = "uint64_t";
+        else if (SailType.starts_with("%i"))
+          Sig.ReturnType = "int64_t";
+        else if (SailType.starts_with("%unit"))
+          Sig.ReturnType = "void";
+        else if (SailType.starts_with("%enum"))
+          Sig.ReturnType = "int"; // Enums are emitted as constexpr int
+      }
+
+      // Build parameter list by combining param names from fn with types from val
+      auto ParamTypesIt = SailIR.FunctionParamTypes.find(Func.Name);
+      if (ParamTypesIt != SailIR.FunctionParamTypes.end()) {
+        const auto &ParamTypes = ParamTypesIt->second;
+        for (size_t I = 0; I < ParamTypes.size() && I < Func.Params.size(); ++I) {
+          if (I > 0)
+            Sig.ParamList += ", ";
+
+          // Convert SAIL type to C++ type
+          StringRef SailType = ParamTypes[I];
+          std::string CppType;
+          if (SailType.starts_with("%bv8"))
+            CppType = "uint8_t";
+          else if (SailType.starts_with("%bv16"))
+            CppType = "uint16_t";
+          else if (SailType.starts_with("%bv32"))
+            CppType = "uint32_t";
+          else if (SailType.starts_with("%bv64") || SailType.starts_with("%bv"))
+            CppType = "uint64_t";
+          else if (SailType.starts_with("%i"))
+            CppType = "int64_t";
+          else if (SailType.starts_with("%bool"))
+            CppType = "bool";
+          else
+            CppType = "uint64_t"; // Default
+
+          std::string ParamName = mangleForCpp(Func.Params[I]);
+          Sig.ParamList += CppType + " " + ParamName;
         }
       }
 
-      OS << "#endif // GET_EMULATOR_FUNCTIONS\n";
+      AllFunctions.push_back(std::move(Sig));
     }
+
+    // Collect SAIL library builtin functions (external functions from val declarations)
+    for (const auto &Entry : SailIR.ExternalFunctions) {
+      StringRef ZEncodedName = Entry.first();
+      StringRef ExtName = Entry.second;
+
+      // The C++ function name is the decoded z-encoded name
+      std::string DecodedName = zdecode(ZEncodedName);
+
+      // Skip type conversion functions (contain -> or start with %)
+      if (DecodedName.find("->") != std::string::npos ||
+          (!DecodedName.empty() && DecodedName[0] == '%'))
+        continue;
+
+      // Skip if a SAIL fn already defines this function
+      std::string MangledName = mangleForCpp(DecodedName);
+      if (DefinedFunctions.contains(MangledName))
+        continue;
+
+      // Get parameter types from val declaration (keyed by external name)
+      auto ParamTypesIt = SailIR.FunctionParamTypes.find(ExtName);
+      auto ReturnTypeIt = SailIR.FunctionReturnTypes.find(ExtName);
+      if (ParamTypesIt == SailIR.FunctionParamTypes.end() ||
+          ReturnTypeIt == SailIR.FunctionReturnTypes.end())
+        continue;
+
+      const auto &ParamTypes = ParamTypesIt->second;
+      StringRef ReturnType = ReturnTypeIt->second;
+
+      FuncSig Sig;
+      Sig.MangledName = MangledName;
+
+      // Determine C++ return type
+      Sig.ReturnType = "uint64_t";
+      if (ReturnType.starts_with("%bool"))
+        Sig.ReturnType = "bool";
+      else if (ReturnType.starts_with("%bv8"))
+        Sig.ReturnType = "uint8_t";
+      else if (ReturnType.starts_with("%bv16"))
+        Sig.ReturnType = "uint16_t";
+      else if (ReturnType.starts_with("%bv32"))
+        Sig.ReturnType = "uint32_t";
+      else if (ReturnType.starts_with("%unit"))
+        Sig.ReturnType = "void";
+      else if (ReturnType.starts_with("%i"))
+        Sig.ReturnType = "int64_t";
+
+      // Build parameter list
+      for (size_t I = 0; I < ParamTypes.size(); ++I) {
+        if (I > 0)
+          Sig.ParamList += ", ";
+        StringRef SailType = ParamTypes[I];
+        std::string CppType = "uint64_t";
+        if (SailType.starts_with("%bv8"))
+          CppType = "uint8_t";
+        else if (SailType.starts_with("%bv16"))
+          CppType = "uint16_t";
+        else if (SailType.starts_with("%bv32"))
+          CppType = "uint32_t";
+        else if (SailType.starts_with("%i"))
+          CppType = "int64_t";
+        else if (SailType.starts_with("%bool"))
+          CppType = "bool";
+
+        std::string ParamName = "p" + std::to_string(I);
+        Sig.ParamList += CppType + " " + ParamName;
+      }
+
+      // Generate implementation based on external name
+      if (ExtName == "add_bits" || ExtName == "add_bits_int") {
+        Sig.Body = "  return p0 + p1;\n";
+      } else if (ExtName == "sub_bits" || ExtName == "sub_bits_int") {
+        Sig.Body = "  return p0 - p1;\n";
+      } else if (ExtName == "and_bits") {
+        Sig.Body = "  return p0 & p1;\n";
+      } else if (ExtName == "or_bits") {
+        Sig.Body = "  return p0 | p1;\n";
+      } else if (ExtName == "xor_bits") {
+        Sig.Body = "  return p0 ^ p1;\n";
+      } else if (ExtName == "not_bits") {
+        Sig.Body = "  return ~p0;\n";
+      } else if (ExtName == "shiftl") {
+        Sig.Body = "  return p0 << p1;\n";
+      } else if (ExtName == "shiftr") {
+        Sig.Body = "  return p0 >> p1;\n";
+      } else if (ExtName == "append") {
+        Sig.Body = "  return (p0 << 8) | p1;\n";
+      } else if (ExtName == "append_64") {
+        Sig.Body = "  (void)p0; return p1;\n";
+      } else if (ExtName == "eq_bits") {
+        Sig.Body = "  return p0 == p1;\n";
+      } else if (ExtName == "neq_bits") {
+        Sig.Body = "  return p0 != p1;\n";
+      } else if (ExtName == "sail_unsigned" || ExtName == "unsigned") {
+        Sig.Body = "  return p0;\n";
+      } else if (ExtName == "sail_signed" || ExtName == "signed") {
+        Sig.Body = "  return (int64_t)(int8_t)p0;\n";
+      } else if (ExtName == "gteq") {
+        Sig.Body = "  return p0 >= p1;\n";
+      } else if (ExtName == "lteq") {
+        Sig.Body = "  return p0 <= p1;\n";
+      } else if (ExtName == "gt_int") {
+        Sig.Body = "  return p0 > p1;\n";
+      } else if (ExtName == "lt_int") {
+        Sig.Body = "  return p0 < p1;\n";
+      } else if (ExtName == "sign_extend") {
+        Sig.Body = "  return (int64_t)(int8_t)p0;\n";
+      } else if (ExtName == "vector_subrange") {
+        Sig.Body = "  return (p0 >> p2) & ((1ULL << (p1 - p2 + 1)) - 1);\n";
+      } else if (ExtName == "and_bool") {
+        Sig.Body = "  return p0 && p1;\n";
+      } else if (ExtName == "or_bool") {
+        Sig.Body = "  return p0 || p1;\n";
+      } else if (ExtName == "undefined_bitvector") {
+        Sig.Body = "  return 0;\n";
+      } else {
+        // Unknown external - skip it
+        continue;
+      }
+
+      AllFunctions.push_back(std::move(Sig));
+    }
+
+    // Emit inline member function definitions for inclusion in header
+    OS << "\n#ifdef GET_EMULATOR_FUNCTIONS\n";
+    OS << "// Helper functions generated from SAIL specification.\n";
+    OS << "// Include inside class definition to create inline member functions.\n\n";
+
+    for (const FuncSig &Sig : AllFunctions) {
+      OS << Sig.ReturnType << " " << Sig.MangledName << "(" << Sig.ParamList << ") {\n";
+      OS << Sig.Body;
+      OS << "}\n\n";
+    }
+
+    OS << "#endif // GET_EMULATOR_FUNCTIONS\n";
   }
 }
 
