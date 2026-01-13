@@ -16,6 +16,7 @@
 
 #include "llvm/Emulator/Context.h"
 #include "llvm/Emulator/Device.h"
+#include "llvm/Emulator/Semihost.h"
 #include <memory>
 #include <vector>
 
@@ -118,11 +119,67 @@ public:
   // Execution
   //===--------------------------------------------------------------------===//
 
-  /// Run all CPUs until they all halt.
-  /// For single-CPU systems, this just calls run() on the context.
+  //===--------------------------------------------------------------------===//
+  // Timer Support
+  //===--------------------------------------------------------------------===//
+
+  /// Set the semihost device for timer IRQ coordination.
+  /// When the timer fires, System will call SemihostDev->setTimerTick()
+  /// to set STATUS=1 before asserting the IRQ line.
+  void setSemihostDevice(Semihost *Dev) { SemihostDev = Dev; }
+
+  /// Configure the timer interrupt rate.
+  /// @param RateHz Timer frequency in Hz (0 = disable timer).
+  /// @param ContextIndex Which CPU context to send IRQs to.
+  void configureTimer(unsigned RateHz, size_t ContextIndex = 0) {
+    TimerRateHz = RateHz;
+    TimerContextIndex = ContextIndex;
+    if (RateHz > 0 && ContextIndex < Contexts.size()) {
+      // Calculate cycles between IRQs based on CPU clock rate
+      uint64_t ClockHz = Contexts[ContextIndex].ClockHz;
+      TimerPeriodCycles = ClockHz / RateHz;
+      TimerNextFireCycle = Contexts[ContextIndex].Ctx->getCycles() + TimerPeriodCycles;
+    } else {
+      TimerPeriodCycles = 0;
+      TimerNextFireCycle = 0;
+    }
+  }
+
+  /// Set maximum cycles to run before stopping (0 = unlimited).
+  void setMaxCycles(uint64_t Max) { MaxCycles = Max; }
+
+  //===--------------------------------------------------------------------===//
+  // Execution
+  //===--------------------------------------------------------------------===//
+
+  /// Run all CPUs until they all halt or cycle limit is reached.
+  /// For single-CPU systems, this runs with timer and cycle limit support.
   bool run() {
-    if (Contexts.size() == 1)
-      return Contexts[0].Ctx->run();
+    if (Contexts.size() == 1) {
+      // Single-CPU path with timer support
+      Context *Ctx = Contexts[0].Ctx;
+      while (!Ctx->isHalted()) {
+        // Check cycle limit
+        if (MaxCycles > 0 && Ctx->getCycles() >= MaxCycles)
+          return true; // Stopped due to cycle limit (not an error)
+
+        // Check timer before each step
+        if (TimerPeriodCycles > 0 && Ctx->getCycles() >= TimerNextFireCycle) {
+          // Set STATUS=1 in semihost device (like MAME does)
+          if (SemihostDev)
+            SemihostDev->setTimerTick();
+          // Assert IRQ - stays asserted until guest clears STATUS
+          Ctx->assertIRQ();
+          TimerNextFireCycle += TimerPeriodCycles;
+        }
+        if (!Ctx->step())
+          return false;
+        // Note: IRQ is NOT deasserted here. It stays asserted until
+        // the guest writes 0 to STATUS, which triggers deassertIRQ().
+        // This matches MAME's level-triggered IRQ behavior.
+      }
+      return true;
+    }
 
     // Multi-CPU scheduling would go here
     // For now, just run them sequentially
@@ -169,6 +226,18 @@ private:
   std::vector<ContextEntry> Contexts;
   std::vector<DeviceRegion> Devices;
   std::vector<std::unique_ptr<Device>> OwnedDevices;
+
+  // Timer state
+  unsigned TimerRateHz = 0;
+  size_t TimerContextIndex = 0;
+  uint64_t TimerPeriodCycles = 0;
+  uint64_t TimerNextFireCycle = 0;
+
+  // Execution limits
+  uint64_t MaxCycles = 0; // 0 = unlimited
+
+  // Semihost device for timer IRQ coordination
+  Semihost *SemihostDev = nullptr;
 };
 
 } // namespace emu

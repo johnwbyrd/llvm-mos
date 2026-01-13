@@ -52,20 +52,37 @@ void Context::reset() {
   C = Z = I = D = B = V = N = false;
   Cycles = 0;
   Halted = false;
-  ExitCode_ = 0;
+  ExitCode = 0;
+
+  // Reset interrupt state
+  IRQPending = 0;
+  NMIPending = 0;
 
   // Load reset vector
   PC = read16(0xFFFC);
 }
 
-void Context::halt(int ExitCode) {
+void Context::halt(int Code) {
   Halted = true;
-  ExitCode_ = ExitCode;
+  ExitCode = Code;
 }
 
 bool Context::step() {
   if (Halted)
     return true;
+
+  // Check for pending interrupts before executing the next instruction
+  // NMI has priority over IRQ (checked first)
+  if (checkAndHandleNMI()) {
+    // NMI was taken - add cycles for interrupt handling
+    Cycles += 7;
+    return true;
+  }
+  if (checkAndHandleIRQ()) {
+    // IRQ was taken - add cycles for interrupt handling
+    Cycles += 7;
+    return true;
+  }
 
   // Fetch and decode instruction
   MCInst Inst;
@@ -86,7 +103,7 @@ bool Context::step() {
            << " bytes: " << format("%02X %02X %02X", InstBytes[0], InstBytes[1], InstBytes[2])
            << "\n";
     Halted = true;
-    ExitCode_ = 1;
+    ExitCode = 1;
     return false;
   }
 
@@ -270,7 +287,15 @@ void Context::execute(const MCInst &Inst) {
     // Unknown instruction - halt
     LLVM_DEBUG(dbgs() << "Unknown opcode: " << Opcode << "\n");
     Halted = true;
-    ExitCode_ = 1;
+    ExitCode = 1;
     break;
   }
 }
+
+//===----------------------------------------------------------------------===//
+// SAIL-generated interrupt handling functions
+//===----------------------------------------------------------------------===//
+
+#define GET_EMULATOR_FUNCTIONS
+#include "MOSGenEmulator.inc"
+#undef GET_EMULATOR_FUNCTIONS

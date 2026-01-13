@@ -97,6 +97,10 @@ public:
   /// Check if response is ready (STATUS bit 0).
   bool isResponseReady() const { return ResponseReady; }
 
+  /// Set STATUS to indicate timer tick.
+  /// Called by System when timer fires to signal the IRQ handler.
+  void setTimerTick() { ResponseReady = true; }
+
   /// Get the exit status if the guest has exited.
   /// Returns true if the guest has exited.
   bool hasExited() const { return Exited; }
@@ -120,6 +124,9 @@ private:
 
   // Exit callback for secure backend
   static void onExitCallback(void *Ctx, unsigned Reason, unsigned Subcode);
+
+  // Timer config callback for secure backend
+  static void onTimerConfigCallback(void *Ctx, unsigned RateHz);
 
   System &Sys;
   bool Secure;

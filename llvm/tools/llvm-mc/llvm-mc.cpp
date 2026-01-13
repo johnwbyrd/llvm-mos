@@ -556,7 +556,9 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   }
 
   // Run until halt or cycle limit
-  Emu->executeFor(RunMaxCycles);
+  // Use System::run() to get timer support
+  Sys.setMaxCycles(RunMaxCycles);
+  Sys.run();
   if (!Emu->isHalted()) {
     if (TraceWriter)
       TraceWriter->traceEnd();
