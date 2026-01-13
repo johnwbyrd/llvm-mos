@@ -815,6 +815,11 @@ class CodeGen {
   StringMap<const ValDecl *> ValsByName;
   StringMap<const UnionDef *> UnionsByName;
 
+  // Variable type tracking - maps variable name to its declared type
+  // This is populated during instruction body emission and used to
+  // determine bit widths for operations like bitvector_concat
+  StringMap<Type> VarTypes;
+
 public:
   CodeGen(const JibIR &IR, raw_ostream &OS) : IR(IR), OS(OS) {
     // Build lookup maps
@@ -903,6 +908,9 @@ private:
 
   void emitInstrBody(const std::vector<Instr> &Body, StringRef ArgName,
                      StringRef InstrName) {
+    // Clear variable type tracking for this scope
+    VarTypes.clear();
+
     // Collect jump targets for label emission
     DenseSet<int64_t> JumpTargets;
     for (const auto &I : Body) {
@@ -920,6 +928,8 @@ private:
 
       switch (I.K) {
       case Instr::Decl:
+        // Record variable type for later use
+        VarTypes[I.Name] = I.Ty;
         if (I.Ty.K == Type::Unit) {
           UnitVars.insert(toCppIdent(I.Name));
         } else if (I.Ty.K != Type::Enum) {
@@ -928,6 +938,8 @@ private:
         break;
 
       case Instr::Init: {
+        // Record variable type for later use
+        VarTypes[I.Name] = I.Ty;
         std::string Name = toCppIdent(I.Name);
         std::string Val = emitExp(I.Value, ArgName, InstrName);
         if (I.Ty.K == Type::Unit) {
@@ -943,6 +955,19 @@ private:
       case Instr::Copy: {
         std::string Name = toCppIdent(I.Name);
         std::string Val = emitExp(I.Value, ArgName, InstrName);
+        // Propagate type information through copies (e.g., zz4154 = zz4144)
+        // This is important for bitvector_concat to know the correct shift amount
+        if (I.Value.K == Exp::Ident) {
+          auto SrcIt = VarTypes.find(I.Value.Text);
+          if (SrcIt != VarTypes.end()) {
+            // If dest has no type or unspecified width, use source's type
+            auto DestIt = VarTypes.find(I.Name);
+            if (DestIt == VarTypes.end() ||
+                (DestIt->second.K == Type::Bv && DestIt->second.Width == 0)) {
+              VarTypes[I.Name] = SrcIt->second;
+            }
+          }
+        }
         // In instruction bodies (InstrName non-empty), tmp0 and return are
         // internal values we don't need to keep. In helper functions, they're
         // regular variables.
@@ -1075,6 +1100,19 @@ private:
     return "/* @" + E.OpName + " */";
   }
 
+  /// Get the bit width of an expression by looking up variable types
+  int getExpWidth(const Exp &E) {
+    if (E.K == Exp::Ident) {
+      // Look up variable type
+      auto It = VarTypes.find(E.Text);
+      if (It != VarTypes.end() && It->second.K == Type::Bv)
+        return It->second.Width;
+    }
+    // For literals, we could parse bit width from the value
+    // but for now return 0 (unknown)
+    return 0;
+  }
+
   std::string emitCall(const Exp &E, StringRef ArgName, StringRef InstrName) {
     std::string FnName = toCppIdent(E.Text);
 
@@ -1084,6 +1122,18 @@ private:
       if (!E.Args.empty())
         return emitExp(E.Args[0], ArgName, InstrName);
       return "0";
+    }
+
+    // Special handling for bitvector_concat - need to use correct shift amount
+    // based on the bit width of the second argument
+    if (FnName == "bitvector_concat" && E.Args.size() == 2) {
+      std::string Arg0 = emitExp(E.Args[0], ArgName, InstrName);
+      std::string Arg1 = emitExp(E.Args[1], ArgName, InstrName);
+      int Width1 = getExpWidth(E.Args[1]);
+      // Default to 8 if width unknown (backwards compatible)
+      if (Width1 == 0)
+        Width1 = 8;
+      return "((" + Arg0 + " << " + std::to_string(Width1) + ") | " + Arg1 + ")";
     }
 
     // Build argument list
@@ -1218,9 +1268,9 @@ private:
       return "return p0 >= p1;";
     if (Ext == "lteq")
       return "return p0 <= p1;";
-    if (Ext == "gt_int")
+    if (Ext == "gt_int" || Ext == "gt")
       return "return p0 > p1;";
-    if (Ext == "lt_int")
+    if (Ext == "lt_int" || Ext == "lt")
       return "return p0 < p1;";
 
     // Type conversions
