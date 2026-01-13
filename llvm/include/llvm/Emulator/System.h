@@ -18,6 +18,7 @@
 #include "llvm/Emulator/Device.h"
 #include "llvm/Emulator/Semihost.h"
 #include <memory>
+#include <sys/types.h>
 #include <vector>
 
 namespace llvm {
@@ -25,9 +26,9 @@ namespace emu {
 
 /// A memory-mapped device region.
 struct DeviceRegion {
-  uint64_t Start;  ///< Start address (inclusive)
-  uint64_t End;    ///< End address (inclusive)
-  Device *Dev;     ///< Device handling this region
+  uint64_t Start; ///< Start address (inclusive)
+  uint64_t End;   ///< End address (inclusive)
+  Device *Dev;    ///< Device handling this region
 };
 
 /// Coordinates multiple CPUs and manages shared devices.
@@ -87,9 +88,7 @@ public:
   }
 
   /// Read a 16-bit little-endian value from the given address.
-  uint16_t read16(uint64_t Addr) {
-    return read(Addr) | (read(Addr + 1) << 8);
-  }
+  uint16_t read16(uint64_t Addr) { return read(Addr) | (read(Addr + 1) << 8); }
 
   /// Write a 16-bit little-endian value to the given address.
   void write16(uint64_t Addr, uint16_t Value) {
@@ -138,7 +137,8 @@ public:
       // Calculate cycles between IRQs based on CPU clock rate
       uint64_t ClockHz = Contexts[ContextIndex].ClockHz;
       TimerPeriodCycles = ClockHz / RateHz;
-      TimerNextFireCycle = Contexts[ContextIndex].Ctx->getCycles() + TimerPeriodCycles;
+      TimerNextFireCycle =
+          Contexts[ContextIndex].Ctx->getCycles() + TimerPeriodCycles;
     } else {
       TimerPeriodCycles = 0;
       TimerNextFireCycle = 0;
