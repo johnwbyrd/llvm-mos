@@ -384,14 +384,36 @@ function clause execute STY_Absolute(addr) = { writeMem(addr, Y); RETIRE_SUCCESS
 
 val doADC : bits(8) -> unit
 function doADC(value) = {
-    let carry_in : bits(9) = 0x00 @ C;
-    let sum : bits(9) = (0b0 @ A) + (0b0 @ value) + carry_in;
-    let result : bits(8) = sum[7..0];
-    // Overflow: sign of result differs from both operands
-    V = (A[7..7] ^ result[7..7]) & (value[7..7] ^ result[7..7]);
-    C = sum[8..8];
-    A = result;
-    setNZ(A)
+    if D == 0b1 then {
+        // BCD (Decimal) mode
+        // Add low nibbles with carry
+        let lo : bits(8) = (0x0 @ A[3..0]) + (0x0 @ value[3..0]) + (0b0000000 @ C);
+        // If low nibble > 9, add 6 to correct
+        let lo_adj : bits(8) = if lo >_u 0x09 then lo + 0x06 else lo;
+        // Carry from low to high nibble
+        let lo_carry : bits(8) = if lo_adj >_u 0x0F then 0x01 else 0x00;
+        // Add high nibbles with carry from low
+        let hi : bits(8) = (0x0 @ A[7..4]) + (0x0 @ value[7..4]) + lo_carry;
+        // If high nibble > 9, add 6 to correct
+        let hi_adj : bits(8) = if hi >_u 0x09 then hi + 0x06 else hi;
+        // Set carry if high nibble overflowed
+        C = if hi_adj >_u 0x0F then 0b1 else 0b0;
+        // Combine nibbles
+        A = hi_adj[3..0] @ lo_adj[3..0];
+        // N and Z are set based on the result (like binary mode)
+        setNZ(A);
+        // V is undefined in decimal mode on NMOS 6502, leave unchanged
+    } else {
+        // Binary mode
+        let carry_in : bits(9) = 0x00 @ C;
+        let sum : bits(9) = (0b0 @ A) + (0b0 @ value) + carry_in;
+        let result : bits(8) = sum[7..0];
+        // Overflow: sign of result differs from both operands
+        V = (A[7..7] ^ result[7..7]) & (value[7..7] ^ result[7..7]);
+        C = sum[8..8];
+        A = result;
+        setNZ(A)
+    }
 }
 
 union clause instruction = ADC_Immediate : bits(8)
@@ -419,15 +441,36 @@ function clause execute ADC_IndirectIndexed(addr) = { let ea = readMem16(0x00 @ 
 
 val doSBC : bits(8) -> unit
 function doSBC(value) = {
-    // SBC is ADC with inverted operand
-    let borrow_in : bits(9) = 0x00 @ C;
-    let inv_value : bits(8) = value ^ 0xFF;
-    let diff : bits(9) = (0b0 @ A) + (0b0 @ inv_value) + borrow_in;
-    let result : bits(8) = diff[7..0];
-    V = (A[7..7] ^ result[7..7]) & (inv_value[7..7] ^ result[7..7]);
-    C = diff[8..8];
-    A = result;
-    setNZ(A)
+    if D == 0b1 then {
+        // BCD (Decimal) mode
+        // Subtract low nibbles with borrow (C=1 means no borrow)
+        let lo : bits(8) = (0x0 @ A[3..0]) - (0x0 @ value[3..0]) - (0b0000000 @ (C ^ 0b1));
+        // If low nibble borrowed (bit 4 set), subtract 6 to correct
+        let lo_borrow : bits(1) = lo[4..4];
+        let lo_adj : bits(8) = if lo_borrow == 0b1 then lo - 0x06 else lo;
+        // Subtract high nibbles with borrow from low
+        let hi : bits(8) = (0x0 @ A[7..4]) - (0x0 @ value[7..4]) - (0b0000000 @ lo_borrow);
+        // If high nibble borrowed, subtract 6 to correct
+        let hi_borrow : bits(1) = hi[4..4];
+        let hi_adj : bits(8) = if hi_borrow == 0b1 then hi - 0x06 else hi;
+        // Set carry if no borrow occurred
+        C = hi_borrow ^ 0b1;
+        // Combine nibbles
+        A = hi_adj[3..0] @ lo_adj[3..0];
+        // N and Z are set based on the result
+        setNZ(A);
+        // V is undefined in decimal mode on NMOS 6502, leave unchanged
+    } else {
+        // Binary mode - SBC is ADC with inverted operand
+        let borrow_in : bits(9) = 0x00 @ C;
+        let inv_value : bits(8) = value ^ 0xFF;
+        let diff : bits(9) = (0b0 @ A) + (0b0 @ inv_value) + borrow_in;
+        let result : bits(8) = diff[7..0];
+        V = (A[7..7] ^ result[7..7]) & (inv_value[7..7] ^ result[7..7]);
+        C = diff[8..8];
+        A = result;
+        setNZ(A)
+    }
 }
 
 union clause instruction = SBC_Immediate : bits(8)
