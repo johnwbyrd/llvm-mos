@@ -93,7 +93,21 @@ add_subdirectory(TargetInfo)
 # Optional target to regenerate SAIL IR from source
 # Requires sail and isla-sail plugin (from https://github.com/rems-project/isla)
 # Usage: ninja mos-sail-ir
-set(MOS_SAIL_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502.sail)
+#
+# The SAIL spec is split into multiple files (see Sail/mos.sail_project):
+#   prelude.sail  - Operators, type overloads
+#   core.sail     - Extensions, registers, callbacks, PC access
+#   sys.sail      - Memory interface, stack, interrupts
+#   instructions.sail - All 6502 instruction definitions
+#   model.sail    - Fetch, decode, reset, step loop
+set(MOS_SAIL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Sail)
+set(MOS_SAIL_SOURCES
+  ${MOS_SAIL_DIR}/prelude.sail
+  ${MOS_SAIL_DIR}/core.sail
+  ${MOS_SAIL_DIR}/sys.sail
+  ${MOS_SAIL_DIR}/instructions.sail
+  ${MOS_SAIL_DIR}/model.sail
+)
 set(MOS_SAIL_IR ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502.ir)
 set(ISLA_PLUGIN "$ENV{HOME}/git/isla/isla-sail/_build/default/sail_plugin_isla.cmxs")
 
@@ -101,9 +115,9 @@ add_custom_target(mos-sail-ir
   COMMAND sail -plugin ${ISLA_PLUGIN} -isla
     -isla_preserve checkAndHandleIRQ
     -isla_preserve checkAndHandleNMI
-    -o ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502 ${MOS_SAIL_SOURCE}
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/Sail
-  COMMENT "Regenerating MOS SAIL IR from mos6502.sail"
-  SOURCES ${MOS_SAIL_SOURCE}
+    -o ${MOS_SAIL_DIR}/mos6502 ${MOS_SAIL_SOURCES}
+  WORKING_DIRECTORY ${MOS_SAIL_DIR}
+  COMMENT "Regenerating MOS SAIL IR from multi-file spec"
+  SOURCES ${MOS_SAIL_SOURCES}
 )
 set_target_properties(mos-sail-ir PROPERTIES EXCLUDE_FROM_ALL TRUE)
