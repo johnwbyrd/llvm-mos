@@ -144,7 +144,7 @@ enum class Tok {
   // Literals
   Id, Nat, Hex, Bin, String,
   // Keywords
-  KwFn, KwVal, KwEnum, KwUnion, KwRegister, KwJump, KwGoto, KwEnd,
+  KwFn, KwVal, KwEnum, KwUnion, KwRegister, KwLet, KwJump, KwGoto, KwEnd,
   KwTrue, KwFalse, KwIs, KwAs, KwReturn,
   // Types (%-prefixed)
   TyI, TyI64, TyBv, TyUnit, TyBool, TyEnum, TyStruct,
@@ -262,7 +262,7 @@ public:
         return CurTok = Tok::TyBool;
       if (T.starts_with("%enum"))
         return CurTok = Tok::TyEnum;
-      if (T.starts_with("%struct"))
+      if (T.starts_with("%struct") || T.starts_with("%union"))
         return CurTok = Tok::TyStruct;
       return CurTok = Tok::TyBv; // Default for unknown %types
     }
@@ -305,6 +305,8 @@ public:
         return CurTok = Tok::KwUnion;
       if (T == "register")
         return CurTok = Tok::KwRegister;
+      if (T == "let")
+        return CurTok = Tok::KwLet;
       if (T == "jump")
         return CurTok = Tok::KwJump;
       if (T == "goto")
@@ -384,8 +386,11 @@ struct Type {
     case Bool:
       return "bool";
     case Enum:
-    case Struct:
       return "int";
+    case Struct:
+      if (Name.empty())
+        return "int";
+      return Name;
     }
     return "uint64_t";
   }
@@ -442,12 +447,19 @@ struct RegisterDef {
   Type Ty;
 };
 
+struct LetDef {
+  std::string Name;
+  Type Ty;
+  std::vector<Instr> Body;
+};
+
 struct JibIR {
   std::vector<RegisterDef> Registers;
   std::vector<EnumDef> Enums;
   std::vector<UnionDef> Unions;
   std::vector<ValDecl> Vals;
   std::vector<FnDef> Functions;
+  std::vector<LetDef> Lets;
 };
 
 //===----------------------------------------------------------------------===//
@@ -474,6 +486,8 @@ public:
         IR.Vals.push_back(parseVal());
       } else if (L.at(Tok::KwFn)) {
         IR.Functions.push_back(parseFn());
+      } else if (L.at(Tok::KwLet)) {
+        IR.Lets.push_back(parseLet());
       } else {
         L.advance();
       }
@@ -515,8 +529,8 @@ private:
       T.K = Type::Bv; // Default
     }
     L.advance();
-    // Handle "%enum id" form
-    if (T.K == Type::Enum && L.at(Tok::Id)) {
+    // Handle "%enum id" and "%struct id" forms - consume the following identifier
+    if ((T.K == Type::Enum || T.K == Type::Struct) && L.at(Tok::Id)) {
       T.Name = L.text().str();
       L.advance();
     }
@@ -700,7 +714,7 @@ private:
   RegisterDef parseRegister() {
     RegisterDef R;
     L.advance(); // register
-    R.Name = toCppIdent(L.text());
+    R.Name = L.text().str();
     L.advance();
     L.consume(Tok::Colon);
     R.Ty = parseType();
@@ -710,12 +724,12 @@ private:
   EnumDef parseEnum() {
     EnumDef E;
     L.advance(); // enum
-    E.Name = toCppIdent(L.text());
+    E.Name = L.text().str();
     L.advance();
     L.consume(Tok::LBrace);
     while (!L.at(Tok::RBrace) && !L.atEnd()) {
       if (L.at(Tok::Id)) {
-        E.Variants.push_back(toCppIdent(L.text()));
+        E.Variants.push_back(L.text().str());
         L.advance();
       }
       L.consume(Tok::Comma);
@@ -727,16 +741,22 @@ private:
   UnionDef parseUnion() {
     UnionDef U;
     L.advance(); // union
-    U.Name = toCppIdent(L.text());
+    U.Name = L.text().str();
     L.advance();
     L.consume(Tok::LBrace);
     while (!L.at(Tok::RBrace) && !L.atEnd()) {
       if (L.at(Tok::Id)) {
-        std::string Name = toCppIdent(L.text());
+        std::string Name = L.text().str();
         L.advance();
-        L.consume(Tok::Colon);
+        if (!L.consume(Tok::Colon)) {
+          // Not a valid variant - skip this token and continue
+          continue;
+        }
         Type Ty = parseType();
         U.Variants.emplace_back(Name, Ty);
+      } else {
+        // Skip unexpected tokens to guarantee progress
+        L.advance();
       }
       L.consume(Tok::Comma);
     }
@@ -747,7 +767,7 @@ private:
   ValDecl parseVal() {
     ValDecl V;
     L.advance(); // val
-    V.Name = toCppIdent(L.text());
+    V.Name = L.text().str();
     L.advance();
 
     // Check for external: val id = "name" : ...
@@ -777,14 +797,13 @@ private:
   FnDef parseFn() {
     FnDef F;
     L.advance(); // fn
-    F.Name = toCppIdent(L.text());
+    F.Name = L.text().str();
     L.advance();
 
-    // Parse parameters
     L.consume(Tok::LParen);
     while (!L.at(Tok::RParen) && !L.atEnd()) {
       if (L.at(Tok::Id)) {
-        F.Params.push_back(toCppIdent(L.text()));
+        F.Params.push_back(L.text().str());
         L.advance();
       }
       L.consume(Tok::Comma);
@@ -801,6 +820,24 @@ private:
 
     return F;
   }
+
+  LetDef parseLet() {
+    LetDef Let;
+    L.advance(); // let
+    L.consume(Tok::LParen);
+    Let.Name = L.text().str();
+    L.advance();
+    L.consume(Tok::Colon);
+    Let.Ty = parseType();
+    L.consume(Tok::RParen);
+    L.consume(Tok::LBrace);
+    LineNum = 0;
+    while (!L.at(Tok::RBrace) && !L.atEnd()) {
+      Let.Body.push_back(parseInstr());
+    }
+    L.consume(Tok::RBrace);
+    return Let;
+  }
 };
 
 //===----------------------------------------------------------------------===//
@@ -814,31 +851,28 @@ class CodeGen {
   // Maps for lookups
   StringMap<const ValDecl *> ValsByName;
   StringMap<const UnionDef *> UnionsByName;
-
-  // Variable type tracking - maps variable name to its declared type
-  // This is populated during instruction body emission and used to
-  // determine bit widths for operations like bitvector_concat
-  StringMap<Type> VarTypes;
+  StringSet<> UnionVariants;
 
 public:
   CodeGen(const JibIR &IR, raw_ostream &OS) : IR(IR), OS(OS) {
-    // Build lookup maps
     for (const auto &V : IR.Vals)
       ValsByName[V.Name] = &V;
-    for (const auto &U : IR.Unions)
+    for (const auto &U : IR.Unions) {
       UnionsByName[U.Name] = &U;
+      for (const auto &V : U.Variants)
+        UnionVariants.insert(V.first);
+    }
   }
 
   void emit() {
-    // Find instruction union and execute function
     const UnionDef *InstrUnion = nullptr;
     const FnDef *ExecuteFn = nullptr;
 
     for (const auto &U : IR.Unions)
-      if (U.Name == "instruction")
+      if (U.Name == "zinstruction")
         InstrUnion = &U;
     for (const auto &F : IR.Functions)
-      if (F.Name == "execute")
+      if (F.Name == "zexecute")
         ExecuteFn = &F;
 
     if (!InstrUnion || !ExecuteFn) {
@@ -856,15 +890,35 @@ public:
     emitInstructionCases(*ExecuteFn, *InstrUnion);
     OS << "#endif // GET_EMULATOR_CASES\n\n";
 
+    // Emit types (struct wrappers and variant typedef) - used at namespace scope
+    OS << "#ifdef GET_EMULATOR_TYPES\n";
+    emitTypes(*InstrUnion);
+    OS << "#endif // GET_EMULATOR_TYPES\n\n";
+
     // Emit enums
     OS << "#ifdef GET_EMULATOR_ENUMS\n";
     emitEnums();
     OS << "#endif // GET_EMULATOR_ENUMS\n\n";
 
-    // Emit functions
+    // Emit member variable declarations (let bindings) - used inside class
+    OS << "#ifdef GET_EMULATOR_MEMBERS\n";
+    emitMembers();
+    OS << "#endif // GET_EMULATOR_MEMBERS\n\n";
+
+    // Emit helper methods (as class members)
+    OS << "#ifdef GET_EMULATOR_METHODS\n";
+    emitMethods();
+    OS << "#endif // GET_EMULATOR_METHODS\n\n";
+
+    // Also emit as standalone functions for compatibility
     OS << "#ifdef GET_EMULATOR_FUNCTIONS\n";
     emitFunctions();
-    OS << "#endif // GET_EMULATOR_FUNCTIONS\n";
+    OS << "#endif // GET_EMULATOR_FUNCTIONS\n\n";
+
+    // Emit MCInst to SAIL instruction mapping function
+    OS << "#ifdef GET_EMULATOR_MAPPING\n";
+    emitMcInstToSailMapping(*InstrUnion);
+    OS << "#endif // GET_EMULATOR_MAPPING\n";
   }
 
 private:
@@ -907,10 +961,7 @@ private:
   }
 
   void emitInstrBody(const std::vector<Instr> &Body, StringRef ArgName,
-                     StringRef InstrName) {
-    // Clear variable type tracking for this scope
-    VarTypes.clear();
-
+                     StringRef InstrName, StringRef ReturnVar = "") {
     // Collect jump targets for label emission
     DenseSet<int64_t> JumpTargets;
     for (const auto &I : Body) {
@@ -920,62 +971,63 @@ private:
 
     // Track unit-type variables
     StringSet<> UnitVars;
+    // Track declared variables (to avoid re-declaring in Init)
+    StringSet<> DeclaredVars;
 
+    // First pass: emit all declarations at the top (avoids goto issues)
     for (const auto &I : Body) {
-      // Emit label if needed
+      if (I.K != Instr::Decl && I.K != Instr::Init)
+        continue;
+      std::string Name = I.Name;
+      if (!Name.empty() && Name[0] == '$')
+        Name = "tmp" + Name.substr(1);
+      if (I.Ty.K == Type::Unit) {
+        UnitVars.insert(Name);
+      } else if (!DeclaredVars.contains(Name)) {
+        OS << "  " << I.Ty.toCpp() << " " << Name << ";\n";
+        DeclaredVars.insert(Name);
+      }
+    }
+
+    // Second pass: emit code
+    for (const auto &I : Body) {
       if (JumpTargets.contains(I.Line))
         OS << "L" << I.Line << ":;\n";
 
       switch (I.K) {
       case Instr::Decl:
-        // Record variable type for later use
-        VarTypes[I.Name] = I.Ty;
-        if (I.Ty.K == Type::Unit) {
-          UnitVars.insert(toCppIdent(I.Name));
-        } else if (I.Ty.K != Type::Enum) {
-          OS << "  " << I.Ty.toCpp() << " " << toCppIdent(I.Name) << ";\n";
-        }
+        // Already emitted in first pass
         break;
 
       case Instr::Init: {
-        // Record variable type for later use
-        VarTypes[I.Name] = I.Ty;
-        std::string Name = toCppIdent(I.Name);
+        std::string Name = I.Name;
+        if (!Name.empty() && Name[0] == '$')
+          Name = "tmp" + Name.substr(1);
         std::string Val = emitExp(I.Value, ArgName, InstrName);
         if (I.Ty.K == Type::Unit) {
-          UnitVars.insert(Name);
           if (!Val.empty() && Val != "{}")
             OS << "  " << Val << ";\n";
-        } else if (I.Ty.K != Type::Enum && !Val.empty()) {
-          OS << "  auto " << Name << " = " << Val << ";\n";
+        } else if (!Val.empty()) {
+          OS << "  " << Name << " = " << Val << ";\n";
         }
         break;
       }
 
       case Instr::Copy: {
-        std::string Name = toCppIdent(I.Name);
+        std::string Name = I.Name;
+        if (!Name.empty() && Name[0] == '$')
+          Name = "tmp" + Name.substr(1);
         std::string Val = emitExp(I.Value, ArgName, InstrName);
-        // Propagate type information through copies (e.g., zz4154 = zz4144)
-        // This is important for bitvector_concat to know the correct shift amount
-        if (I.Value.K == Exp::Ident) {
-          auto SrcIt = VarTypes.find(I.Value.Text);
-          if (SrcIt != VarTypes.end()) {
-            // If dest has no type or unspecified width, use source's type
-            auto DestIt = VarTypes.find(I.Name);
-            if (DestIt == VarTypes.end() ||
-                (DestIt->second.K == Type::Bv && DestIt->second.Width == 0)) {
-              VarTypes[I.Name] = SrcIt->second;
-            }
-          }
-        }
-        // In instruction bodies (InstrName non-empty), tmp0 and return are
-        // internal values we don't need to keep. In helper functions, they're
-        // regular variables.
         bool IsInstrBody = !InstrName.empty();
+        // Skip if value is a unit-type variable (would be undeclared)
+        if (UnitVars.contains(Val))
+          break;
         if (IsInstrBody && (Name == "tmp0" || Name == "return")) {
-          // Internal return value - emit for side effects only
           if (!Val.empty() && Val != "{}")
             OS << "  " << Val << ";\n";
+        } else if (!ReturnVar.empty() && Name == ReturnVar) {
+          if (!Val.empty() && Val != "{}")
+            OS << "  return " << Val << ";\n";
         } else if (UnitVars.contains(Name)) {
           if (!Val.empty() && Val != "{}")
             OS << "  " << Val << ";\n";
@@ -1011,13 +1063,10 @@ private:
 
   std::string emitExp(const Exp &E, StringRef ArgName, StringRef InstrName) {
     switch (E.K) {
-    case Exp::Ident: {
-      std::string Name = toCppIdent(E.Text);
-      // Check if it's the instruction operand extraction
-      if (Name == "mergez3var" || Name.find("merge") != std::string::npos)
-        return "Inst.getOperand(0).getImm()";
-      return Name;
-    }
+    case Exp::Ident:
+      if (!E.Text.empty() && E.Text[0] == '$')
+        return "tmp" + E.Text.substr(1);
+      return E.Text;
 
     case Exp::Nat:
     case Exp::Hex:
@@ -1040,18 +1089,17 @@ private:
       return emitCall(E, ArgName, InstrName);
 
     case Exp::Field:
-      return emitExp(E.Args[0], ArgName, InstrName) + "." + toCppIdent(E.Text);
+      return emitExp(E.Args[0], ArgName, InstrName) + "." + E.Text;
 
     case Exp::Is:
-      // Used for instruction dispatch - just return condition
-      return "(" + emitExp(E.Args[0], ArgName, InstrName) + ".is<" +
-             toCppIdent(E.Text) + ">())";
+      // SAIL's "is" (Kind check) returns TRUE when the constructor does NOT match.
+      // See isla-lib/src/executor.rs: Val::Ctor(ctor_b, _) => Val::Bool(*ctor_a != *ctor_b)
+      return "!std::holds_alternative<" + E.Text + ">(" +
+             emitExp(E.Args[0], ArgName, InstrName) + ")";
 
     case Exp::As:
-      // Operand extraction
-      if (toCppIdent(E.Args[0].Text).find("merge") != std::string::npos)
-        return "Inst.getOperand(0).getImm()";
-      return emitExp(E.Args[0], ArgName, InstrName);
+      return "std::get<" + E.Text + ">(" +
+             emitExp(E.Args[0], ArgName, InstrName) + ").value";
     }
     return "";
   }
@@ -1100,41 +1148,8 @@ private:
     return "/* @" + E.OpName + " */";
   }
 
-  /// Get the bit width of an expression by looking up variable types
-  int getExpWidth(const Exp &E) {
-    if (E.K == Exp::Ident) {
-      // Look up variable type
-      auto It = VarTypes.find(E.Text);
-      if (It != VarTypes.end() && It->second.K == Type::Bv)
-        return It->second.Width;
-    }
-    // For literals, we could parse bit width from the value
-    // but for now return 0 (unknown)
-    return 0;
-  }
-
   std::string emitCall(const Exp &E, StringRef ArgName, StringRef InstrName) {
-    std::string FnName = toCppIdent(E.Text);
-
-    // Type conversion functions - just return the argument
-    if (FnName.find("_to_") != std::string::npos ||
-        StringRef(FnName).starts_with("pct_")) {
-      if (!E.Args.empty())
-        return emitExp(E.Args[0], ArgName, InstrName);
-      return "0";
-    }
-
-    // Special handling for bitvector_concat - need to use correct shift amount
-    // based on the bit width of the second argument
-    if (FnName == "bitvector_concat" && E.Args.size() == 2) {
-      std::string Arg0 = emitExp(E.Args[0], ArgName, InstrName);
-      std::string Arg1 = emitExp(E.Args[1], ArgName, InstrName);
-      int Width1 = getExpWidth(E.Args[1]);
-      // Default to 8 if width unknown (backwards compatible)
-      if (Width1 == 0)
-        Width1 = 8;
-      return "((" + Arg0 + " << " + std::to_string(Width1) + ") | " + Arg1 + ")";
-    }
+    std::string FnName = E.Text;
 
     // Build argument list
     std::string Args;
@@ -1146,7 +1161,72 @@ private:
         Args += Arg;
     }
 
+    // Union variants use brace init, functions use parens
+    if (UnionVariants.contains(FnName))
+      return FnName + "{" + Args + "}";
     return FnName + "(" + Args + ")";
+  }
+
+  void emitVariantStruct(StringRef Name, const Type &T) {
+    if (T.K == Type::Unit) {
+      OS << "struct " << Name << " {};\n";
+    } else {
+      OS << "struct " << Name << " { " << T.toCpp() << " value; };\n";
+    }
+  }
+
+  void emitTypes(const UnionDef &InstrUnion) {
+    OS << "// Instruction variant structs\n";
+    for (const auto &V : InstrUnion.Variants)
+      emitVariantStruct(V.first, V.second);
+    OS << "\n";
+
+    OS << "// Instruction union type\n";
+    OS << "using " << InstrUnion.Name << " = std::variant<";
+    bool First = true;
+    for (const auto &V : InstrUnion.Variants) {
+      if (!First)
+        OS << ", ";
+      First = false;
+      OS << V.first;
+    }
+    OS << ">;\n\n";
+
+    for (const auto &U : IR.Unions) {
+      if (U.Name == InstrUnion.Name)
+        continue;
+      OS << "// " << U.Name << "\n";
+      for (const auto &V : U.Variants)
+        emitVariantStruct(V.first, V.second);
+      OS << "using " << U.Name << " = std::variant<";
+      First = true;
+      for (const auto &V : U.Variants) {
+        if (!First)
+          OS << ", ";
+        First = false;
+        OS << V.first;
+      }
+      OS << ">;\n\n";
+    }
+
+    // Emit enums at namespace scope too
+    for (const auto &E : IR.Enums) {
+      OS << "// " << E.Name << "\n";
+      for (size_t I = 0; I < E.Variants.size(); ++I)
+        OS << "static constexpr int " << E.Variants[I] << " = " << I << ";\n";
+      OS << "\n";
+    }
+    // Note: Let bindings are emitted in GET_EMULATOR_MEMBERS as class members
+  }
+
+  void emitMembers() {
+    // Emit let member variable declarations (as class members, not namespace scope)
+    if (!IR.Lets.empty()) {
+      OS << "// Let bindings (initialized by initLets())\n";
+      for (const auto &Let : IR.Lets)
+        OS << Let.Ty.toCpp() << " " << Let.Name << ";\n";
+      OS << "\n";
+    }
   }
 
   void emitEnums() {
@@ -1193,10 +1273,6 @@ private:
 
     // Then emit functions with IR bodies
     for (const auto &F : IR.Functions) {
-      // Skip execute, main, and initialize functions
-      if (F.Name == "execute" || F.Name == "main" ||
-          StringRef(F.Name).starts_with("initialize"))
-        continue;
 
       // Find return type from val declarations
       Type RetType;
@@ -1226,6 +1302,123 @@ private:
       emitInstrBody(F.Body, "", "");
 
       OS << "}\n\n";
+    }
+  }
+
+  void emitMethods() {
+    // Emit functions as class methods (without static, called on 'this')
+    OS << "// Helper methods from SAIL (as class members)\n\n";
+
+    // Track which functions have IR bodies
+    StringSet<> HasBody;
+    for (const auto &F : IR.Functions)
+      HasBody.insert(F.Name);
+
+    // First emit external primitives
+    for (const auto &V : IR.Vals) {
+      if (V.ExternalName.empty())
+        continue;
+      if (HasBody.contains(V.Name))
+        continue;
+
+      std::string Ret = V.ReturnType.toCpp();
+      std::string Params;
+      for (size_t I = 0; I < V.ParamTypes.size(); ++I) {
+        if (I > 0)
+          Params += ", ";
+        Params += V.ParamTypes[I].toCpp() + " p" + std::to_string(I);
+      }
+
+      StringRef Ext = V.ExternalName;
+      std::string Body = getPrimitiveBody(Ext, V.ParamTypes.size());
+      if (Body.empty())
+        continue;
+
+      OS << Ret << " " << V.Name << "(" << Params << ") { " << Body << " }\n";
+    }
+    OS << "\n";
+
+    // Then emit functions with IR bodies
+    for (const auto &F : IR.Functions) {
+      // Find return type from val declarations
+      Type RetType;
+      RetType.K = Type::Unit;
+      std::vector<Type> ParamTypes;
+      if (auto *V = ValsByName.lookup(F.Name)) {
+        RetType = V->ReturnType;
+        ParamTypes = V->ParamTypes;
+      }
+
+      // Emit function signature
+      OS << RetType.toCpp() << " " << F.Name << "(";
+      bool First = true;
+      for (size_t I = 0; I < F.Params.size(); ++I) {
+        Type PT = I < ParamTypes.size() ? ParamTypes[I] : Type{Type::Bv, 64, ""};
+        if (PT.K == Type::Unit)
+          continue;
+        if (!First)
+          OS << ", ";
+        First = false;
+        OS << PT.toCpp() << " " << F.Params[I];
+      }
+      OS << ") {\n";
+
+      // Emit body
+      emitInstrBody(F.Body, "", "");
+
+      OS << "}\n\n";
+    }
+
+    // Emit initLets() to initialize let bindings
+    if (!IR.Lets.empty()) {
+      OS << "void initLets() {\n";
+      for (const auto &Let : IR.Lets) {
+        OS << "  {\n";
+        emitInstrBody(Let.Body, "", "");
+        OS << "  }\n";
+      }
+      OS << "}\n\n";
+    }
+  }
+
+  void emitMcInstToSailMapping(const UnionDef &InstrUnion) {
+    OS << "// Map MCInst opcode to SAIL instruction variant\n";
+    OS << InstrUnion.Name << " mcInstToSail(const MCInst &Inst) {\n";
+    OS << "  switch (Inst.getOpcode()) {\n";
+
+    for (const auto &V : InstrUnion.Variants) {
+      std::string OpcName = toCppIdent(V.first);
+      OS << "  case " << OpcName << ":\n";
+      if (V.second.K == Type::Unit) {
+        OS << "    return " << V.first << "{};\n";
+      } else {
+        std::string Cast = getCastForType(V.second);
+        OS << "    return " << V.first << "{" << Cast
+           << "(Inst.getOperand(0).getImm())};\n";
+      }
+    }
+
+    OS << "  default:\n";
+    OS << "    llvm_unreachable(\"Unknown opcode in mcInstToSail\");\n";
+    OS << "  }\n";
+    OS << "}\n";
+  }
+
+  /// Get the appropriate cast for a SAIL type when extracting MCInst operands.
+  std::string getCastForType(const Type &T) {
+    switch (T.K) {
+    case Type::Bv:
+      if (T.Width == 8) return "static_cast<uint8_t>";
+      if (T.Width == 16) return "static_cast<uint16_t>";
+      if (T.Width == 32) return "static_cast<uint32_t>";
+      return "static_cast<uint64_t>";
+    case Type::Bool:
+      return "static_cast<bool>";
+    case Type::I:
+    case Type::I64:
+      return "static_cast<int64_t>";
+    default:
+      return "static_cast<uint64_t>";
     }
   }
 
@@ -1273,13 +1466,15 @@ private:
     if (Ext == "lt_int" || Ext == "lt")
       return "return p0 < p1;";
 
-    // Type conversions
+    // Type conversions - includes SAIL's %type->%type patterns
     if (Ext == "sail_unsigned" || Ext == "unsigned")
       return "return p0;";
     if (Ext == "sail_signed" || Ext == "signed")
       return "return (int64_t)p0;";
     if (Ext == "sign_extend")
       return "return (int64_t)(int8_t)p0;";
+    if (Ext.contains("->"))
+      return "return p0;";
 
     // Bit extraction
     if (Ext == "vector_subrange")
