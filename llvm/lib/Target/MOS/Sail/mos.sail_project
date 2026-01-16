@@ -1,0 +1,11 @@
+// MOS 65xx SAIL Project
+// Build order for the MOS 6502 family specification
+
+prelude.sail
+core.sail
+sys.sail
+instructions.sail
+model.sail
+
+// Variants (uncomment when implemented)
+// variants/65c02.sail
