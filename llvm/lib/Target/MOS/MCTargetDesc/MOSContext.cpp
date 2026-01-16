@@ -9,7 +9,7 @@
 // This file implements MOS::Context using TableGen-generated instruction
 // semantics.
 //
-//===----------------------------------------------------------------------===//
+//===--------------------------------------------Conti--------------------------===//
 
 #include "MOSContext.h"
 #include "MOSMCTargetDesc.h"
@@ -33,7 +33,9 @@ using namespace llvm::MOS;
 //===----------------------------------------------------------------------===//
 
 Context::Context(const MCDisassembler *Disasm, const MCInstrInfo *II)
-    : Disassembler(Disasm), InstrInfo(II) {}
+    : Disassembler(Disasm), InstrInfo(II) {
+  initLets();
+}
 
 Context::~Context() {
   delete Disassembler;
@@ -73,12 +75,12 @@ bool Context::step() {
 
   // Check for pending interrupts before executing the next instruction
   // NMI has priority over IRQ (checked first)
-  if (checkAndHandleNMI()) {
+  if (zcheckAndHandleNMI()) {
     // NMI was taken - add cycles for interrupt handling
     Cycles += 7;
     return true;
   }
-  if (checkAndHandleIRQ()) {
+  if (zcheckAndHandleIRQ()) {
     // IRQ was taken - add cycles for interrupt handling
     Cycles += 7;
     return true;
@@ -115,7 +117,7 @@ bool Context::step() {
         {"X", X, 8},
         {"Y", Y, 8},
         {"S", S, 8},
-        {"P", getP(), 8},
+        {"P", zgetP(), 8},
     };
     Trace->traceInstruction(Cycles, PC, Inst, Regs);
   } else if (Tracing) {
@@ -174,19 +176,17 @@ bool Context::step() {
 // Instruction Execution
 //===----------------------------------------------------------------------===//
 
-void Context::execute(const MCInst &Inst) {
-  unsigned Opcode = Inst.getOpcode();
-
-  switch (Opcode) {
-#define GET_EMULATOR_CASES
+// Pull in the MCInst-to-SAIL mapping function (must be in MOS namespace)
+namespace llvm {
+namespace MOS {
+#define GET_EMULATOR_MAPPING
 #include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_CASES
+#undef GET_EMULATOR_MAPPING
+} // namespace MOS
+} // namespace llvm
 
-  default:
-    // Unknown instruction - halt
-    LLVM_DEBUG(dbgs() << "Unknown opcode: " << Opcode << "\n");
-    Halted = true;
-    ExitCode = 1;
-    break;
-  }
+void Context::execute(const MCInst &Inst) {
+  // Convert MCInst to SAIL instruction variant and execute via SAIL
+  zinstruction SailInst = mcInstToSail(Inst);
+  zexecute(SailInst);
 }

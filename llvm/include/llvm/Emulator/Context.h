@@ -149,6 +149,13 @@ public:
     write(Addr + 1, Value >> 8);
   }
 
+  //===--------------------------------------------------------------------===//
+  // SAIL Wrappers (z-prefixed names for generated code)
+  //===--------------------------------------------------------------------===//
+
+  uint8_t zreadMem(uint64_t Addr) { return read(Addr); }
+  void zwriteMem(uint64_t Addr, uint8_t Value) { write(Addr, Value); }
+
 protected:
   System *Sys = nullptr;
   MCInstPrinter *InstPrinter = nullptr;
