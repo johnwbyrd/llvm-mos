@@ -16,6 +16,7 @@
 
 #include "llvm/Emulator/Context.h"
 #include <cstdint>
+#include <variant>
 
 namespace llvm {
 
@@ -24,6 +25,14 @@ class MCInst;
 class MCInstrInfo;
 
 namespace MOS {
+
+//===----------------------------------------------------------------------===//
+// SAIL-generated types (enums, unions) at namespace scope
+//===----------------------------------------------------------------------===//
+
+#define GET_EMULATOR_TYPES
+#include "MOSGenEmulator.inc"
+#undef GET_EMULATOR_TYPES
 
 /// MOS 6502-family execution context.
 /// Uses TableGen-generated instruction semantics from MOSGenEmulator.inc.
@@ -114,16 +123,39 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
-  // SAIL-generated enums and helper functions
+  // SAIL register aliases (z-prefixed names for generated code)
   //===--------------------------------------------------------------------===//
 
-#define GET_EMULATOR_ENUMS
-#include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_ENUMS
+  uint8_t &zA = A;
+  uint8_t &zX = X;
+  uint8_t &zY = Y;
+  uint8_t &zS = S;
+  uint16_t &zPC = PC;
+  uint16_t &zNextPC = NextPC;
+  bool &zN = N;
+  bool &zV = V;
+  bool &zD = D;
+  bool &zI = I;
+  bool &zZ = Z;
+  bool &zC = C;
+  uint8_t &zIRQPending = IRQPending;
+  uint8_t &zNMIPending = NMIPending;
 
-#define GET_EMULATOR_FUNCTIONS
+  //===--------------------------------------------------------------------===//
+  // SAIL-generated member variables (let bindings)
+  //===--------------------------------------------------------------------===//
+
+#define GET_EMULATOR_MEMBERS
 #include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_FUNCTIONS
+#undef GET_EMULATOR_MEMBERS
+
+  //===--------------------------------------------------------------------===//
+  // SAIL-generated helper functions (as class methods)
+  //===--------------------------------------------------------------------===//
+
+#define GET_EMULATOR_METHODS
+#include "MOSGenEmulator.inc"
+#undef GET_EMULATOR_METHODS
 
 private:
   const MCDisassembler *Disassembler;
