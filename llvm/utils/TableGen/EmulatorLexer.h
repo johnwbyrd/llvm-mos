@@ -22,6 +22,7 @@
 #define LLVM_UTILS_TABLEGEN_EMULATORLEXER_H
 
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 #include <cstdint>
 #include <string>
 
@@ -133,41 +134,17 @@ public:
     char C = Input[Position];
 
     // Single-character tokens
-    if (C == '(') {
-      ++Position;
-      return CurrentToken = Token::LParen;
-    }
-    if (C == ')') {
-      ++Position;
-      return CurrentToken = Token::RParen;
-    }
-    if (C == '{') {
-      ++Position;
-      return CurrentToken = Token::LBrace;
-    }
-    if (C == '}') {
-      ++Position;
-      return CurrentToken = Token::RBrace;
-    }
-    if (C == ':') {
-      ++Position;
-      return CurrentToken = Token::Colon;
-    }
-    if (C == ',') {
-      ++Position;
-      return CurrentToken = Token::Comma;
-    }
-    if (C == ';') {
-      ++Position;
-      return CurrentToken = Token::Semi;
-    }
-    if (C == '.') {
-      ++Position;
-      return CurrentToken = Token::Dot;
-    }
-    if (C == '=') {
-      ++Position;
-      return CurrentToken = Token::Eq;
+    switch (C) {
+    case '(': ++Position; return CurrentToken = Token::LParen;
+    case ')': ++Position; return CurrentToken = Token::RParen;
+    case '{': ++Position; return CurrentToken = Token::LBrace;
+    case '}': ++Position; return CurrentToken = Token::RBrace;
+    case ':': ++Position; return CurrentToken = Token::Colon;
+    case ',': ++Position; return CurrentToken = Token::Comma;
+    case ';': ++Position; return CurrentToken = Token::Semi;
+    case '.': ++Position; return CurrentToken = Token::Dot;
+    case '=': ++Position; return CurrentToken = Token::Eq;
+    default: break;
     }
 
     // Arrow: ->
@@ -326,39 +303,23 @@ private:
             Input[Position] == '$' || Input[Position] == '\''))
       ++Position;
     CurrentText = Input.substr(Start, Position - Start).str();
-    StringRef Ident = CurrentText;
 
-    // Check for keywords
-    if (Ident == "fn")
-      return CurrentToken = Token::KwFn;
-    if (Ident == "val")
-      return CurrentToken = Token::KwVal;
-    if (Ident == "enum")
-      return CurrentToken = Token::KwEnum;
-    if (Ident == "union")
-      return CurrentToken = Token::KwUnion;
-    if (Ident == "register")
-      return CurrentToken = Token::KwRegister;
-    if (Ident == "let")
-      return CurrentToken = Token::KwLet;
-    if (Ident == "jump")
-      return CurrentToken = Token::KwJump;
-    if (Ident == "goto")
-      return CurrentToken = Token::KwGoto;
-    if (Ident == "end")
-      return CurrentToken = Token::KwEnd;
-    if (Ident == "true")
-      return CurrentToken = Token::KwTrue;
-    if (Ident == "false")
-      return CurrentToken = Token::KwFalse;
-    if (Ident == "is")
-      return CurrentToken = Token::KwIs;
-    if (Ident == "as")
-      return CurrentToken = Token::KwAs;
-    if (Ident == "return")
-      return CurrentToken = Token::KwReturn;
-
-    return CurrentToken = Token::Ident;
+    return CurrentToken = StringSwitch<Token>(CurrentText)
+        .Case("fn", Token::KwFn)
+        .Case("val", Token::KwVal)
+        .Case("enum", Token::KwEnum)
+        .Case("union", Token::KwUnion)
+        .Case("register", Token::KwRegister)
+        .Case("let", Token::KwLet)
+        .Case("jump", Token::KwJump)
+        .Case("goto", Token::KwGoto)
+        .Case("end", Token::KwEnd)
+        .Case("true", Token::KwTrue)
+        .Case("false", Token::KwFalse)
+        .Case("is", Token::KwIs)
+        .Case("as", Token::KwAs)
+        .Case("return", Token::KwReturn)
+        .Default(Token::Ident);
   }
 };
 
