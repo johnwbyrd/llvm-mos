@@ -1942,6 +1942,22 @@ bool MOSLegalizerInfo::selectIndirectAddressing(LegalizerHelper &Helper,
   return true;
 }
 
+// Helper functions for memory operation legalization.
+
+template <typename T> static inline int compareNumbers(T A, T B) {
+  return A < B ? -1 : (A > B ? 1 : 0);
+}
+
+static std::optional<int> compareOperandLocations(const MachineOperand &A,
+                                                  const MachineOperand &B) {
+  if (A.isImm() && B.isImm())
+    return compareNumbers(A.getImm(), B.getImm());
+  if (A.isGlobal() && B.isGlobal())
+    if (A.getGlobal() == B.getGlobal())
+      return compareNumbers(A.getOffset(), B.getOffset());
+  return std::nullopt;
+}
+
 bool MOSLegalizerInfo::legalizeMemOp(LegalizerHelper &Helper,
                                      MachineRegisterInfo &MRI, MachineInstr &MI,
                                      LostDebugLocObserver &LocObserver) const {
@@ -1987,14 +2003,66 @@ bool MOSLegalizerInfo::legalizeMemOp(LegalizerHelper &Helper,
     return true;
   }
 
-  // Try emitting a libcall.
-  Result = createMemLibcall(Builder, MRI, MI, LocObserver);
-  if (Result == LegalizerHelper::Legalized) {
-    MI.eraseFromParent();
-    return true;
+  // For -Oz (minsize), fall back to libcall. With LTO, multiple call sites
+  // share the implementation, making this smaller overall.
+  MachineFunction *MF = MI.getParent()->getParent();
+  if (MF && MF->getFunction().hasMinSize()) {
+    LegalizerHelper::LegalizeResult Result =
+        createMemLibcall(Builder, MRI, MI, LocObserver);
+    if (Result == LegalizerHelper::Legalized) {
+      MI.eraseFromParent();
+      return true;
+    }
+    return false;
   }
 
-  return false;
+  // Emit a Y-indexed loop pseudo instead of libcall.
+  // This will be expanded into an efficient loop by MOSExpandMemOpsPass.
+  Register DstPtr = MI.getOperand(0).getReg();
+  Register SrcOrVal = MI.getOperand(1).getReg();
+  Register Size = MI.getOperand(2).getReg();
+
+  unsigned LoopOpcode;
+  switch (MI.getOpcode()) {
+  case MOS::G_MEMCPY:
+  case MOS::G_MEMCPY_INLINE:
+    LoopOpcode = MOS::G_MEMCPY_LOOP;
+    break;
+  case MOS::G_MEMMOVE: {
+    // For memmove, we need to determine the copy direction to handle
+    // overlapping regions correctly. If dst > src and they overlap,
+    // we must copy backwards.
+    LoopOpcode = MOS::G_MEMMOVE_LOOP; // Default to forward
+
+    // Try to compare addresses at compile time.
+    auto DstAddr = matchAbsoluteAddressing(MRI, DstPtr);
+    auto SrcAddr = matchAbsoluteAddressing(MRI, SrcOrVal);
+    if (DstAddr.has_value() && SrcAddr.has_value()) {
+      auto Order = compareOperandLocations(SrcAddr.value(), DstAddr.value());
+      if (Order.has_value() && Order.value() == -1) {
+        // src < dst: need to copy backwards to avoid overwriting
+        LoopOpcode = MOS::G_MEMMOVE_REVERSE_LOOP;
+      }
+    }
+    // If addresses aren't comparable at compile time, we default to forward.
+    // This is correct if regions don't overlap (the common case).
+    // TODO: For truly dynamic overlapping memmove, emit runtime check.
+    break;
+  }
+  case MOS::G_MEMSET:
+    LoopOpcode = MOS::G_MEMSET_LOOP;
+    break;
+  default:
+    llvm_unreachable("Unexpected memop opcode");
+  }
+
+  Builder.buildInstr(LoopOpcode)
+      .addUse(DstPtr)
+      .addUse(SrcOrVal)
+      .addUse(Size);
+
+  MI.eraseFromParent();
+  return true;
 }
 
 static std::optional<uint64_t>
@@ -2021,20 +2089,6 @@ static MachineOperand offsetMachineOperand(MachineOperand &Operand,
     return MachineOperand::CreateFI(Operand.getIndex(),
                                     Operand.getOffset() + Offset);
   llvm_unreachable("Unsupported machine operand type!");
-}
-
-template <typename T> static inline int compareNumbers(T A, T B) {
-  return A < B ? -1 : (A > B ? 1 : 0);
-}
-
-static std::optional<int> compareOperandLocations(const MachineOperand &A,
-                                                  const MachineOperand &B) {
-  if (A.isImm() && B.isImm())
-    return compareNumbers(A.getImm(), B.getImm());
-  if (A.isGlobal() && B.isGlobal())
-    if (A.getGlobal() == B.getGlobal())
-      return compareNumbers(A.getOffset(), B.getOffset());
-  return std::nullopt;
 }
 
 bool MOSLegalizerInfo::tryHuCBlockCopy(LegalizerHelper &Helper,

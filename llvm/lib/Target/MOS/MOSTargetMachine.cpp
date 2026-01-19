@@ -36,6 +36,7 @@
 #include "MOS.h"
 #include "MOSCombiner.h"
 #include "MOSCopyOpt.h"
+#include "MOSExpandMemOps.h"
 #include "MOSIndexIV.h"
 #include "MOSInsertCopies.h"
 #include "MOSInternalize.h"
@@ -61,6 +62,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMOSTarget() {
   initializeGlobalISel(PR);
   initializeMOSCombinerPass(PR);
   initializeMOSCopyOptPass(PR);
+  initializeMOSExpandMemOpsPass(PR);
   initializeMOSInsertCopiesPass(PR);
   initializeMOSInternalizePass(PR);
   initializeMOSLateOptimizationPass(PR);
@@ -310,6 +312,11 @@ void MOSPassConfig::addPrePEI() {
 
 void MOSPassConfig::addPreSched2() {
   addPass(createMOSPostRAScavengingPass());
+
+  // Expand memory operation pseudos into Y-indexed loops.
+  // This must run before FinalizeISel so that CmpBr* pseudos get lowered.
+  addPass(createMOSExpandMemOpsPass());
+
   // Lower control flow pseudos.
   addPass(&FinalizeISelID);
   // Lower pseudos produced by control flow pseudos.

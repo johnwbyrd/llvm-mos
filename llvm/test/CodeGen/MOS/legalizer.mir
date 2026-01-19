@@ -2932,15 +2932,10 @@ body: |
     ; CHECK-NEXT: [[INTTOPTR1:%[0-9]+]]:_(p0) = G_INTTOPTR [[MV1]](s16)
     ; CHECK-NEXT: [[C3:%[0-9]+]]:_(s8) = G_CONSTANT i8 -128
     ; CHECK-NEXT: [[C4:%[0-9]+]]:_(s8) = G_CONSTANT i8 1
-    ; CHECK-NEXT: [[MV2:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C]](s8), [[C]](s8)
-    ; CHECK-NEXT: ADJCALLSTACKDOWN 0, 0, implicit-def $rs0, implicit $rs0
-    ; CHECK-NEXT: $rs1 = COPY [[INTTOPTR]](p0)
-    ; CHECK-NEXT: $rs2 = COPY [[INTTOPTR1]](p0)
-    ; CHECK-NEXT: $a = COPY [[C3]](s8)
-    ; CHECK-NEXT: $x = COPY [[C4]](s8)
-    ; CHECK-NEXT: JSR &memcpy, mos_csr, implicit $rs1, implicit $rs2, implicit $a, implicit $x
-    ; CHECK-NEXT: ADJCALLSTACKUP 0, 0, implicit-def $rs0, implicit $rs0
-    ; CHECK-NEXT: RTS implicit [[MV2]](s16)
+    ; CHECK-NEXT: [[MV2:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C3]](s8), [[C4]](s8)
+    ; CHECK-NEXT: [[MV3:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C]](s8), [[C]](s8)
+    ; CHECK-NEXT: G_MEMCPY_LOOP [[INTTOPTR]](p0), [[INTTOPTR1]], [[MV2]](s16)
+    ; CHECK-NEXT: RTS implicit [[MV3]](s16)
     %1:_(s16) = G_CONSTANT i16 8960
     %0:_(p0) = G_INTTOPTR %1:_(s16)
     %3:_(s16) = G_CONSTANT i16 8704
@@ -2993,15 +2988,10 @@ body: |
     ; CHECK-NEXT: [[INTTOPTR1:%[0-9]+]]:_(p0) = G_INTTOPTR [[MV1]](s16)
     ; CHECK-NEXT: [[C3:%[0-9]+]]:_(s8) = G_CONSTANT i8 -128
     ; CHECK-NEXT: [[C4:%[0-9]+]]:_(s8) = G_CONSTANT i8 1
-    ; CHECK-NEXT: [[MV2:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C]](s8), [[C]](s8)
-    ; CHECK-NEXT: ADJCALLSTACKDOWN 0, 0, implicit-def $rs0, implicit $rs0
-    ; CHECK-NEXT: $rs1 = COPY [[INTTOPTR]](p0)
-    ; CHECK-NEXT: $rs2 = COPY [[INTTOPTR1]](p0)
-    ; CHECK-NEXT: $a = COPY [[C3]](s8)
-    ; CHECK-NEXT: $x = COPY [[C4]](s8)
-    ; CHECK-NEXT: JSR &memmove, mos_csr, implicit $rs1, implicit $rs2, implicit $a, implicit $x
-    ; CHECK-NEXT: ADJCALLSTACKUP 0, 0, implicit-def $rs0, implicit $rs0
-    ; CHECK-NEXT: RTS implicit [[MV2]](s16)
+    ; CHECK-NEXT: [[MV2:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C3]](s8), [[C4]](s8)
+    ; CHECK-NEXT: [[MV3:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C]](s8), [[C]](s8)
+    ; CHECK-NEXT: G_MEMMOVE_REVERSE_LOOP [[INTTOPTR]](p0), [[INTTOPTR1]], [[MV2]](s16)
+    ; CHECK-NEXT: RTS implicit [[MV3]](s16)
     %1:_(s16) = G_CONSTANT i16 8960
     %0:_(p0) = G_INTTOPTR %1:_(s16)
     %3:_(s16) = G_CONSTANT i16 8704
@@ -3045,15 +3035,10 @@ body: |
     ; CHECK-NEXT: [[INTTOPTR:%[0-9]+]]:_(p0) = G_INTTOPTR [[MV]](s16)
     ; CHECK-NEXT: [[C2:%[0-9]+]]:_(s8) = G_CONSTANT i8 -128
     ; CHECK-NEXT: [[C3:%[0-9]+]]:_(s8) = G_CONSTANT i8 1
-    ; CHECK-NEXT: [[MV1:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C]](s8), [[C]](s8)
-    ; CHECK-NEXT: ADJCALLSTACKDOWN 0, 0, implicit-def $rs0, implicit $rs0
-    ; CHECK-NEXT: $rs1 = COPY [[INTTOPTR]](p0)
-    ; CHECK-NEXT: $a = COPY [[C]](s8)
-    ; CHECK-NEXT: $x = COPY [[C2]](s8)
-    ; CHECK-NEXT: $rc4 = COPY [[C3]](s8)
-    ; CHECK-NEXT: JSR &__memset, mos_csr, implicit $rs1, implicit $a, implicit $x, implicit $rc4
-    ; CHECK-NEXT: ADJCALLSTACKUP 0, 0, implicit-def $rs0, implicit $rs0
-    ; CHECK-NEXT: RTS implicit [[MV1]](s16)
+    ; CHECK-NEXT: [[MV1:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C2]](s8), [[C3]](s8)
+    ; CHECK-NEXT: [[MV2:%[0-9]+]]:_(s16) = G_MERGE_VALUES [[C]](s8), [[C]](s8)
+    ; CHECK-NEXT: G_MEMSET_LOOP [[INTTOPTR]](p0), [[C]](s8), [[MV1]](s16)
+    ; CHECK-NEXT: RTS implicit [[MV2]](s16)
     %1:_(s16) = G_CONSTANT i16 8960
     %0:_(p0) = G_INTTOPTR %1:_(s16)
     %2:_(s8) = G_CONSTANT i8 0

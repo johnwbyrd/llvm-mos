@@ -192,3 +192,52 @@ def G_BRINDIRECT_IDX : MOSGenericInstruction {
   let isBarrier = true;
   let isIndirectBranch = true;
 }
+
+//===---------------------------------------------------------------------===//
+// Memory Operations
+//===---------------------------------------------------------------------===//
+// These generic instructions represent memory copy/set/move operations that
+// will be expanded into Y-indexed loops after register allocation. They are
+// emitted by the legalizer when the size exceeds the inline threshold but
+// doesn't qualify for other special handling (e.g., HuC block copy).
+
+// Memory copy using Y-indexed indirect addressing.
+// Operands: dst pointer, src pointer, size (16-bit)
+def G_MEMCPY_LOOP : MOSGenericInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptype0:$dst, ptype0:$src, type1:$size);
+  let hasSideEffects = true;
+  let mayLoad = true;
+  let mayStore = true;
+}
+
+// Memory set using Y-indexed indirect addressing.
+// Operands: dst pointer, fill value (8-bit), size (16-bit)
+def G_MEMSET_LOOP : MOSGenericInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptype0:$dst, type1:$val, type2:$size);
+  let hasSideEffects = true;
+  let mayStore = true;
+}
+
+// Memory move forward using Y-indexed indirect addressing.
+// Used when dst <= src or regions don't overlap.
+// Operands: dst pointer, src pointer, size (16-bit)
+def G_MEMMOVE_LOOP : MOSGenericInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptype0:$dst, ptype0:$src, type1:$size);
+  let hasSideEffects = true;
+  let mayLoad = true;
+  let mayStore = true;
+}
+
+// Memory move reverse using Y-indexed indirect addressing.
+// Used when dst > src and regions overlap (copy backwards).
+// Operands: dst pointer, src pointer, size (16-bit)
+def G_MEMMOVE_REVERSE_LOOP : MOSGenericInstruction {
+  let OutOperandList = (outs);
+  let InOperandList = (ins ptype0:$dst, ptype0:$src, type1:$size);
+  let hasSideEffects = true;
+  let mayLoad = true;
+  let mayStore = true;
+}

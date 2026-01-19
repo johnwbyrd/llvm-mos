@@ -96,6 +96,7 @@ private:
   bool selectIncDecMB(MachineInstr &MI);
   bool selectUnMergeValues(MachineInstr &MI);
   bool selectBrIndirect(MachineInstr &MI);
+  bool selectMemLoop(MachineInstr &MI);
 
   // Select instructions that correspond 1:1 to a target instruction.
   bool selectGeneric(MachineInstr &MI);
@@ -246,6 +247,12 @@ bool MOSInstructionSelector::select(MachineInstr &MI) {
 
   case MOS::G_BRINDIRECT:
     return selectBrIndirect(MI);
+
+  case MOS::G_MEMCPY_LOOP:
+  case MOS::G_MEMSET_LOOP:
+  case MOS::G_MEMMOVE_LOOP:
+  case MOS::G_MEMMOVE_REVERSE_LOOP:
+    return selectMemLoop(MI);
 
   case MOS::G_IMPLICIT_DEF:
   case MOS::G_LOAD_ZP_IDX:
@@ -2016,6 +2023,75 @@ bool MOSInstructionSelector::selectGeneric(MachineInstr &MI) {
     return false;
   // Make sure that the outputs have register classes.
   constrainGenericOp(MI);
+  return true;
+}
+
+bool MOSInstructionSelector::selectMemLoop(MachineInstr &MI) {
+  MachineIRBuilder Builder(MI);
+  MachineRegisterInfo &MRI = *Builder.getMRI();
+  LLT S8 = LLT::scalar(8);
+
+  // Get operands from the generic instruction.
+  // G_MEMCPY_LOOP/G_MEMMOVE_LOOP: dst, src, size
+  // G_MEMSET_LOOP: dst, val, size
+  Register DstPtr = MI.getOperand(0).getReg();
+  Register SrcOrVal = MI.getOperand(1).getReg();
+  Register Size = MI.getOperand(2).getReg();
+
+  // Split the 16-bit size into low and high bytes.
+  // Create virtual registers with proper LLT types for GlobalISel.
+  Register SizeLo = MRI.createGenericVirtualRegister(S8);
+  Register SizeHi = MRI.createGenericVirtualRegister(S8);
+
+  // Use G_UNMERGE_VALUES to split the 16-bit size.
+  auto Unmerge = Builder.buildUnmerge({SizeLo, SizeHi}, Size);
+
+  // Select the unmerge instruction.
+  if (!selectUnMergeValues(*Unmerge))
+    return false;
+
+  // Determine the target pseudo opcode.
+  unsigned PseudoOpcode;
+  switch (MI.getOpcode()) {
+  default:
+    llvm_unreachable("Unexpected opcode");
+  case MOS::G_MEMCPY_LOOP:
+    PseudoOpcode = MOS::MemCpy;
+    break;
+  case MOS::G_MEMMOVE_LOOP:
+    PseudoOpcode = MOS::MemMove;
+    break;
+  case MOS::G_MEMMOVE_REVERSE_LOOP:
+    PseudoOpcode = MOS::MemMoveReverse;
+    break;
+  case MOS::G_MEMSET_LOOP:
+    PseudoOpcode = MOS::MemSet;
+    break;
+  }
+
+  // Build the target pseudo instruction.
+  auto Pseudo = Builder.buildInstr(PseudoOpcode)
+                    .addUse(DstPtr)
+                    .addUse(SrcOrVal)
+                    .addUse(SizeLo)
+                    .addUse(SizeHi);
+
+  // Constrain the pointer operands to Imag16.
+  constrainOperandRegClass(Pseudo->getOperand(0), MOS::Imag16RegClass);
+  if (MI.getOpcode() != MOS::G_MEMSET_LOOP) {
+    // For memcpy/memmove, second operand is also a pointer.
+    constrainOperandRegClass(Pseudo->getOperand(1), MOS::Imag16RegClass);
+  } else {
+    // For memset, second operand is the fill value (8-bit).
+    constrainOperandRegClass(Pseudo->getOperand(1), MOS::Anyi8RegClass);
+  }
+  // Constrain size operands to Imag8 (zero-page registers).
+  // This is required because the loop uses CmpBrImag8 which compares
+  // Y against a zero-page location.
+  constrainOperandRegClass(Pseudo->getOperand(2), MOS::Imag8RegClass);
+  constrainOperandRegClass(Pseudo->getOperand(3), MOS::Imag8RegClass);
+
+  MI.eraseFromParent();
   return true;
 }
 
