@@ -93,7 +93,7 @@ public:
       errs() << "DEBUG: Parsing complete. Tokens processed: "
              << Lex.getTokenCount() << "\n";
       errs() << "DEBUG: Functions: " << IR.Functions.size()
-             << ", Unions: " << IR.Unions.size()
+             << ", Types: " << IR.Types.size()
              << ", Vals: " << IR.Vals.size() << "\n";
     }
 
