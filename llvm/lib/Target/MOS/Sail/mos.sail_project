@@ -7,5 +7,24 @@ sys.sail
 instructions.sail
 model.sail
 
-// Variants (uncomment when implemented)
-// variants/65c02.sail
+// =============================================================================
+// Variants - Uncomment the chain for your target CPU
+// =============================================================================
+//
+// Inheritance hierarchy:
+//   6502 (base - always included above)
+//     └── 65C02 (CMOS improvements + new instructions)
+//           └── R65C02 (Rockwell bit manipulation: RMB, SMB, BBR, BBS)
+//                 └── W65C02 (WDC: WAI, STP, bug fixes)
+//
+// For 65C02:
+//   Variants/65c02.sail
+//
+// For R65C02 (includes 65C02):
+//   Variants/65c02.sail
+//   Variants/r65c02.sail
+//
+// For W65C02 (includes R65C02 + 65C02):
+//   Variants/65c02.sail
+//   Variants/r65c02.sail
+//   Variants/w65c02.sail
