@@ -229,8 +229,34 @@ inline StringRef getPrimitiveImpl(StringRef ExternalName) {
       {"and_bool", "return p0 && p1;"},
       {"or_bool", "return p0 || p1;"},
 
-      // Misc
+      // Integer operations
+      {"eq_int", "return p0 == p1;"},
+      {"neq_int", "return p0 != p1;"},
+      {"add_int", "return p0 + p1;"},
+      {"sub_int", "return p0 - p1;"},
+      {"mult_int", "return p0 * p1;"},
+      {"neg_int", "return -p0;"},
+
+      // Undefined/default values
       {"undefined_bitvector", "return 0;"},
+      {"undefined_int", "return 0;"},
+      {"undefined_bool", "return false;"},
+      {"undefined_unit", "return;"},
+
+      // Zero/sign extension
+      {"zero_extend", "return p0;"},
+
+      // Length (returns bit width - for now just return a constant)
+      {"length", "return sizeof(p0) * 8;"},
+
+      // Monomorphization (identity for concrete types)
+      {"monomorphize", "return p0;"},
+
+      // Cycle counting (no-op for basic emulator)
+      {"cycle_count", "return;"},
+
+      // Register reset (no-op - user should override)
+      {"reset_registers", "return;"},
   };
 
   auto It = Primitives.find(ExternalName);
@@ -257,16 +283,21 @@ class CodeGen {
   StringMap<const ValDecl *> ValsByName;
   StringMap<const UnionDef *> UnionsByName;
   StringSet<> UnionVariantNames;
+  StringSet<> StructNames;
 
 public:
   CodeGen(const JibIR &IR, raw_ostream &OS) : IR(IR), OS(OS) {
     // Build lookup maps
     for (const auto &Val : IR.Vals)
       ValsByName[Val.Name] = &Val;
-    for (const auto &Union : IR.Unions) {
-      UnionsByName[Union.Name] = &Union;
-      for (const auto &Variant : Union.Variants)
-        UnionVariantNames.insert(Variant.first);
+    for (const auto &TypeDef : IR.Types) {
+      if (auto *Union = std::get_if<UnionDef>(&TypeDef)) {
+        UnionsByName[Union->Name] = Union;
+        for (const auto &Variant : Union->Variants)
+          UnionVariantNames.insert(Variant.first);
+      } else if (auto *Struct = std::get_if<StructDef>(&TypeDef)) {
+        StructNames.insert(Struct->Name);
+      }
     }
   }
 
@@ -276,9 +307,12 @@ public:
     const UnionDef *InstrUnion = nullptr;
     const FnDef *ExecuteFn = nullptr;
 
-    for (const auto &Union : IR.Unions)
-      if (Union.Name == "zinstruction")
-        InstrUnion = &Union;
+    for (const auto &TypeDef : IR.Types) {
+      if (auto *Union = std::get_if<UnionDef>(&TypeDef)) {
+        if (Union->Name == "zinstruction")
+          InstrUnion = Union;
+      }
+    }
     for (const auto &Func : IR.Functions)
       if (Func.Name == "zexecute")
         ExecuteFn = &Func;
@@ -343,22 +377,29 @@ private:
     }
     OS << ">;\n\n";
 
-    // Emit other unions
-    for (const auto &Union : IR.Unions) {
-      if (Union.Name == InstrUnion.Name)
-        continue;
-      OS << "// " << Union.Name << "\n";
-      for (const auto &Variant : Union.Variants)
-        emitVariantStruct(Variant.first, Variant.second);
-      OS << "using " << Union.Name << " = std::variant<";
-      First = true;
-      for (const auto &Variant : Union.Variants) {
-        if (!First)
-          OS << ", ";
-        First = false;
-        OS << Variant.first;
+    // Emit other types in declaration order (preserves dependencies)
+    for (const auto &TypeDef : IR.Types) {
+      if (auto *Union = std::get_if<UnionDef>(&TypeDef)) {
+        if (Union->Name == InstrUnion.Name)
+          continue;
+        OS << "// " << Union->Name << "\n";
+        for (const auto &Variant : Union->Variants)
+          emitVariantStruct(Variant.first, Variant.second);
+        OS << "using " << Union->Name << " = std::variant<";
+        First = true;
+        for (const auto &Variant : Union->Variants) {
+          if (!First)
+            OS << ", ";
+          First = false;
+          OS << Variant.first;
+        }
+        OS << ">;\n\n";
+      } else if (auto *Struct = std::get_if<StructDef>(&TypeDef)) {
+        OS << "struct " << Struct->Name << " {\n";
+        for (const auto &Field : Struct->Fields)
+          OS << "  " << Field.second.toCppField() << " " << Field.first << ";\n";
+        OS << "};\n\n";
       }
-      OS << ">;\n\n";
     }
 
     // Emit enums
@@ -376,12 +417,17 @@ private:
   //===--------------------------------------------------------------------===//
 
   void emitMembers() {
-    if (IR.Lets.empty())
-      return;
-    OS << "// Let bindings (initialized by initLets())\n";
-    for (const auto &Let : IR.Lets)
-      OS << Let.Ty.toCpp() << " " << Let.Name << ";\n";
-    OS << "\n";
+    // NOTE: Registers are NOT emitted here - the consuming class must define them
+    // (with z-prefixed aliases) because the register set is target-specific
+    // and often has additional semantics (reset values, interrupt state, etc.)
+
+    // Emit let bindings as member variables
+    if (!IR.Lets.empty()) {
+      OS << "// Let bindings (initialized by initLets())\n";
+      for (const auto &Let : IR.Lets)
+        OS << Let.Ty.toCpp() << " " << Let.Name << ";\n";
+      OS << "\n";
+    }
   }
 
   //===--------------------------------------------------------------------===//
@@ -396,19 +442,30 @@ private:
     for (const auto &Func : IR.Functions)
       HasBody.insert(Func.Name);
 
+    // Track emitted functions to avoid duplicates
+    StringSet<> Emitted;
+
     // Emit external primitives without IR bodies
     for (const auto &Val : IR.Vals) {
       if (Val.ExternalName.empty() || HasBody.contains(Val.Name))
         continue;
+      if (Emitted.contains(Val.Name))
+        continue; // Skip duplicates
 
       StringRef Impl = getPrimitiveImpl(Val.ExternalName);
       if (Impl.empty())
         continue;
 
+      Emitted.insert(Val.Name);
       OS << Val.ReturnType.toCpp() << " " << Val.Name << "(";
+      bool First = true;
       for (size_t I = 0; I < Val.ParamTypes.size(); ++I) {
-        if (I > 0)
+        // Skip unit-typed parameters (void isn't valid as a parameter type)
+        if (Val.ParamTypes[I].Kind == Type::TK_Unit)
+          continue;
+        if (!First)
           OS << ", ";
+        First = false;
         OS << Val.ParamTypes[I].toCpp() << " p" << I;
       }
       OS << ") { " << Impl << " }\n";
@@ -497,7 +554,7 @@ private:
       if (Inst.Ty.Kind == Type::TK_Unit) {
         UnitVars.insert(VarName);
       } else if (!DeclaredVars.contains(VarName)) {
-        OS << "  " << Inst.Ty.toCpp() << " " << VarName << ";\n";
+        OS << "  [[maybe_unused]] " << Inst.Ty.toCpp() << " " << VarName << ";\n";
         DeclaredVars.insert(VarName);
       }
     }
@@ -564,7 +621,8 @@ private:
 
     case Instr::IK_Return: {
       std::string Value = emitExpr(Inst.Value, ArgName, InstrName);
-      if (Value.empty() || Value == "{}")
+      // Return void if the value is unit (empty, {}, or a unit-typed variable)
+      if (Value.empty() || Value == "{}" || UnitVars.contains(Value))
         OS << "  return;\n";
       else
         OS << "  return " << Value << ";\n";
@@ -675,6 +733,8 @@ private:
 
   std::string emitCall(const Expr &E, StringRef ArgName, StringRef InstrName) {
     std::string FnName = E.Text;
+    bool IsUnionVariant = UnionVariantNames.contains(FnName);
+    bool IsStruct = StructNames.contains(FnName);
 
     // Build argument list
     std::string ArgsStr;
@@ -682,12 +742,14 @@ private:
       if (I > 0)
         ArgsStr += ", ";
       std::string Arg = emitExpr(E.Args[I], ArgName, InstrName);
-      if (Arg != "{}")
+      // For structs, include {} for unit values to match field count.
+      // For union variants and function calls, skip unit arguments.
+      if (Arg != "{}" || IsStruct)
         ArgsStr += Arg;
     }
 
-    // Union variants use brace init, functions use parens
-    if (UnionVariantNames.contains(FnName))
+    // Union variants and structs use brace init, functions use parens
+    if (IsUnionVariant || IsStruct)
       return FnName + "{" + ArgsStr + "}";
     return FnName + "(" + ArgsStr + ")";
   }
