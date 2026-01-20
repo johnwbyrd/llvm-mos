@@ -55,11 +55,17 @@ public:
           llvm::errs() << "DEBUG Parser: parsed enum, total="
                        << IR.Enums.size() << "\n";
       } else if (Lex.at(Token::KwUnion)) {
-        IR.Unions.push_back(parseUnion());
+        IR.Types.push_back(parseUnion());
         if (DebugEnabled)
           llvm::errs() << "DEBUG Parser: parsed union '"
-                       << IR.Unions.back().Name << "', total="
-                       << IR.Unions.size() << "\n";
+                       << std::get<UnionDef>(IR.Types.back()).Name << "', total="
+                       << IR.Types.size() << "\n";
+      } else if (Lex.at(Token::KwStruct)) {
+        IR.Types.push_back(parseStruct());
+        if (DebugEnabled)
+          llvm::errs() << "DEBUG Parser: parsed struct '"
+                       << std::get<StructDef>(IR.Types.back()).Name << "', total="
+                       << IR.Types.size() << "\n";
       } else if (Lex.at(Token::KwVal)) {
         IR.Vals.push_back(parseVal());
         if (DebugEnabled)
@@ -364,28 +370,39 @@ private:
     return Result;
   }
 
-  UnionDef parseUnion() {
-    UnionDef Result;
-    Lex.advance(); // union
-    Result.Name = Lex.text().str();
-    Lex.advance();
+  /// Parse a brace-enclosed list of name: type pairs (used by both union and struct).
+  std::vector<std::pair<std::string, Type>> parseNameTypePairs() {
+    std::vector<std::pair<std::string, Type>> Result;
     Lex.consume(Token::LBrace);
     while (!Lex.at(Token::RBrace) && !Lex.atEnd()) {
       if (Lex.at(Token::Ident)) {
         std::string Name = Lex.text().str();
         Lex.advance();
         if (!Lex.consume(Token::Colon)) {
-          continue; // Skip invalid variant
+          continue;
         }
-        Type Ty = parseType();
-        Result.Variants.emplace_back(Name, Ty);
+        Result.emplace_back(Name, parseType());
       } else {
-        Lex.advance(); // Skip unexpected token
+        Lex.advance();
       }
       Lex.consume(Token::Comma);
     }
     Lex.consume(Token::RBrace);
     return Result;
+  }
+
+  UnionDef parseUnion() {
+    Lex.advance(); // union
+    std::string Name = Lex.text().str();
+    Lex.advance();
+    return {Name, parseNameTypePairs()};
+  }
+
+  StructDef parseStruct() {
+    Lex.advance(); // struct
+    std::string Name = Lex.text().str();
+    Lex.advance();
+    return {Name, parseNameTypePairs()};
   }
 
   ValDecl parseVal() {
