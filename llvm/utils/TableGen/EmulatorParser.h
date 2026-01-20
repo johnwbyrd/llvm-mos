@@ -24,30 +24,65 @@ namespace emu {
 class Parser {
   Lexer &Lex;
   int CurrentLineNumber = 0;
+  bool DebugEnabled = false;
 
 public:
   explicit Parser(Lexer &L) : Lex(L) {}
 
+  /// Enable debug output for parser.
+  void setDebug(bool Enable) { DebugEnabled = Enable; }
+
   /// Parse the complete IR and return the AST.
   JibIR parse() {
     JibIR IR;
+    uint64_t LoopCount = 0;
     while (!Lex.atEnd()) {
+      ++LoopCount;
+      if (DebugEnabled && (LoopCount % 10000 == 0)) {
+        llvm::errs() << "DEBUG Parser: loop " << LoopCount
+                     << ", pos " << Lex.getPosition()
+                     << ", token " << Lexer::tokenName(Lex.token())
+                     << " '" << Lex.text() << "'\n";
+      }
       if (Lex.at(Token::KwRegister)) {
         IR.Registers.push_back(parseRegister());
+        if (DebugEnabled)
+          llvm::errs() << "DEBUG Parser: parsed register, total="
+                       << IR.Registers.size() << "\n";
       } else if (Lex.at(Token::KwEnum)) {
         IR.Enums.push_back(parseEnum());
+        if (DebugEnabled)
+          llvm::errs() << "DEBUG Parser: parsed enum, total="
+                       << IR.Enums.size() << "\n";
       } else if (Lex.at(Token::KwUnion)) {
         IR.Unions.push_back(parseUnion());
+        if (DebugEnabled)
+          llvm::errs() << "DEBUG Parser: parsed union '"
+                       << IR.Unions.back().Name << "', total="
+                       << IR.Unions.size() << "\n";
       } else if (Lex.at(Token::KwVal)) {
         IR.Vals.push_back(parseVal());
+        if (DebugEnabled)
+          llvm::errs() << "DEBUG Parser: parsed val '"
+                       << IR.Vals.back().Name << "', total="
+                       << IR.Vals.size() << "\n";
       } else if (Lex.at(Token::KwFn)) {
         IR.Functions.push_back(parseFunction());
+        if (DebugEnabled)
+          llvm::errs() << "DEBUG Parser: parsed fn '"
+                       << IR.Functions.back().Name << "', total="
+                       << IR.Functions.size() << "\n";
       } else if (Lex.at(Token::KwLet)) {
         IR.Lets.push_back(parseLet());
+        if (DebugEnabled)
+          llvm::errs() << "DEBUG Parser: parsed let, total="
+                       << IR.Lets.size() << "\n";
       } else {
         Lex.advance();
       }
     }
+    if (DebugEnabled)
+      llvm::errs() << "DEBUG Parser: done, total loops=" << LoopCount << "\n";
     return IR;
   }
 
@@ -137,6 +172,25 @@ private:
       // Operator: @op(args) or @op::<N>(args)
       Result.Kind = Expr::EK_Op;
       parseOperatorExpr(Result);
+    } else if (Lex.at(Token::KwStruct)) {
+      // Struct literal: struct TypeName { field1 = expr1, field2 = expr2 }
+      Lex.advance(); // consume 'struct'
+      Result.Kind = Expr::EK_Call; // Treat as constructor call
+      Result.Text = Lex.text().str(); // Type name
+      Lex.advance();
+      // Parse brace-enclosed field assignments
+      if (Lex.consume(Token::LBrace)) {
+        while (!Lex.at(Token::RBrace) && !Lex.atEnd()) {
+          if (Lex.at(Token::Ident)) {
+            Lex.advance(); // field name (we ignore it, just need the value)
+            if (Lex.consume(Token::Eq)) {
+              Result.Args.push_back(parseExpr());
+            }
+          }
+          Lex.consume(Token::Comma);
+        }
+        Lex.consume(Token::RBrace);
+      }
     } else if (Lex.at(Token::Ident)) {
       Result.Kind = Expr::EK_Ident;
       Result.Text = Lex.text().str();
