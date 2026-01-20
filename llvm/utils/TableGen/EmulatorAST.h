@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace llvm {
@@ -39,6 +40,7 @@ struct Type {
   std::string Name;
 
   /// Convert this SAIL type to its C++ representation.
+  /// For struct fields, use toCppField() instead since void isn't valid there.
   std::string toCpp() const {
     switch (Kind) {
     case TK_I:
@@ -66,6 +68,13 @@ struct Type {
       return Name;
     }
     return "uint64_t";
+  }
+
+  /// Convert to C++ for use as a struct field (unit becomes empty struct).
+  std::string toCppField() const {
+    if (Kind == TK_Unit)
+      return "std::monostate";
+    return toCpp();
   }
 };
 
@@ -173,6 +182,12 @@ struct UnionDef {
   std::vector<std::pair<std::string, Type>> Variants;
 };
 
+/// Struct (product type) definition.
+struct StructDef {
+  std::string Name;
+  std::vector<std::pair<std::string, Type>> Fields;
+};
+
 /// Register definition.
 struct RegisterDef {
   std::string Name;
@@ -190,11 +205,15 @@ struct LetDef {
 // JibIR - Complete Parsed IR
 //===----------------------------------------------------------------------===//
 
+/// A type definition - either a union or a struct, stored in declaration order.
+using TypeDef = std::variant<UnionDef, StructDef>;
+
 /// Container for all parsed SAIL Jib IR definitions.
 struct JibIR {
   std::vector<RegisterDef> Registers;
   std::vector<EnumDef> Enums;
-  std::vector<UnionDef> Unions;
+  /// Type definitions (unions and structs) in declaration order.
+  std::vector<TypeDef> Types;
   std::vector<ValDecl> Vals;
   std::vector<FnDef> Functions;
   std::vector<LetDef> Lets;
