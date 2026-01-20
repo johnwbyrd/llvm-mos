@@ -10,25 +10,7 @@ scattered union instruction
 val execute : instruction -> ExecutionResult
 scattered function execute
 
-// =============================================================================
-// Addressing Mode Enum (for documentation/debugging)
-// =============================================================================
-
-enum AddrMode = {
-  AM_Implicit,
-  AM_Accumulator,
-  AM_Immediate,
-  AM_ZeroPage,
-  AM_ZeroPageX,
-  AM_ZeroPageY,
-  AM_Absolute,
-  AM_AbsoluteX,
-  AM_AbsoluteY,
-  AM_IndirectX,
-  AM_IndirectY,
-  AM_Relative,
-  AM_Indirect
-}
+// AddrMode enum is defined in sys.sail - used for cycle calculation
 
 // =============================================================================
 // Arithmetic Helpers
