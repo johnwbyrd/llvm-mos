@@ -222,6 +222,7 @@ inline bool modifiesAnyFlag(uint64_t TSFlags) {
 }
 
 bool isZeroPageSectionName(StringRef Name);
+
 } // namespace MOS
 } // namespace llvm
 

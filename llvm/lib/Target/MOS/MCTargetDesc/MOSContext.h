@@ -123,6 +123,44 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
+  // SAIL memory model primitives (simplified for basic emulator)
+  // These implement the complex SAIL memory interface using our simple read/write.
+  //===--------------------------------------------------------------------===//
+
+  /// Low-level memory read - extracts address from request, calls read()
+  uint64_t zread_memz3zIRMem_read_requestzIbzCuzCuzKzK(
+      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
+    return read(static_cast<uint16_t>(req.zpa));
+  }
+
+  uint64_t zread_mem_ifetchz3zIRMem_read_requestzIbzCuzCuzKzK(
+      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
+    return read(static_cast<uint16_t>(req.zpa));
+  }
+
+  uint64_t zread_mem_exclusivez3zIRMem_read_requestzIbzCuzCuzKzK(
+      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
+    return read(static_cast<uint16_t>(req.zpa));
+  }
+
+  /// Low-level memory write - extracts address/data from request, calls write()
+  bool zwrite_memz3zIRMem_write_requestzIbzCuzCuzKzK(
+      zMem_write_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t, uint64_t data) {
+    write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
+    return true;
+  }
+
+  bool zwrite_mem_exclusivez3zIRMem_write_requestzIbzCuzCuzKzK(
+      zMem_write_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t, uint64_t data) {
+    write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
+    return true;
+  }
+
+  /// Capability tags (not used in basic 6502 - always return false/no-op)
+  bool zread_tagz3(int64_t, uint64_t) { return false; }
+  void zwrite_tagz3(int64_t, uint64_t, bool) {}
+
+  //===--------------------------------------------------------------------===//
   // SAIL register aliases (z-prefixed names for generated code)
   //===--------------------------------------------------------------------===//
 
@@ -141,6 +179,11 @@ public:
   uint8_t &zIRQPending = IRQPending;
   uint8_t &zNMIPending = NMIPending;
 
+  // SAIL runtime registers
+  int64_t &zCycles = reinterpret_cast<int64_t &>(Cycles);
+  bool z__monomorphizze_reads = false;  // SAIL memory model (unused in basic emulator)
+  bool z__monomorphizze_writes = false; // SAIL memory model (unused in basic emulator)
+
   //===--------------------------------------------------------------------===//
   // SAIL-generated member variables (let bindings)
   //===--------------------------------------------------------------------===//
@@ -157,11 +200,16 @@ public:
 #include "MOSGenEmulator.inc"
 #undef GET_EMULATOR_METHODS
 
+  /// Execute a single decoded instruction directly (for superoptimizer).
+  /// This bypasses the normal fetch-decode-execute cycle.
+  /// Note: Does not update PC or Cycles - caller is responsible.
+  void executeInst(const MCInst &Inst);
+
 private:
   const MCDisassembler *Disassembler;
   const MCInstrInfo *InstrInfo;
 
-  /// Execute a single decoded instruction.
+  /// Execute a single decoded instruction (internal implementation).
   /// Branches/jumps call set_next_pc() to override the default next PC.
   void execute(const MCInst &Inst);
 };

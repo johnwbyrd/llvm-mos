@@ -190,3 +190,8 @@ void Context::execute(const MCInst &Inst) {
   zinstruction SailInst = mcInstToSail(Inst);
   zexecute(SailInst);
 }
+
+void Context::executeInst(const MCInst &Inst) {
+  // Direct execution without fetch-decode cycle (for superoptimizer)
+  execute(Inst);
+}

@@ -88,6 +88,7 @@ add_llvm_target(MOSCodeGen
 add_subdirectory(AsmParser)
 add_subdirectory(Disassembler)
 add_subdirectory(MCTargetDesc)
+add_subdirectory(Superopt)
 add_subdirectory(TargetInfo)
 
 # Optional target to regenerate SAIL IR from source
