@@ -45,6 +45,17 @@ using namespace llvm;
 static cl::opt<std::string>
     SailIRFile("sail-ir", cl::desc("Path to SAIL Jib IR file"), cl::init(""));
 
+static cl::opt<bool>
+    DebugLexer("debug-lexer", cl::desc("Debug lexer token stream"), cl::init(false));
+
+static cl::opt<bool>
+    DebugParser("debug-parser", cl::desc("Debug parser progress"), cl::init(false));
+
+static cl::opt<unsigned>
+    DebugMaxTokens("debug-max-tokens",
+                   cl::desc("Maximum tokens to process (0=unlimited)"),
+                   cl::init(0));
+
 namespace {
 
 class EmulatorEmitter {
@@ -69,8 +80,22 @@ public:
 
     // Parse
     emu::Lexer Lex((*BufOrErr)->getBuffer());
+    if (DebugLexer || DebugMaxTokens > 0)
+      Lex.setDebug(DebugLexer, DebugMaxTokens);
+
     emu::Parser Parse(Lex);
+    if (DebugParser)
+      Parse.setDebug(true);
+
     emu::JibIR IR = Parse.parse();
+
+    if (DebugLexer || DebugParser) {
+      errs() << "DEBUG: Parsing complete. Tokens processed: "
+             << Lex.getTokenCount() << "\n";
+      errs() << "DEBUG: Functions: " << IR.Functions.size()
+             << ", Unions: " << IR.Unions.size()
+             << ", Vals: " << IR.Vals.size() << "\n";
+    }
 
     // Generate
     emu::CodeGen CG(IR, OS);
