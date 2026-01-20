@@ -23,6 +23,8 @@
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/Format.h"
+#include "llvm/Support/raw_ostream.h"
 #include <cstdint>
 #include <string>
 
@@ -46,6 +48,7 @@ enum class Token {
   KwVal,
   KwEnum,
   KwUnion,
+  KwStruct,
   KwRegister,
   KwLet,
   KwJump,
@@ -97,9 +100,24 @@ class Lexer {
   Token CurrentToken = Token::Eof;
   std::string CurrentText;
   int64_t CurrentNumber = 0;
+  bool DebugEnabled = false;
+  uint64_t TokenCount = 0;
+  uint64_t MaxTokens = 0;
 
 public:
   explicit Lexer(StringRef Source) : Input(Source) { advance(); }
+
+  /// Enable debug output for lexer.
+  void setDebug(bool Enable, uint64_t MaxToks = 0) {
+    DebugEnabled = Enable;
+    MaxTokens = MaxToks;
+  }
+
+  /// Get the number of tokens processed.
+  uint64_t getTokenCount() const { return TokenCount; }
+
+  /// Get current position in input.
+  size_t getPosition() const { return Position; }
 
   /// Get the current token type.
   Token token() const { return CurrentToken; }
@@ -125,74 +143,191 @@ public:
     return false;
   }
 
+  /// Get string name for a token type (for debugging).
+  static const char *tokenName(Token T) {
+    switch (T) {
+    case Token::Ident: return "Ident";
+    case Token::Nat: return "Nat";
+    case Token::Hex: return "Hex";
+    case Token::Bin: return "Bin";
+    case Token::String: return "String";
+    case Token::KwFn: return "KwFn";
+    case Token::KwVal: return "KwVal";
+    case Token::KwEnum: return "KwEnum";
+    case Token::KwUnion: return "KwUnion";
+    case Token::KwStruct: return "KwStruct";
+    case Token::KwRegister: return "KwRegister";
+    case Token::KwLet: return "KwLet";
+    case Token::KwJump: return "KwJump";
+    case Token::KwGoto: return "KwGoto";
+    case Token::KwEnd: return "KwEnd";
+    case Token::KwTrue: return "KwTrue";
+    case Token::KwFalse: return "KwFalse";
+    case Token::KwIs: return "KwIs";
+    case Token::KwAs: return "KwAs";
+    case Token::KwReturn: return "KwReturn";
+    case Token::TyI: return "TyI";
+    case Token::TyI64: return "TyI64";
+    case Token::TyBv: return "TyBv";
+    case Token::TyUnit: return "TyUnit";
+    case Token::TyBool: return "TyBool";
+    case Token::TyEnum: return "TyEnum";
+    case Token::TyStruct: return "TyStruct";
+    case Token::Op: return "Op";
+    case Token::LParen: return "LParen";
+    case Token::RParen: return "RParen";
+    case Token::LBrace: return "LBrace";
+    case Token::RBrace: return "RBrace";
+    case Token::Colon: return "Colon";
+    case Token::Eq: return "Eq";
+    case Token::Comma: return "Comma";
+    case Token::Semi: return "Semi";
+    case Token::Arrow: return "Arrow";
+    case Token::Dot: return "Dot";
+    case Token::Eof: return "Eof";
+    case Token::Error: return "Error";
+    }
+    return "Unknown";
+  }
+
   /// Advance to the next token and return its type.
   Token advance() {
-    skipWhitespaceAndComments();
-    if (Position >= Input.size())
-      return CurrentToken = Token::Eof;
+    // Use a loop instead of recursion to avoid stack overflow
+    while (true) {
+      skipWhitespaceAndComments();
+      if (Position >= Input.size()) {
+        CurrentToken = Token::Eof;
+        break;
+      }
 
-    char C = Input[Position];
+      // Check token limit for debugging
+      if (MaxTokens > 0 && TokenCount >= MaxTokens) {
+        errs() << "DEBUG: Token limit reached (" << MaxTokens << ")\n";
+        errs() << "DEBUG: Position=" << Position << " of " << Input.size() << "\n";
+        CurrentToken = Token::Eof;
+        break;
+      }
+      ++TokenCount;
 
-    // Single-character tokens
-    switch (C) {
-    case '(': ++Position; return CurrentToken = Token::LParen;
-    case ')': ++Position; return CurrentToken = Token::RParen;
-    case '{': ++Position; return CurrentToken = Token::LBrace;
-    case '}': ++Position; return CurrentToken = Token::RBrace;
-    case ':': ++Position; return CurrentToken = Token::Colon;
-    case ',': ++Position; return CurrentToken = Token::Comma;
-    case ';': ++Position; return CurrentToken = Token::Semi;
-    case '.': ++Position; return CurrentToken = Token::Dot;
-    case '=': ++Position; return CurrentToken = Token::Eq;
-    default: break;
-    }
+      char C = Input[Position];
 
-    // Arrow: ->
-    if (C == '-' && Position + 1 < Input.size() && Input[Position + 1] == '>') {
-      Position += 2;
-      return CurrentToken = Token::Arrow;
-    }
-
-    // String literal
-    if (C == '"')
-      return lexString();
-
-    // Hex literal: 0x...
-    if (C == '0' && Position + 1 < Input.size() && Input[Position + 1] == 'x')
-      return lexHex();
-
-    // Binary literal: 0b...
-    if (C == '0' && Position + 1 < Input.size() && Input[Position + 1] == 'b')
-      return lexBinary();
-
-    // Decimal number (including negative)
-    if (isdigit(C) ||
-        (C == '-' && Position + 1 < Input.size() && isdigit(Input[Position + 1])))
-      return lexNumber();
-
-    // Type annotation: %type
-    if (C == '%')
-      return lexType();
-
-    // Operator: @op
-    if (C == '@')
-      return lexOperator();
-
-    // Source location backtick: skip to end
-    if (C == '`') {
-      while (Position < Input.size() && Input[Position] != '\n' &&
-             Input[Position] != ';')
+      // Single-character tokens
+      switch (C) {
+      case '(':
         ++Position;
-      return advance();
+        CurrentToken = Token::LParen;
+        goto done;
+      case ')':
+        ++Position;
+        CurrentToken = Token::RParen;
+        goto done;
+      case '{':
+        ++Position;
+        CurrentToken = Token::LBrace;
+        goto done;
+      case '}':
+        ++Position;
+        CurrentToken = Token::RBrace;
+        goto done;
+      case ':':
+        ++Position;
+        CurrentToken = Token::Colon;
+        goto done;
+      case ',':
+        ++Position;
+        CurrentToken = Token::Comma;
+        goto done;
+      case ';':
+        ++Position;
+        CurrentToken = Token::Semi;
+        goto done;
+      case '.':
+        ++Position;
+        CurrentToken = Token::Dot;
+        goto done;
+      case '=':
+        ++Position;
+        CurrentToken = Token::Eq;
+        goto done;
+      default:
+        break;
+      }
+
+      // Arrow: ->
+      if (C == '-' && Position + 1 < Input.size() && Input[Position + 1] == '>') {
+        Position += 2;
+        CurrentToken = Token::Arrow;
+        break;
+      }
+
+      // String literal
+      if (C == '"') {
+        lexString();
+        break;
+      }
+
+      // Hex literal: 0x...
+      if (C == '0' && Position + 1 < Input.size() && Input[Position + 1] == 'x') {
+        lexHex();
+        break;
+      }
+
+      // Binary literal: 0b...
+      if (C == '0' && Position + 1 < Input.size() && Input[Position + 1] == 'b') {
+        lexBinary();
+        break;
+      }
+
+      // Decimal number (including negative)
+      if (isdigit(C) ||
+          (C == '-' && Position + 1 < Input.size() &&
+           isdigit(Input[Position + 1]))) {
+        lexNumber();
+        break;
+      }
+
+      // Type annotation: %type
+      if (C == '%') {
+        lexType();
+        break;
+      }
+
+      // Operator: @op
+      if (C == '@') {
+        lexOperator();
+        break;
+      }
+
+      // Source location backtick: skip to end of annotation and continue loop
+      if (C == '`') {
+        while (Position < Input.size() && Input[Position] != '\n' &&
+               Input[Position] != ';')
+          ++Position;
+        continue; // Loop again instead of recursion
+      }
+
+      // Identifier or keyword
+      if (isalpha(C) || C == '_' || C == '$') {
+        lexIdentOrKeyword();
+        break;
+      }
+
+      // Unknown character - skip and continue loop
+      if (DebugEnabled) {
+        errs() << "DEBUG: Skipping unknown char '" << C << "' ("
+               << format_hex((unsigned char)C, 4) << ") at position "
+               << Position << "\n";
+      }
+      ++Position;
+      continue; // Loop again instead of recursion
     }
 
-    // Identifier or keyword
-    if (isalpha(C) || C == '_' || C == '$')
-      return lexIdentOrKeyword();
-
-    // Unknown character - skip and try again
-    ++Position;
-    return advance();
+  done:
+    if (DebugEnabled) {
+      errs() << "DEBUG: Token #" << TokenCount << " " << tokenName(CurrentToken)
+             << " '" << CurrentText << "' at pos " << Position << "\n";
+    }
+    return CurrentToken;
   }
 
 private:
@@ -309,6 +444,7 @@ private:
         .Case("val", Token::KwVal)
         .Case("enum", Token::KwEnum)
         .Case("union", Token::KwUnion)
+        .Case("struct", Token::KwStruct)
         .Case("register", Token::KwRegister)
         .Case("let", Token::KwLet)
         .Case("jump", Token::KwJump)
