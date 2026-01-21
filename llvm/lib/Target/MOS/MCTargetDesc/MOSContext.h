@@ -9,11 +9,20 @@
 // This file defines MOS::Context, the MOS-specific execution context that
 // uses TableGen-generated instruction semantics from MOSGenEmulator.inc.
 //
+// Architecture:
+//   MOSSail      - Generated base class containing all SAIL code (registers,
+//                  methods, pure virtual externals)
+//   SailImpl     - Inner class implementing the externals via Context's
+//                  read()/write() methods
+//   Context      - Owns SailImpl, provides clean register aliases and
+//                  emu::Context interface
+//
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_LIB_TARGET_MOS_MOSCONTEXT_H
 #define LLVM_LIB_TARGET_MOS_MOSCONTEXT_H
 
+#include "MOSMCTargetDesc.h"
 #include "llvm/Emulator/Context.h"
 #include <cstdint>
 #include <variant>
@@ -27,24 +36,86 @@ class MCInstrInfo;
 namespace MOS {
 
 //===----------------------------------------------------------------------===//
-// SAIL-generated types (enums, unions) at namespace scope
+// SAIL-generated types and mapping function at namespace scope
 //===----------------------------------------------------------------------===//
 
-#define GET_EMULATOR_TYPES
+#define GET_SAIL_CLASS_TYPES
 #include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_TYPES
+#undef GET_SAIL_CLASS_TYPES
+
+//===----------------------------------------------------------------------===//
+// MOSSail - Generated base class containing all SAIL code
+//===----------------------------------------------------------------------===//
+
+/// Base class containing all SAIL-generated code.
+/// Derived class must implement the pure virtual external functions.
+class MOSSail {
+  friend class Context;  // Allow Context to access protected members
+
+public:
+  virtual ~MOSSail() = default;
+
+#define GET_SAIL_CLASS_BODY
+#include "MOSGenEmulator.inc"
+#undef GET_SAIL_CLASS_BODY
+};
+
+//===----------------------------------------------------------------------===//
+// Context - MOS 6502-family execution context
+//===----------------------------------------------------------------------===//
+
+class Context;  // Forward declaration
+
+/// Implements SAIL external functions by delegating to Context's memory.
+class MOSSailImpl : public MOSSail {
+  Context &Ctx;
+
+public:
+  MOSSailImpl(Context &C) : Ctx(C) {}
+
+  // Memory read - all variants use the same simple implementation
+  uint64_t read_mem(zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t,
+                    int64_t) override;
+  uint64_t read_mem_ifetch(zMem_read_requestzIbzCuzCuzK req, int64_t,
+                           uint64_t, int64_t) override;
+  uint64_t read_mem_exclusive(zMem_read_requestzIbzCuzCuzK req, int64_t,
+                              uint64_t, int64_t) override;
+
+  // Memory write - all variants use the same simple implementation
+  bool write_mem(zMem_write_requestzIbzCuzCuzK req, int64_t, uint64_t,
+                 int64_t, uint64_t data) override;
+  bool write_mem_exclusive(zMem_write_requestzIbzCuzCuzK req, int64_t,
+                           uint64_t, int64_t, uint64_t data) override;
+
+  // Capability tags - not used on 6502
+  bool emulator_read_tag(int64_t, uint64_t) override { return false; }
+  void emulator_write_tag(int64_t, uint64_t, bool) override {}
+};
 
 /// MOS 6502-family execution context.
-/// Uses TableGen-generated instruction semantics from MOSGenEmulator.inc.
 class Context : public emu::Context {
+  MOSSailImpl Sail{*this};
+
 public:
   //===--------------------------------------------------------------------===//
-  // SAIL-generated registers (z-prefixed, canonical storage)
+  // Clean register aliases (reference SAIL storage)
   //===--------------------------------------------------------------------===//
 
-#define GET_EMULATOR_MEMBERS
-#include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_MEMBERS
+  uint8_t &A = Sail.zA;
+  uint8_t &X = Sail.zX;
+  uint8_t &Y = Sail.zY;
+  uint8_t &S = Sail.zS;
+  uint16_t &PC = Sail.zPC;
+  uint16_t &NextPC = Sail.zNextPC;
+  uint8_t &N = Sail.zN;
+  uint8_t &V = Sail.zV;
+  uint8_t &D = Sail.zD;
+  uint8_t &I = Sail.zI;
+  uint8_t &Z = Sail.zZ;
+  uint8_t &C = Sail.zC;
+  uint8_t &IRQPending = Sail.zIRQPending;
+  uint8_t &NMIPending = Sail.zNMIPending;
+  int64_t &Cycles = Sail.zCycles;
 
   //===--------------------------------------------------------------------===//
   // Additional CPU State (not in SAIL)
@@ -52,61 +123,35 @@ public:
 
   bool Halted = false;
   int ExitCode = 0;
-  bool DidPageCross = false; // Set by indexed addressing modes when crossing page
+  bool DidPageCross = false;
 
-  // Interrupt vectors
   static constexpr uint16_t IrqVector = 0xFFFE;
   static constexpr uint16_t NmiVector = 0xFFFA;
-
-  //===--------------------------------------------------------------------===//
-  // Non-z-prefixed aliases for external use
-  //===--------------------------------------------------------------------===//
-
-  uint8_t &A = zA;
-  uint8_t &X = zX;
-  uint8_t &Y = zY;
-  uint8_t &S = zS;
-  uint16_t &PC = zPC;
-  uint16_t &NextPC = zNextPC;
-  uint8_t &N = zN;
-  uint8_t &V = zV;
-  uint8_t &D = zD;
-  uint8_t &I = zI;
-  uint8_t &Z = zZ;
-  uint8_t &C = zC;
-  uint8_t &IRQPending = zIRQPending;
-  uint8_t &NMIPending = zNMIPending;
-  int64_t &Cycles = zCycles;
 
   //===--------------------------------------------------------------------===//
   // Construction
   //===--------------------------------------------------------------------===//
 
-  /// Create a context with the given disassembler and instruction info.
-  /// Takes ownership of both pointers.
   Context(const MCDisassembler *Disasm, const MCInstrInfo *II);
   ~Context();
 
   //===--------------------------------------------------------------------===//
-  // Context Interface Implementation
+  // emu::Context Interface
   //===--------------------------------------------------------------------===//
 
   bool step() override;
   void reset() override;
 
-  uint64_t getPC() const override { return PC; }
-  void setPC(uint64_t NewPC) override { PC = static_cast<uint16_t>(NewPC); }
-  uint64_t getCycles() const override { return Cycles; }
+  uint64_t getPC() const override { return Sail.zPC; }
+  void setPC(uint64_t NewPC) override { Sail.zPC = static_cast<uint16_t>(NewPC); }
+  uint64_t getCycles() const override { return Sail.zCycles; }
   bool isHalted() const override { return Halted; }
-  void halt(int ExitCode = 0) override;
+  void halt(int Code = 0) override;
   int getExitCode() const override { return ExitCode; }
-
-  /// MOS has a 16-bit address bus (64KB address space).
   unsigned getAddressBits() const override { return 16; }
 
   //===--------------------------------------------------------------------===//
   // Register Access (for LLDB integration)
-  // Uses DWARF register numbers from MOSRegisterInfo.td
   //===--------------------------------------------------------------------===//
 
   unsigned getNumRegisters() const override;
@@ -117,81 +162,25 @@ public:
   bool writeRegisterNoLog(unsigned DwarfRegNum, const void *Buf,
                           size_t BufSize) override;
 
-  /// Assert IRQ line (level-triggered).
-  void assertIRQ() override { IRQPending = 1; }
-
-  /// Deassert IRQ line.
-  void deassertIRQ() override { IRQPending = 0; }
-
-  /// Assert NMI (edge-triggered).
-  void assertNMI() override { NMIPending = 1; }
+  void assertIRQ() override { Sail.zIRQPending = 1; }
+  void deassertIRQ() override { Sail.zIRQPending = 0; }
+  void assertNMI() override { Sail.zNMIPending = 1; }
 
   //===--------------------------------------------------------------------===//
-  // External functions (called by SAIL-generated code but defined here)
-  // These are the interface between SAIL code and C++ runtime.
+  // Helper functions
   //===--------------------------------------------------------------------===//
 
-  /// Memory access - matches SAIL readMem/writeMem names.
-  uint8_t readMem(uint16_t Addr) { return read(Addr); }
-  void writeMem(uint16_t Addr, uint8_t Val) { write(Addr, Val); }
-
-  /// Check if two addresses are in different pages (not in SAIL).
   bool pageCrossed(uint16_t Addr1, uint16_t Addr2) {
     return (Addr1 & 0xFF00) != (Addr2 & 0xFF00);
   }
 
-  //===--------------------------------------------------------------------===//
-  // SAIL memory model primitives (simplified for basic emulator)
-  // These implement the complex SAIL memory interface using our simple read/write.
-  //===--------------------------------------------------------------------===//
-
-  /// Low-level memory read - extracts address from request, calls read()
-  uint64_t zread_memz3zIRMem_read_requestzIbzCuzCuzKzK(
-      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
-    return read(static_cast<uint16_t>(req.zpa));
-  }
-
-  uint64_t zread_mem_ifetchz3zIRMem_read_requestzIbzCuzCuzKzK(
-      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
-    return read(static_cast<uint16_t>(req.zpa));
-  }
-
-  uint64_t zread_mem_exclusivez3zIRMem_read_requestzIbzCuzCuzKzK(
-      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
-    return read(static_cast<uint16_t>(req.zpa));
-  }
-
-  /// Low-level memory write - extracts address/data from request, calls write()
-  bool zwrite_memz3zIRMem_write_requestzIbzCuzCuzKzK(
-      zMem_write_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t, uint64_t data) {
-    write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
-    return true;
-  }
-
-  bool zwrite_mem_exclusivez3zIRMem_write_requestzIbzCuzCuzKzK(
-      zMem_write_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t, uint64_t data) {
-    write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
-    return true;
-  }
-
-  /// Capability tags (not used in basic 6502 - always return false/no-op)
-  bool zread_tagz3(int64_t, uint64_t) { return false; }
-  void zwrite_tagz3(int64_t, uint64_t, bool) {}
-
-  //===--------------------------------------------------------------------===//
-  // SAIL-generated helper functions (as class methods)
-  //===--------------------------------------------------------------------===//
-
-#define GET_EMULATOR_METHODS
-#include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_METHODS
+  /// Get access to SAIL implementation (for internal use)
+  MOSSailImpl &getSail() { return Sail; }
 
 private:
   const MCDisassembler *Disassembler;
   const MCInstrInfo *InstrInfo;
 
-  /// Execute a single decoded instruction.
-  /// Branches/jumps call set_next_pc() to override the default next PC.
   void execute(const MCInst &Inst);
 };
 
