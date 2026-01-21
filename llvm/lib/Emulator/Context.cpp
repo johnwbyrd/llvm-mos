@@ -8,9 +8,25 @@
 
 #include "llvm/Emulator/Context.h"
 #include "llvm/Emulator/System.h"
+#include <cstring>
 
 using namespace llvm;
 using namespace llvm::emu;
+
+// Explicit template instantiations for recordAndSet
+// These are the common register sizes used by CPU implementations
+template void Context::recordAndSet<uint8_t>(unsigned, uint8_t &, uint8_t);
+template void Context::recordAndSet<uint16_t>(unsigned, uint16_t &, uint16_t);
+template void Context::recordAndSet<uint32_t>(unsigned, uint32_t &, uint32_t);
+template void Context::recordAndSet<uint64_t>(unsigned, uint64_t &, uint64_t);
+template void Context::recordAndSet<bool>(unsigned, bool &, bool);
+
+template <typename T>
+void Context::recordAndSet(unsigned RegNum, T &Reg, T NewVal) {
+  if (Sys)
+    Sys->recordRegisterWrite(ContextIndex, RegNum, &Reg, sizeof(T));
+  Reg = NewVal;
+}
 
 bool Context::run() {
   while (!isHalted()) {

@@ -417,9 +417,13 @@ private:
   //===--------------------------------------------------------------------===//
 
   void emitMembers() {
-    // NOTE: Registers are NOT emitted here - the consuming class must define them
-    // (with z-prefixed aliases) because the register set is target-specific
-    // and often has additional semantics (reset values, interrupt state, etc.)
+    // Emit registers as member variables
+    if (!IR.Registers.empty()) {
+      OS << "// Registers from SAIL\n";
+      for (const auto &Reg : IR.Registers)
+        OS << Reg.Ty.toCpp() << " " << Reg.Name << " = {};\n";
+      OS << "\n";
+    }
 
     // Emit let bindings as member variables
     if (!IR.Lets.empty()) {
