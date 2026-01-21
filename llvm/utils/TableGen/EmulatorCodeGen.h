@@ -8,13 +8,26 @@
 //
 // This file defines the CodeGen class that emits C++ code from SAIL Jib IR.
 //
-// The generated code is organized into sections controlled by preprocessor
-// guards, allowing the consumer to include specific parts:
+// The generated code is organized into two sections controlled by preprocessor
+// guards:
 //
-//   GET_EMULATOR_TYPES   - Union/struct type definitions (namespace scope)
-//   GET_EMULATOR_MEMBERS - Member variable declarations (class scope)
-//   GET_EMULATOR_METHODS - Helper method definitions (class scope)
-//   GET_EMULATOR_MAPPING - MCInst to SAIL instruction mapping function
+//   GET_SAIL_CLASS_TYPES - At namespace scope: type definitions (structs,
+//                          enums, unions) and mcInstToSail() mapping function
+//   GET_SAIL_CLASS_BODY  - Inside class definition: registers, pure virtual
+//                          externals, swizzled wrappers, helper methods
+//
+// Usage:
+//   // At namespace scope (before class definition)
+//   #define GET_SAIL_CLASS_TYPES
+//   #include "TargetGenEmulator.inc"
+//   #undef GET_SAIL_CLASS_TYPES
+//
+//   // Inside a class definition
+//   class TargetSail {
+//   #define GET_SAIL_CLASS_BODY
+//   #include "TargetGenEmulator.inc"
+//   #undef GET_SAIL_CLASS_BODY
+//   };
 //
 // Key Contract:
 //   The SAIL IR must contain a function named "zexecute" and a union named
@@ -180,6 +193,15 @@ inline std::string normalizeVarName(StringRef Name) {
 // Primitive Implementation Lookup
 //===----------------------------------------------------------------------===//
 
+// Forward declaration - implementation below
+inline StringRef getPrimitiveImpl(StringRef ExternalName);
+
+/// Check if an external name is a primitive (implemented by codegen).
+/// Primitives are not emitted as virtual functions for users to implement.
+inline bool isPrimitive(StringRef ExternalName) {
+  return !getPrimitiveImpl(ExternalName).empty();
+}
+
 /// Get C++ implementation for a SAIL primitive based on its external name.
 /// Returns empty string if the primitive is unknown.
 inline StringRef getPrimitiveImpl(StringRef ExternalName) {
@@ -327,22 +349,21 @@ public:
     OS << "// Generated from SAIL Jib IR\n";
     OS << "// Instructions: " << NumInstructions << " from SAIL\n\n";
 
-    // Emit each section
-    OS << "#ifdef GET_EMULATOR_TYPES\n";
+    // Types section (at namespace scope)
+    OS << "#ifdef GET_SAIL_CLASS_TYPES\n";
     emitTypes(*InstrUnion);
-    OS << "#endif // GET_EMULATOR_TYPES\n\n";
-
-    OS << "#ifdef GET_EMULATOR_MEMBERS\n";
-    emitMembers();
-    OS << "#endif // GET_EMULATOR_MEMBERS\n\n";
-
-    OS << "#ifdef GET_EMULATOR_METHODS\n";
-    emitMethods();
-    OS << "#endif // GET_EMULATOR_METHODS\n\n";
-
-    OS << "#ifdef GET_EMULATOR_MAPPING\n";
     emitMapping(*InstrUnion);
-    OS << "#endif // GET_EMULATOR_MAPPING\n";
+    OS << "#endif // GET_SAIL_CLASS_TYPES\n\n";
+
+    // Class body section (inside class definition)
+    OS << "#ifdef GET_SAIL_CLASS_BODY\n";
+    OS << "public:\n";
+    emitMembers();
+    emitExternals();
+    OS << "protected:\n";
+    emitWrappers();
+    emitMethods();
+    OS << "#endif // GET_SAIL_CLASS_BODY\n";
   }
 
 private:
@@ -431,6 +452,117 @@ private:
       for (const auto &Let : IR.Lets)
         OS << Let.Ty.toCpp() << " " << Let.Name << ";\n";
       OS << "\n";
+    }
+  }
+
+  //===--------------------------------------------------------------------===//
+  // External Function Emission
+  //===--------------------------------------------------------------------===//
+
+  /// Emit pure virtual functions for non-primitive externals.
+  /// These are functions the user must implement (e.g., memory access).
+  void emitExternals() {
+    OS << "//===--------------------------------------------------------------------===//\n";
+    OS << "// External Functions - implement these in derived class\n";
+    OS << "//===--------------------------------------------------------------------===//\n\n";
+
+    // Track functions with IR bodies (these are not externals)
+    StringSet<> HasBody;
+    for (const auto &Func : IR.Functions)
+      HasBody.insert(Func.Name);
+
+    // Track emitted externals to avoid duplicates
+    StringSet<> Emitted;
+
+    for (const auto &Val : IR.Vals) {
+      // Skip if no external name, or if it's a primitive, or if it has a body
+      if (Val.ExternalName.empty())
+        continue;
+      if (isPrimitive(Val.ExternalName))
+        continue;
+      if (HasBody.contains(Val.Name))
+        continue;
+      if (Emitted.contains(Val.ExternalName))
+        continue;
+
+      Emitted.insert(Val.ExternalName);
+
+      // Emit comment with purpose
+      OS << "// " << Val.ExternalName << "\n";
+
+      // Emit pure virtual function with clean name
+      OS << "virtual " << Val.ReturnType.toCpp() << " " << Val.ExternalName << "(";
+      bool First = true;
+      for (size_t I = 0; I < Val.ParamTypes.size(); ++I) {
+        if (Val.ParamTypes[I].Kind == Type::TK_Unit)
+          continue;
+        if (!First)
+          OS << ", ";
+        First = false;
+        OS << Val.ParamTypes[I].toCpp() << " p" << I;
+      }
+      OS << ") = 0;\n\n";
+    }
+  }
+
+  /// Emit swizzled wrappers that delegate to clean-named virtual functions.
+  /// Generated SAIL code calls these swizzled names; they forward to virtuals.
+  void emitWrappers() {
+    OS << "//===--------------------------------------------------------------------===//\n";
+    OS << "// Swizzled wrappers - delegate to clean-named virtuals\n";
+    OS << "//===--------------------------------------------------------------------===//\n\n";
+
+    // Track functions with IR bodies (these are not externals)
+    StringSet<> HasBody;
+    for (const auto &Func : IR.Functions)
+      HasBody.insert(Func.Name);
+
+    // Track emitted wrappers to avoid duplicates
+    StringSet<> Emitted;
+
+    for (const auto &Val : IR.Vals) {
+      // Skip if no external name, or if it's a primitive, or if it has a body
+      if (Val.ExternalName.empty())
+        continue;
+      if (isPrimitive(Val.ExternalName))
+        continue;
+      if (HasBody.contains(Val.Name))
+        continue;
+      if (Emitted.contains(Val.Name))
+        continue;
+
+      Emitted.insert(Val.Name);
+
+      // Emit wrapper that delegates to clean-named virtual
+      OS << Val.ReturnType.toCpp() << " " << Val.Name << "(";
+      bool First = true;
+      for (size_t I = 0; I < Val.ParamTypes.size(); ++I) {
+        if (Val.ParamTypes[I].Kind == Type::TK_Unit)
+          continue;
+        if (!First)
+          OS << ", ";
+        First = false;
+        OS << Val.ParamTypes[I].toCpp() << " p" << I;
+      }
+      OS << ") {\n";
+
+      // Call the clean-named virtual
+      if (Val.ReturnType.Kind != Type::TK_Unit)
+        OS << "  return ";
+      else
+        OS << "  ";
+      OS << Val.ExternalName << "(";
+      First = true;
+      for (size_t I = 0; I < Val.ParamTypes.size(); ++I) {
+        if (Val.ParamTypes[I].Kind == Type::TK_Unit)
+          continue;
+        if (!First)
+          OS << ", ";
+        First = false;
+        OS << "p" << I;
+      }
+      OS << ");\n";
+      OS << "}\n\n";
     }
   }
 
@@ -764,7 +896,7 @@ private:
 
   void emitMapping(const UnionDef &InstrUnion) {
     OS << "// Map MCInst opcode to SAIL instruction variant\n";
-    OS << InstrUnion.Name << " mcInstToSail(const MCInst &Inst) {\n";
+    OS << "inline " << InstrUnion.Name << " mcInstToSail(const MCInst &Inst) {\n";
     OS << "  switch (Inst.getOpcode()) {\n";
 
     for (const auto &Variant : InstrUnion.Variants) {

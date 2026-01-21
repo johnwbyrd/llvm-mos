@@ -7,9 +7,9 @@
 //===----------------------------------------------------------------------===//
 //
 // This file implements MOS::Context using TableGen-generated instruction
-// semantics.
+// semantics via the MOSSail/SailImpl composition pattern.
 //
-//===--------------------------------------------Conti--------------------------===//
+//===----------------------------------------------------------------------===//
 
 #include "MOSContext.h"
 #include "MOSMCTargetDesc.h"
@@ -23,10 +23,40 @@
 
 #define DEBUG_TYPE "mos-context"
 
-// Note: MOSMCTargetDesc.h already includes MOSGenInstrInfo.inc with GET_INSTRINFO_ENUM
-
 using namespace llvm;
 using namespace llvm::MOS;
+
+//===----------------------------------------------------------------------===//
+// MOSSailImpl - External function implementations
+//===----------------------------------------------------------------------===//
+
+uint64_t MOSSailImpl::read_mem(zMem_read_requestzIbzCuzCuzK req, int64_t,
+                                uint64_t, int64_t) {
+  return Ctx.read(static_cast<uint16_t>(req.zpa));
+}
+
+uint64_t MOSSailImpl::read_mem_ifetch(zMem_read_requestzIbzCuzCuzK req, int64_t,
+                                       uint64_t, int64_t) {
+  return Ctx.read(static_cast<uint16_t>(req.zpa));
+}
+
+uint64_t MOSSailImpl::read_mem_exclusive(zMem_read_requestzIbzCuzCuzK req,
+                                          int64_t, uint64_t, int64_t) {
+  return Ctx.read(static_cast<uint16_t>(req.zpa));
+}
+
+bool MOSSailImpl::write_mem(zMem_write_requestzIbzCuzCuzK req, int64_t,
+                             uint64_t, int64_t, uint64_t data) {
+  Ctx.write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
+  return true;
+}
+
+bool MOSSailImpl::write_mem_exclusive(zMem_write_requestzIbzCuzCuzK req,
+                                       int64_t, uint64_t, int64_t,
+                                       uint64_t data) {
+  Ctx.write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
+  return true;
+}
 
 //===----------------------------------------------------------------------===//
 // Construction / Destruction
@@ -34,7 +64,7 @@ using namespace llvm::MOS;
 
 Context::Context(const MCDisassembler *Disasm, const MCInstrInfo *II)
     : Disassembler(Disasm), InstrInfo(II) {
-  initLets();
+  Sail.initLets();
 }
 
 Context::~Context() {
@@ -75,12 +105,12 @@ bool Context::step() {
 
   // Check for pending interrupts before executing the next instruction
   // NMI has priority over IRQ (checked first)
-  if (zcheckAndHandleNMI()) {
+  if (Sail.zcheckAndHandleNMI()) {
     // NMI was taken - add cycles for interrupt handling
     Cycles += 7;
     return true;
   }
-  if (zcheckAndHandleIRQ()) {
+  if (Sail.zcheckAndHandleIRQ()) {
     // IRQ was taken - add cycles for interrupt handling
     Cycles += 7;
     return true;
@@ -117,7 +147,7 @@ bool Context::step() {
         {"X", X, 8},
         {"Y", Y, 8},
         {"S", S, 8},
-        {"P", zgetP(), 8},
+        {"P", Sail.zgetP(), 8},
     };
     Trace->traceInstruction(Cycles, PC, Inst, Regs);
   } else if (Tracing) {
@@ -176,19 +206,10 @@ bool Context::step() {
 // Instruction Execution
 //===----------------------------------------------------------------------===//
 
-// Pull in the MCInst-to-SAIL mapping function (must be in MOS namespace)
-namespace llvm {
-namespace MOS {
-#define GET_EMULATOR_MAPPING
-#include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_MAPPING
-} // namespace MOS
-} // namespace llvm
-
 void Context::execute(const MCInst &Inst) {
   // Convert MCInst to SAIL instruction variant and execute via SAIL
   zinstruction SailInst = mcInstToSail(Inst);
-  zexecute(SailInst);
+  Sail.zexecute(SailInst);
 }
 
 //===----------------------------------------------------------------------===//
@@ -265,7 +286,7 @@ bool Context::writeRegister(unsigned DwarfRegNum, const void *Buf,
   case 3: // P (processor status)
     if (BufSize < 1)
       return false;
-    zsetP(*static_cast<const uint8_t *>(Buf));
+    Sail.zsetP(*static_cast<const uint8_t *>(Buf));
     return true;
   case 4: // S
     if (BufSize < 1)
