@@ -16,6 +16,7 @@
 
 #include "llvm/MC/MCInst.h"
 #include <cstdint>
+#include <cstring>
 
 namespace llvm {
 
@@ -103,8 +104,47 @@ public:
   /// Get the parent system (if any).
   System *getSystem() const { return Sys; }
 
-  /// Set the parent system.
-  void setSystem(System *S) { Sys = S; }
+  /// Set the parent system and context index (for undo journal).
+  void setSystem(System *S, size_t Idx = 0) {
+    Sys = S;
+    ContextIndex = Idx;
+  }
+
+  /// Get the context index within the system.
+  size_t getContextIndex() const { return ContextIndex; }
+
+  //===--------------------------------------------------------------------===//
+  // Register Access (per-CPU state)
+  //===--------------------------------------------------------------------===//
+
+  /// Get the number of registers in this CPU.
+  /// Register metadata (names, DWARF numbers) comes from existing target info.
+  virtual unsigned getNumRegisters() const { return 0; }
+
+  /// Read a register value into the buffer.
+  /// @param RegNum Register number (0..getNumRegisters()-1).
+  /// @param Buf Buffer to receive the value.
+  /// @param BufSize Size of buffer.
+  /// @return true on success.
+  virtual bool readRegister(unsigned RegNum, void *Buf, size_t BufSize) const {
+    return false;
+  }
+
+  /// Write a register value from the buffer.
+  /// @param RegNum Register number (0..getNumRegisters()-1).
+  /// @param Buf Buffer containing the new value.
+  /// @param BufSize Size of buffer.
+  /// @return true on success.
+  virtual bool writeRegister(unsigned RegNum, const void *Buf, size_t BufSize) {
+    return false;
+  }
+
+  /// Write a register without logging to the undo journal.
+  /// Used during checkpoint restore to avoid infinite log growth.
+  virtual bool writeRegisterNoLog(unsigned RegNum, const void *Buf,
+                                  size_t BufSize) {
+    return writeRegister(RegNum, Buf, BufSize);
+  }
 
   //===--------------------------------------------------------------------===//
   // Debugging Support
@@ -158,10 +198,19 @@ public:
 
 protected:
   System *Sys = nullptr;
+  size_t ContextIndex = 0; ///< Index within the parent system (for undo journal)
   MCInstPrinter *InstPrinter = nullptr;
   const MCSubtargetInfo *STI = nullptr;
   TraceWriter *Trace = nullptr;
   bool Tracing = false;
+
+  /// Helper for subclasses to record and set a register value.
+  /// Records the old value to the undo journal, then updates the register.
+  /// @param RegNum Register number for undo journal tracking.
+  /// @param Reg Reference to the register variable.
+  /// @param NewVal New value to set.
+  template <typename T>
+  void recordAndSet(unsigned RegNum, T &Reg, T NewVal);
 };
 
 } // namespace emu

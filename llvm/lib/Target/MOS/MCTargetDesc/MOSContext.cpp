@@ -51,7 +51,7 @@ void Context::reset() {
   X = 0;
   Y = 0;
   S = 0xFF;
-  C = Z = I = D = B = V = N = false;
+  C = Z = I = D = V = N = false;
   Cycles = 0;
   Halted = false;
   ExitCode = 0;
@@ -189,4 +189,102 @@ void Context::execute(const MCInst &Inst) {
   // Convert MCInst to SAIL instruction variant and execute via SAIL
   zinstruction SailInst = mcInstToSail(Inst);
   zexecute(SailInst);
+}
+
+//===----------------------------------------------------------------------===//
+// Register Access (for LLDB integration)
+//===----------------------------------------------------------------------===//
+
+// DWARF register numbers from MOSRegisterInfo.td (single source of truth):
+// A=0, X=1, Y=2, P=3, S=4, PC=5
+// This must match the DwarfRegNum<> values in the .td file.
+
+unsigned Context::getNumRegisters() const {
+  return 6; // A, X, Y, P, S, PC
+}
+
+bool Context::readRegister(unsigned DwarfRegNum, void *Buf,
+                           size_t BufSize) const {
+  switch (DwarfRegNum) {
+  case 0: // A
+    if (BufSize < 1)
+      return false;
+    *static_cast<uint8_t *>(Buf) = A;
+    return true;
+  case 1: // X
+    if (BufSize < 1)
+      return false;
+    *static_cast<uint8_t *>(Buf) = X;
+    return true;
+  case 2: // Y
+    if (BufSize < 1)
+      return false;
+    *static_cast<uint8_t *>(Buf) = Y;
+    return true;
+  case 3: // P (processor status) - assembled from individual flags
+    // 6502 status: N V - B D I Z C (bits 7-0)
+    // Bit 5 is always 1, B (bit 4) is 0 when read (only set on push)
+    if (BufSize < 1)
+      return false;
+    *static_cast<uint8_t *>(Buf) = (N << 7) | (V << 6) | 0x20 | (D << 3) |
+                                   (I << 2) | (Z << 1) | C;
+    return true;
+  case 4: // S
+    if (BufSize < 1)
+      return false;
+    *static_cast<uint8_t *>(Buf) = S;
+    return true;
+  case 5: // PC
+    if (BufSize < 2)
+      return false;
+    *static_cast<uint16_t *>(Buf) = PC;
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool Context::writeRegister(unsigned DwarfRegNum, const void *Buf,
+                            size_t BufSize) {
+  switch (DwarfRegNum) {
+  case 0: // A
+    if (BufSize < 1)
+      return false;
+    A = *static_cast<const uint8_t *>(Buf);
+    return true;
+  case 1: // X
+    if (BufSize < 1)
+      return false;
+    X = *static_cast<const uint8_t *>(Buf);
+    return true;
+  case 2: // Y
+    if (BufSize < 1)
+      return false;
+    Y = *static_cast<const uint8_t *>(Buf);
+    return true;
+  case 3: // P (processor status)
+    if (BufSize < 1)
+      return false;
+    zsetP(*static_cast<const uint8_t *>(Buf));
+    return true;
+  case 4: // S
+    if (BufSize < 1)
+      return false;
+    S = *static_cast<const uint8_t *>(Buf);
+    return true;
+  case 5: // PC
+    if (BufSize < 2)
+      return false;
+    PC = *static_cast<const uint16_t *>(Buf);
+    return true;
+  default:
+    return false;
+  }
+}
+
+bool Context::writeRegisterNoLog(unsigned DwarfRegNum, const void *Buf,
+                                 size_t BufSize) {
+  // For MOS, writeRegister doesn't log (the SAIL-generated code does its own
+  // thing). This is used during checkpoint restore.
+  return writeRegister(DwarfRegNum, Buf, BufSize);
 }

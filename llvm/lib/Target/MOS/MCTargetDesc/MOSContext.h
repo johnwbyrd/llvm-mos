@@ -39,39 +39,44 @@ namespace MOS {
 class Context : public emu::Context {
 public:
   //===--------------------------------------------------------------------===//
-  // CPU State
+  // SAIL-generated registers (z-prefixed, canonical storage)
   //===--------------------------------------------------------------------===//
 
-  // Registers
-  uint8_t A = 0;    // Accumulator
-  uint8_t X = 0;    // X index register
-  uint8_t Y = 0;    // Y index register
-  uint8_t S = 0xFF; // Stack pointer (in page 1: $0100-$01FF)
-  uint16_t PC = 0;  // Program counter
+#define GET_EMULATOR_MEMBERS
+#include "MOSGenEmulator.inc"
+#undef GET_EMULATOR_MEMBERS
 
-  // Status flags
-  bool C = false; // Carry
-  bool Z = false; // Zero
-  bool I = false; // Interrupt disable
-  bool D = false; // Decimal mode
-  bool B = false; // Break (only exists on stack)
-  bool V = false; // Overflow
-  bool N = false; // Negative
+  //===--------------------------------------------------------------------===//
+  // Additional CPU State (not in SAIL)
+  //===--------------------------------------------------------------------===//
 
-  // Interrupt state (directly set by external hardware/devices)
-  uint8_t IRQPending = 0; // Hardware IRQ line asserted (level-triggered)
-  uint8_t NMIPending = 0; // Non-maskable interrupt pending (edge-triggered)
-
-  // Execution state
-  uint64_t Cycles = 0;
   bool Halted = false;
   int ExitCode = 0;
-  uint16_t NextPC = 0;       // Next PC (set before execute, branches/jumps override)
   bool DidPageCross = false; // Set by indexed addressing modes when crossing page
 
   // Interrupt vectors
   static constexpr uint16_t IrqVector = 0xFFFE;
   static constexpr uint16_t NmiVector = 0xFFFA;
+
+  //===--------------------------------------------------------------------===//
+  // Non-z-prefixed aliases for external use
+  //===--------------------------------------------------------------------===//
+
+  uint8_t &A = zA;
+  uint8_t &X = zX;
+  uint8_t &Y = zY;
+  uint8_t &S = zS;
+  uint16_t &PC = zPC;
+  uint16_t &NextPC = zNextPC;
+  uint8_t &N = zN;
+  uint8_t &V = zV;
+  uint8_t &D = zD;
+  uint8_t &I = zI;
+  uint8_t &Z = zZ;
+  uint8_t &C = zC;
+  uint8_t &IRQPending = zIRQPending;
+  uint8_t &NMIPending = zNMIPending;
+  int64_t &Cycles = zCycles;
 
   //===--------------------------------------------------------------------===//
   // Construction
@@ -99,6 +104,19 @@ public:
   /// MOS has a 16-bit address bus (64KB address space).
   unsigned getAddressBits() const override { return 16; }
 
+  //===--------------------------------------------------------------------===//
+  // Register Access (for LLDB integration)
+  // Uses DWARF register numbers from MOSRegisterInfo.td
+  //===--------------------------------------------------------------------===//
+
+  unsigned getNumRegisters() const override;
+  bool readRegister(unsigned DwarfRegNum, void *Buf,
+                    size_t BufSize) const override;
+  bool writeRegister(unsigned DwarfRegNum, const void *Buf,
+                     size_t BufSize) override;
+  bool writeRegisterNoLog(unsigned DwarfRegNum, const void *Buf,
+                          size_t BufSize) override;
+
   /// Assert IRQ line (level-triggered).
   void assertIRQ() override { IRQPending = 1; }
 
@@ -123,31 +141,42 @@ public:
   }
 
   //===--------------------------------------------------------------------===//
-  // SAIL register aliases (z-prefixed names for generated code)
+  // SAIL memory model primitives (simplified for basic emulator)
+  // These implement the complex SAIL memory interface using our simple read/write.
   //===--------------------------------------------------------------------===//
 
-  uint8_t &zA = A;
-  uint8_t &zX = X;
-  uint8_t &zY = Y;
-  uint8_t &zS = S;
-  uint16_t &zPC = PC;
-  uint16_t &zNextPC = NextPC;
-  bool &zN = N;
-  bool &zV = V;
-  bool &zD = D;
-  bool &zI = I;
-  bool &zZ = Z;
-  bool &zC = C;
-  uint8_t &zIRQPending = IRQPending;
-  uint8_t &zNMIPending = NMIPending;
+  /// Low-level memory read - extracts address from request, calls read()
+  uint64_t zread_memz3zIRMem_read_requestzIbzCuzCuzKzK(
+      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
+    return read(static_cast<uint16_t>(req.zpa));
+  }
 
-  //===--------------------------------------------------------------------===//
-  // SAIL-generated member variables (let bindings)
-  //===--------------------------------------------------------------------===//
+  uint64_t zread_mem_ifetchz3zIRMem_read_requestzIbzCuzCuzKzK(
+      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
+    return read(static_cast<uint16_t>(req.zpa));
+  }
 
-#define GET_EMULATOR_MEMBERS
-#include "MOSGenEmulator.inc"
-#undef GET_EMULATOR_MEMBERS
+  uint64_t zread_mem_exclusivez3zIRMem_read_requestzIbzCuzCuzKzK(
+      zMem_read_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t) {
+    return read(static_cast<uint16_t>(req.zpa));
+  }
+
+  /// Low-level memory write - extracts address/data from request, calls write()
+  bool zwrite_memz3zIRMem_write_requestzIbzCuzCuzKzK(
+      zMem_write_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t, uint64_t data) {
+    write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
+    return true;
+  }
+
+  bool zwrite_mem_exclusivez3zIRMem_write_requestzIbzCuzCuzKzK(
+      zMem_write_requestzIbzCuzCuzK req, int64_t, uint64_t, int64_t, uint64_t data) {
+    write(static_cast<uint16_t>(req.zpa), static_cast<uint8_t>(data));
+    return true;
+  }
+
+  /// Capability tags (not used in basic 6502 - always return false/no-op)
+  bool zread_tagz3(int64_t, uint64_t) { return false; }
+  void zwrite_tagz3(int64_t, uint64_t, bool) {}
 
   //===--------------------------------------------------------------------===//
   // SAIL-generated helper functions (as class methods)

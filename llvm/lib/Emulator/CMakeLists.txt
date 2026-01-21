@@ -3,6 +3,7 @@ add_subdirectory(Semihost)
 add_llvm_component_library(LLVMEmulator
   Context.cpp
   Semihost.cpp
+  System.cpp
   Trace.cpp
 
   ADDITIONAL_HEADER_DIRS
