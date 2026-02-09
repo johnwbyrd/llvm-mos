@@ -68,6 +68,10 @@ public:
   CreateRegisterContextForThread(lldb_private::Thread &thread,
                                  uint32_t concrete_frame_idx) const override;
 
+  // Wrap a register context with imaginary register support
+  lldb::RegisterContextSP
+  WrapRegisterContext(lldb::RegisterContextSP base) const override;
+
 protected:
   lldb::ValueObjectSP
   GetReturnValueObjectImpl(lldb_private::Thread &thread,
