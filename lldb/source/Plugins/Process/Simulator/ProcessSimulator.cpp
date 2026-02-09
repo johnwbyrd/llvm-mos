@@ -17,6 +17,7 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Symbol/ObjectFile.h"
+#include "lldb/Target/ABI.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/State.h"
@@ -96,43 +97,39 @@ bool ProcessSimulator::InitializeEmulator() {
   if (!target)
     return false;
 
-  // Create MC infrastructure (pattern from DisassemblerLLVMC.cpp)
-  m_reg_info.reset(target->createMCRegInfo(triple));
-  if (!m_reg_info)
-    return false;
+  // Get MCRegisterInfo from ABI if available, otherwise create our own
+  ABISP abi_sp = GetABI();
+  if (abi_sp) {
+    m_reg_info_external = &abi_sp->GetMCRegisterInfo();
+  } else {
+    m_reg_info.reset(target->createMCRegInfo(triple));
+    if (!m_reg_info)
+      return false;
+    m_reg_info_external = m_reg_info.get();
+  }
 
+  // Still need MCAsmInfo, MCSubtargetInfo, MCContext for createEmulator()
   llvm::MCTargetOptions mc_options;
-  m_asm_info.reset(target->createMCAsmInfo(*m_reg_info, triple, mc_options));
+  m_asm_info.reset(
+      target->createMCAsmInfo(*m_reg_info_external, triple, mc_options));
   if (!m_asm_info)
     return false;
 
-  std::string cpu = "";
-  std::string features = "";
-  m_subtarget_info.reset(target->createMCSubtargetInfo(triple, cpu, features));
+  m_subtarget_info.reset(target->createMCSubtargetInfo(triple, "", ""));
   if (!m_subtarget_info)
     return false;
 
-  m_mc_context.reset(new llvm::MCContext(triple, m_asm_info.get(),
-                                         m_reg_info.get(),
-                                         m_subtarget_info.get()));
-  if (!m_mc_context)
-    return false;
+  m_mc_context = std::make_unique<llvm::MCContext>(
+      triple, m_asm_info.get(), m_reg_info_external, m_subtarget_info.get());
 
   // Create the emulator
   m_context.reset(target->createEmulator(*m_subtarget_info, *m_mc_context));
   if (!m_context)
     return false;
 
-  // Get address space size from emulator
+  // Create system with memory and semihosting
   unsigned addr_bits = m_context->getAddressBits();
-  uint64_t mem_size = 1ULL << addr_bits;
-
-  // Create memory device
-  m_memory = std::make_unique<llvm::emu::Memory>(mem_size);
-
-  // Create system and wire up devices
-  m_system = std::make_unique<llvm::emu::System>();
-  m_system->addDevice(0, mem_size - 1, m_memory.get());
+  m_system = llvm::emu::System::create(addr_bits);
   m_system->addContext(m_context.get());
 
   m_emulator_initialized = true;
@@ -143,43 +140,23 @@ bool ProcessSimulator::LoadSections(ObjectFile *obj_file) {
   if (!obj_file)
     return false;
 
-  // Use LLVM's object library directly for simple flat iteration
+  // Use LLVM's object library directly
   std::string path = obj_file->GetFileSpec().GetPath();
   auto buf_or_err = llvm::MemoryBuffer::getFile(path);
   if (!buf_or_err)
     return false;
 
-  auto obj_or_err =
-      llvm::object::ObjectFile::createObjectFile(buf_or_err->get()->getMemBufferRef());
+  auto obj_or_err = llvm::object::ObjectFile::createObjectFile(
+      buf_or_err->get()->getMemBufferRef());
   if (!obj_or_err) {
     llvm::consumeError(obj_or_err.takeError());
     return false;
   }
 
-  llvm::object::ObjectFile &obj = **obj_or_err;
-  for (const llvm::object::SectionRef &section : obj.sections()) {
-    // Only load text and data sections
-    if (!section.isText() && !section.isData())
-      continue;
-
-    // BSS is zero-initialized (memory starts zeroed)
-    if (section.isBSS())
-      continue;
-
-    auto contents_or_err = section.getContents();
-    if (!contents_or_err) {
-      llvm::consumeError(contents_or_err.takeError());
-      continue;
-    }
-
-    llvm::StringRef contents = *contents_or_err;
-    uint64_t addr = section.getAddress();
-
-    if (!contents.empty()) {
-      m_memory->writeBlock(addr,
-                           reinterpret_cast<const uint8_t *>(contents.data()),
-                           contents.size());
-    }
+  // Use shared utility to load sections
+  if (auto E = llvm::emu::Memory::loadObject(**obj_or_err, *m_system->getMemory())) {
+    llvm::consumeError(std::move(E));
+    return false;
   }
   return true;
 }
@@ -250,7 +227,6 @@ Status ProcessSimulator::DoResume(RunDirection direction) {
 Status ProcessSimulator::DoDestroy() {
   m_system.reset();
   m_context.reset();
-  m_memory.reset();
   m_emulator_initialized = false;
   return Status();
 }
@@ -355,4 +331,58 @@ bool ProcessSimulator::DoUpdateThreadList(ThreadList &old_thread_list,
     new_thread_list.AddThread(thread_sp);
   }
   return true;
+}
+
+uint32_t
+ProcessSimulator::GetRegisterSizeInBytes(llvm::MCRegister Reg) const {
+  if (!m_reg_info_external)
+    return 1;
+
+  // Find the smallest register class containing this register
+  for (const auto &RC : m_reg_info_external->regclasses()) {
+    if (RC.contains(Reg)) {
+      unsigned Bits = RC.getSizeInBits();
+      if (Bits > 0)
+        return (Bits + 7) / 8;
+    }
+  }
+  return 1; // Default to 1 byte
+}
+
+std::shared_ptr<DynamicRegisterInfo> ProcessSimulator::GetRegisterInfo() {
+  if (m_register_info_sp)
+    return m_register_info_sp;
+
+  if (!m_context || !m_reg_info_external)
+    return nullptr;
+
+  std::vector<DynamicRegisterInfo::Register> regs;
+  unsigned num_regs = m_context->getNumRegisters();
+
+  for (unsigned dwarf = 0; dwarf < num_regs; ++dwarf) {
+    // Map DWARF number to MC register
+    auto mc_reg = m_reg_info_external->getLLVMRegNum(dwarf, false);
+    if (!mc_reg)
+      continue;
+
+    const char *name = m_reg_info_external->getName(*mc_reg);
+    if (!name)
+      continue;
+
+    DynamicRegisterInfo::Register reg;
+    reg.name = ConstString(name);
+    reg.byte_size = GetRegisterSizeInBytes(*mc_reg);
+    reg.regnum_dwarf = dwarf;
+    reg.set_name = ConstString("General Purpose Registers");
+    regs.push_back(reg);
+  }
+
+  // Let ABI augment with generic register kinds (PC, SP, etc.)
+  if (ABISP abi = GetABI())
+    abi->AugmentRegisterInfo(regs);
+
+  m_register_info_sp = std::make_shared<DynamicRegisterInfo>();
+  m_register_info_sp->SetRegisterInfo(std::move(regs),
+                                       GetTarget().GetArchitecture());
+  return m_register_info_sp;
 }

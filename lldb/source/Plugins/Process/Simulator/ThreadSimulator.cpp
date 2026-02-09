@@ -9,7 +9,7 @@
 #include "ThreadSimulator.h"
 
 #include "ProcessSimulator.h"
-#include "RegisterContextSimulator.h"
+#include "RegisterContextEmulator.h"
 
 #include "lldb/Breakpoint/Watchpoint.h"
 #include "lldb/Target/RegisterContext.h"
@@ -45,8 +45,11 @@ ThreadSimulator::CreateRegisterContextForFrame(StackFrame *frame) {
   if (concrete_frame_idx == 0) {
     if (!m_reg_context_sp) {
       auto *process = static_cast<ProcessSimulator *>(GetProcess().get());
-      m_reg_context_sp = std::make_shared<RegisterContextSimulator>(
-          *this, concrete_frame_idx, m_context, process->GetMCRegisterInfo());
+      auto reg_info_sp = process->GetRegisterInfo();
+      if (reg_info_sp) {
+        m_reg_context_sp = std::make_shared<RegisterContextEmulator>(
+            *this, concrete_frame_idx, *reg_info_sp, m_context);
+      }
     }
     return m_reg_context_sp;
   }
