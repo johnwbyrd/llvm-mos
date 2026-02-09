@@ -196,64 +196,19 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
     return 1;
   }
 
-  // Get address space size from the emulator
+  // Create system with memory and semihosting
   unsigned AddrBits = Emu->getAddressBits();
-  uint64_t MemSize = (AddrBits >= 32) ? (4ULL * 1024 * 1024 * 1024)
-                                      : (1ULL << AddrBits);
+  auto Sys = emu::System::create(AddrBits, SemihostDir);
 
-  // Create system with RAM covering the entire address space
-  emu::System Sys;
-  auto RAM = std::make_unique<emu::Memory>(MemSize);
-
-  // Load sections from object file into RAM
-  for (const object::SectionRef &Section : Obj.sections()) {
-    // Skip non-runtime sections
-    if (!Section.isText() && !Section.isData() && !Section.isBSS())
-      continue;
-
-    // BSS sections are zero-initialized (RAM starts zeroed)
-    if (Section.isBSS())
-      continue;
-
-    Expected<StringRef> ContentsOrErr = Section.getContents();
-    if (!ContentsOrErr) {
-      WithColor::error(errs(), ProgName)
-          << "failed to read section: " << toString(ContentsOrErr.takeError())
-          << "\n";
-      return 1;
-    }
-    StringRef Contents = *ContentsOrErr;
-    uint64_t Addr = Section.getAddress();
-
-    RAM->writeBlock(Addr, reinterpret_cast<const uint8_t *>(Contents.data()),
-                    Contents.size());
+  // Load sections from object file into memory
+  if (auto E = emu::Memory::loadObject(Obj, *Sys->getMemory())) {
+    WithColor::error(errs(), ProgName)
+        << "failed to load object: " << toString(std::move(E)) << "\n";
+    return 1;
   }
-
-  // Add RAM to system
-  Sys.addOwnedDevice(0, MemSize - 1, std::move(RAM));
-
-  // Set up semihosting
-  std::unique_ptr<emu::Semihost> Semihost;
-  if (!SemihostDir.empty()) {
-    Semihost = emu::Semihost::create(Sys, SemihostDir);
-  } else {
-    Semihost = emu::Semihost::createConsoleOnly(Sys);
-  }
-
-  // Compute semihost address per ZBC specification
-  uint64_t ReservedStart = MemSize - (1ULL << (AddrBits / 2));
-  uint64_t SemihostBase = ReservedStart - 512 - 32;
-  uint64_t SemihostEnd = SemihostBase + 31;
-  Sys.addDevice(SemihostBase, SemihostEnd, Semihost.get());
-
-  // Hook up exit callback
-  Semihost->setExitCallback([&Sys](unsigned Reason, unsigned Subcode) {
-    (void)Reason;
-    Sys.halt(static_cast<int>(Subcode));
-  });
 
   // Register emulator with system
-  Sys.addContext(Emu.get());
+  Sys->addContext(Emu.get());
 
   // Reset CPU (reads reset vector)
   Emu->reset();
@@ -287,8 +242,8 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   }
 
   // Run until halt or cycle limit
-  Sys.setMaxCycles(MaxCycles);
-  Sys.run();
+  Sys->setMaxCycles(MaxCycles);
+  Sys->run();
 
   if (!Emu->isHalted()) {
     if (TraceWriter)
@@ -302,7 +257,7 @@ static int RunObject(const char *ProgName, const Target *TheTarget,
   if (TraceWriter)
     TraceWriter->traceEnd();
 
-  return Sys.getExitCode();
+  return Sys->getExitCode();
 }
 
 //===----------------------------------------------------------------------===//
