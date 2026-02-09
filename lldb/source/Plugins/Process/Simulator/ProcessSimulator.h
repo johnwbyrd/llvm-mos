@@ -9,11 +9,11 @@
 #ifndef LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_PROCESSSIMULATOR_H
 #define LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_PROCESSSIMULATOR_H
 
+#include "lldb/Target/DynamicRegisterInfo.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/Status.h"
 
 #include "llvm/Emulator/Context.h"
-#include "llvm/Emulator/Memory.h"
 #include "llvm/Emulator/System.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -59,7 +59,9 @@ public:
   Status DisableWatchpoint(lldb::WatchpointSP wp_sp, bool notify) override;
 
   llvm::emu::System *GetSystem() { return m_system.get(); }
-  const llvm::MCRegisterInfo *GetMCRegisterInfo() { return m_reg_info.get(); }
+  llvm::emu::Context *GetEmulatorContext() { return m_context.get(); }
+  const llvm::MCRegisterInfo *GetMCRegisterInfo() { return m_reg_info_external; }
+  std::shared_ptr<DynamicRegisterInfo> GetRegisterInfo();
 
 protected:
   bool DoUpdateThreadList(ThreadList &old_thread_list,
@@ -68,17 +70,21 @@ protected:
 private:
   bool InitializeEmulator();
   bool LoadSections(ObjectFile *obj_file);
+  uint32_t GetRegisterSizeInBytes(llvm::MCRegister Reg) const;
 
-  // MC infrastructure
+  // MC infrastructure - m_reg_info only used if ABI doesn't provide one
   std::unique_ptr<llvm::MCRegisterInfo> m_reg_info;
+  const llvm::MCRegisterInfo *m_reg_info_external = nullptr;
   std::unique_ptr<llvm::MCAsmInfo> m_asm_info;
   std::unique_ptr<llvm::MCSubtargetInfo> m_subtarget_info;
   std::unique_ptr<llvm::MCContext> m_mc_context;
 
+  // Register info built from ABI
+  std::shared_ptr<DynamicRegisterInfo> m_register_info_sp;
+
   // Emulator state
   std::unique_ptr<llvm::emu::System> m_system;
   std::unique_ptr<llvm::emu::Context> m_context;
-  std::unique_ptr<llvm::emu::Memory> m_memory;
 
   bool m_emulator_initialized = false;
 };
