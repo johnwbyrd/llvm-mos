@@ -1,4 +1,4 @@
-//===-- RegisterContextSimulator.h ------------------------------*- C++ -*-===//
+//===-- RegisterContextEmulator.h -------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,26 +6,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_REGISTERCONTEXTSIMULATOR_H
-#define LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_REGISTERCONTEXTSIMULATOR_H
+#ifndef LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_REGISTERCONTEXTEMULATOR_H
+#define LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_REGISTERCONTEXTEMULATOR_H
 
+#include "lldb/Target/DynamicRegisterInfo.h"
 #include "lldb/Target/RegisterContext.h"
 #include "llvm/Emulator/Context.h"
-#include "llvm/MC/MCRegisterInfo.h"
-
-#include <string>
-#include <vector>
 
 namespace lldb_private {
 
-class RegisterContextSimulator : public RegisterContext {
+/// RegisterContext that delegates metadata to DynamicRegisterInfo and
+/// forwards read/write to an emulator Context.
+class RegisterContextEmulator : public RegisterContext {
 public:
-  RegisterContextSimulator(Thread &thread, uint32_t concrete_frame_idx,
-                           llvm::emu::Context *context,
-                           const llvm::MCRegisterInfo *mri);
-  ~RegisterContextSimulator() override;
+  RegisterContextEmulator(Thread &thread, uint32_t concrete_frame_idx,
+                          DynamicRegisterInfo &reg_info,
+                          llvm::emu::Context *context);
+  ~RegisterContextEmulator() override;
 
-  void InvalidateAllRegisters() override;
+  void InvalidateAllRegisters() override {}
   size_t GetRegisterCount() override;
   const RegisterInfo *GetRegisterInfoAtIndex(size_t reg) override;
   size_t GetRegisterSetCount() override;
@@ -40,19 +39,10 @@ public:
                                                uint32_t num) override;
 
 private:
-  void BuildRegisterInfo();
-  uint32_t GetRegisterSizeInBytes(llvm::MCRegister reg) const;
-
+  DynamicRegisterInfo &m_reg_info;
   llvm::emu::Context *m_context;
-  const llvm::MCRegisterInfo *m_mri;
-
-  // Dynamically built register info
-  std::vector<RegisterInfo> m_reg_infos;
-  std::vector<std::string> m_reg_names;
-  std::vector<uint32_t> m_reg_indices;
-  RegisterSet m_reg_set;
 };
 
 } // namespace lldb_private
 
-#endif // LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_REGISTERCONTEXTSIMULATOR_H
+#endif // LLDB_SOURCE_PLUGINS_PROCESS_SIMULATOR_REGISTERCONTEXTEMULATOR_H
