@@ -351,6 +351,12 @@ public:
     StoppedContext = nullptr;
   }
 
+  /// Set the stop reason (for debugger-initiated stops like single-step).
+  void setStopReason(StopReason Reason, uint64_t Addr = 0) {
+    LastStopReason = Reason;
+    LastStopAddress = Addr;
+  }
+
   //===--------------------------------------------------------------------===//
   // Undo Journal (for reverse debugging)
   //===--------------------------------------------------------------------===//
