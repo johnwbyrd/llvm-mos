@@ -160,6 +160,22 @@ public:
     return nullptr;
   }
 
+  /// Wrap a RegisterContext with platform-specific enhancements.
+  ///
+  /// This method allows ABIs to add decorators or enhancements to an existing
+  /// RegisterContext. For example, an ABI might add support for imaginary
+  /// registers or other platform-specific register handling.
+  ///
+  /// Thread implementations should call this after creating their base
+  /// RegisterContext to allow the ABI to add any necessary wrapping.
+  ///
+  /// @param base The base RegisterContext to wrap.
+  /// @return The wrapped context, or the original if no wrapping is needed.
+  virtual lldb::RegisterContextSP
+  WrapRegisterContext(lldb::RegisterContextSP base) const {
+    return base; // Default: no wrapping
+  }
+
   // Returns true if the ABI is prepared to provide authoritative register info for override.
   virtual bool ProvidesRegisterInfoOverride() const { return false; }
 
