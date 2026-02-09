@@ -12,6 +12,7 @@
 #include "RegisterContextEmulator.h"
 
 #include "lldb/Breakpoint/Watchpoint.h"
+#include "lldb/Target/ABI.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StopInfo.h"
 #include "lldb/Target/Unwind.h"
@@ -49,6 +50,9 @@ ThreadSimulator::CreateRegisterContextForFrame(StackFrame *frame) {
       if (reg_info_sp) {
         m_reg_context_sp = std::make_shared<RegisterContextEmulator>(
             *this, concrete_frame_idx, *reg_info_sp, m_context);
+        // Let ABI wrap with platform-specific enhancements (e.g., imaginary registers)
+        if (ABISP abi = process->GetABI())
+          m_reg_context_sp = abi->WrapRegisterContext(m_reg_context_sp);
       }
     }
     return m_reg_context_sp;

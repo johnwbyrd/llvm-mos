@@ -2,6 +2,7 @@ add_lldb_library(lldbPluginArchitectureMOS PLUGIN
   ABISysV_mos.cpp
   MOSImaginaryRegisters.cpp
   MOSRegisterContext.cpp
+  RegisterContextImaginaryWrapper.cpp
 
   LINK_LIBS
     lldbCore

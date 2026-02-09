@@ -9,6 +9,7 @@
 #include "ABISysV_mos.h"
 #include "MOSImaginaryRegisters.h"
 #include "MOSRegisterContext.h"
+#include "RegisterContextImaginaryWrapper.h"
 
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Value.h"
@@ -323,4 +324,24 @@ ModuleSP ABISysV_mos::GetMainModule() const {
     return nullptr;
 
   return target_sp->GetExecutableModule();
+}
+
+RegisterContextSP
+ABISysV_mos::WrapRegisterContext(RegisterContextSP base) const {
+  if (!base)
+    return base;
+
+  ModuleSP main_module = GetMainModule();
+  if (!main_module || !m_mc_register_info_up)
+    return base;
+
+  MOSImaginaryRegisters &imag_regs =
+      MOSImaginaryRegisters::GetOrCreate(*main_module, *m_mc_register_info_up);
+
+  if (!imag_regs.HasImaginaryRegisters())
+    return base;
+
+  // WrapRegisterContext is only called for frame 0
+  return std::make_shared<RegisterContextImaginaryWrapper>(
+      base->GetThread(), 0, base, imag_regs);
 }
