@@ -14,9 +14,16 @@
 #define LLVM_EMULATOR_MEMORY_H
 
 #include "llvm/Emulator/Device.h"
+#include "llvm/Support/Error.h"
 #include <cstring>
 #include <memory>
 #include <vector>
+
+namespace llvm {
+namespace object {
+class ObjectFile;
+} // namespace object
+} // namespace llvm
 
 namespace llvm {
 namespace emu {
@@ -74,6 +81,13 @@ public:
 
   /// Check if this memory is read-only.
   bool isReadOnly() const { return IsReadOnly; }
+
+  /// Load loadable sections from an object file into memory.
+  /// @param Obj The object file to load.
+  /// @param Mem The memory device to write to.
+  /// @return Error if loading fails.
+  static llvm::Error loadObject(const llvm::object::ObjectFile &Obj,
+                                 Memory &Mem);
 
 private:
   std::vector<uint8_t> Data;

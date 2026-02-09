@@ -16,6 +16,7 @@
 
 #include "llvm/Emulator/Context.h"
 #include "llvm/Emulator/Device.h"
+#include "llvm/Emulator/Memory.h"
 #include "llvm/Emulator/Semihost.h"
 #include <cstring>
 #include <map>
@@ -67,6 +68,18 @@ public:
   // Non-copyable
   System(const System &) = delete;
   System &operator=(const System &) = delete;
+
+  /// Create a fully-configured system with memory and semihosting.
+  /// @param AddrBits Address space size in bits (e.g., 16 for 64KB).
+  /// @param SandboxDir Optional sandbox directory for file I/O (empty = console only).
+  static std::unique_ptr<System> create(unsigned AddrBits,
+                                        const std::string &SandboxDir = "");
+
+  /// Get the memory device (only valid after create()).
+  Memory *getMemory() { return Mem; }
+
+  /// Get the semihost device (only valid after create()).
+  Semihost *getSemihost() { return SemihostDev; }
 
   //===--------------------------------------------------------------------===//
   // Device Management
@@ -420,7 +433,8 @@ private:
   // Execution limits
   uint64_t MaxCycles = 0; // 0 = unlimited
 
-  // Semihost device for timer IRQ coordination
+  // Standard devices (owned, set by create())
+  Memory *Mem = nullptr;
   Semihost *SemihostDev = nullptr;
 
   //===--------------------------------------------------------------------===//
