@@ -12,6 +12,43 @@
 using namespace llvm;
 using namespace llvm::emu;
 
+std::unique_ptr<System> System::create(unsigned AddrBits,
+                                       const std::string &SandboxDir) {
+  auto Sys = std::make_unique<System>();
+
+  // Cap memory at 4GB for large address spaces
+  uint64_t MemSize = (AddrBits >= 32) ? (4ULL * 1024 * 1024 * 1024)
+                                      : (1ULL << AddrBits);
+
+  // Create and add memory
+  auto MemDev = std::make_unique<Memory>(MemSize);
+  Sys->Mem = MemDev.get();
+  Sys->addOwnedDevice(0, MemSize - 1, std::move(MemDev));
+
+  // Create and add semihost
+  std::unique_ptr<Semihost> SemihostDev;
+  if (!SandboxDir.empty()) {
+    SemihostDev = Semihost::create(*Sys, SandboxDir);
+  } else {
+    SemihostDev = Semihost::createConsoleOnly(*Sys);
+  }
+
+  // Compute semihost address per ZBC specification
+  uint64_t ReservedStart = MemSize - (1ULL << (AddrBits / 2));
+  uint64_t SemihostBase = ReservedStart - 512 - 32;
+
+  Sys->SemihostDev = SemihostDev.get();
+  Sys->addOwnedDevice(SemihostBase, SemihostBase + 31, std::move(SemihostDev));
+
+  // Set exit callback to halt the system
+  Sys->SemihostDev->setExitCallback(
+      [SysPtr = Sys.get()](unsigned, unsigned Subcode) {
+        SysPtr->halt(static_cast<int>(Subcode));
+      });
+
+  return Sys;
+}
+
 bool System::restoreToCheckpoint(size_t Idx) {
   if (Idx >= Checkpoints.size())
     return false;

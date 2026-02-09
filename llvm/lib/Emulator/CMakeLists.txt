@@ -2,6 +2,7 @@ add_subdirectory(Semihost)
 
 add_llvm_component_library(LLVMEmulator
   Context.cpp
+  Memory.cpp
   Semihost.cpp
   System.cpp
   Trace.cpp
@@ -12,5 +13,6 @@ add_llvm_component_library(LLVMEmulator
   LINK_COMPONENTS
   EmulatorSemihost
   MC
+  Object
   Support
   )

@@ -1,7 +1,7 @@
 add_lldb_library(lldbPluginProcessSimulator PLUGIN
   ProcessSimulator.cpp
   ThreadSimulator.cpp
-  RegisterContextSimulator.cpp
+  RegisterContextEmulator.cpp
 
   LINK_COMPONENTS
     MC
