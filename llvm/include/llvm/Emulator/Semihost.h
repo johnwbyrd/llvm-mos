@@ -53,18 +53,26 @@ class Semihost : public Device {
 public:
   /// Create a semihost device with sandboxed filesystem access.
   /// @param Sys System for memory access callbacks.
+  /// @param Config Platform configuration for RIFF encoding.
   /// @param SandboxDir Directory to sandbox file operations to.
   static std::unique_ptr<Semihost> create(System &Sys,
+                                          semihost::PlatformConfig Config,
                                           const std::string &SandboxDir);
 
   /// Create a semihost device with UNRESTRICTED filesystem access.
   /// WARNING: Guest code can read/write/delete any file!
-  static std::unique_ptr<Semihost> createInsecure(System &Sys);
+  /// @param Sys System for memory access callbacks.
+  /// @param Config Platform configuration for RIFF encoding.
+  static std::unique_ptr<Semihost> createInsecure(System &Sys,
+                                                  semihost::PlatformConfig Config);
 
   /// Create a semihost device with console-only access.
   /// Supports stdin/stdout/stderr and exit, but no filesystem access.
   /// File operations will return errors to the guest.
-  static std::unique_ptr<Semihost> createConsoleOnly(System &Sys);
+  /// @param Sys System for memory access callbacks.
+  /// @param Config Platform configuration for RIFF encoding.
+  static std::unique_ptr<Semihost> createConsoleOnly(System &Sys,
+                                                     semihost::PlatformConfig Config);
 
   ~Semihost() override;
 
