@@ -43,9 +43,8 @@ semihost::TimerCallback Semihost::makeTimerCallback(System &Sys) {
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<Semihost> Semihost::create(System &Sys,
+                                           PlatformConfig Config,
                                            const std::string &SandboxDir) {
-  // MOS 6502: 8-bit CPU, 16-bit pointers, little-endian
-  PlatformConfig Config(2, 2, llvm::endianness::little);
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
 
   PathValidatorConfig ValidatorConfig;
@@ -60,8 +59,8 @@ std::unique_ptr<Semihost> Semihost::create(System &Sys,
   return Dev;
 }
 
-std::unique_ptr<Semihost> Semihost::createInsecure(System &Sys) {
-  PlatformConfig Config(2, 2, llvm::endianness::little);
+std::unique_ptr<Semihost> Semihost::createInsecure(System &Sys,
+                                                   PlatformConfig Config) {
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
 
   Dev->TheBackend = std::make_unique<InsecureBackend>(Dev->makeExitCallback(),
@@ -69,8 +68,8 @@ std::unique_ptr<Semihost> Semihost::createInsecure(System &Sys) {
   return Dev;
 }
 
-std::unique_ptr<Semihost> Semihost::createConsoleOnly(System &Sys) {
-  PlatformConfig Config(2, 2, llvm::endianness::little);
+std::unique_ptr<Semihost> Semihost::createConsoleOnly(System &Sys,
+                                                      PlatformConfig Config) {
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
 
   Dev->TheBackend = std::make_unique<ConsoleBackend>(Dev->makeExitCallback(),
