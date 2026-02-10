@@ -184,7 +184,12 @@ static emu::Context *createMOSEmulator(const Target &T,
 
   // Create the MOS execution context
   // Note: The context takes ownership of both the disassembler and instr info
-  return new MOS::Context(Disasm.release(), II.release());
+  auto *EmuCtx = new MOS::Context(Disasm.release(), II.release());
+
+  // Set STI so Context can derive platform config from the Triple
+  EmuCtx->setSubtargetInfo(&STI);
+
+  return EmuCtx;
 }
 
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMOSTargetMC() {
