@@ -15,13 +15,14 @@
 
 namespace lldb_private {
 
+class ThreadSimulator;
+
 /// RegisterContext that delegates metadata to DynamicRegisterInfo and
 /// forwards read/write to an emulator Context.
 class RegisterContextEmulator : public RegisterContext {
 public:
   RegisterContextEmulator(Thread &thread, uint32_t concrete_frame_idx,
-                          DynamicRegisterInfo &reg_info,
-                          llvm::emu::Context *context);
+                          DynamicRegisterInfo &reg_info);
   ~RegisterContextEmulator() override;
 
   void InvalidateAllRegisters() override {}
@@ -39,8 +40,10 @@ public:
                                                uint32_t num) override;
 
 private:
+  /// Get the emulator context from the thread.
+  llvm::emu::Context *GetContext();
+
   DynamicRegisterInfo &m_reg_info;
-  llvm::emu::Context *m_context;
 };
 
 } // namespace lldb_private

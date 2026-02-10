@@ -21,10 +21,20 @@ using namespace lldb;
 using namespace lldb_private;
 
 ThreadSimulator::ThreadSimulator(ProcessSimulator &process, tid_t tid,
-                                 llvm::emu::Context *context)
-    : Thread(process, tid), m_context(context) {}
+                                 size_t context_idx)
+    : Thread(process, tid), m_context_idx(context_idx) {}
 
 ThreadSimulator::~ThreadSimulator() { DestroyThread(); }
+
+llvm::emu::Context *ThreadSimulator::GetEmulatorContext() {
+  auto *process = static_cast<ProcessSimulator *>(GetProcess().get());
+  if (!process)
+    return nullptr;
+  llvm::emu::System *sys = process->GetSystem();
+  if (!sys)
+    return nullptr;
+  return sys->getContext(m_context_idx);
+}
 
 void ThreadSimulator::RefreshStateAfterStop() {
   if (m_reg_context_sp)
@@ -49,7 +59,7 @@ ThreadSimulator::CreateRegisterContextForFrame(StackFrame *frame) {
       auto reg_info_sp = process->GetRegisterInfo();
       if (reg_info_sp) {
         m_reg_context_sp = std::make_shared<RegisterContextEmulator>(
-            *this, concrete_frame_idx, *reg_info_sp, m_context);
+            *this, concrete_frame_idx, *reg_info_sp);
         // Let ABI wrap with platform-specific enhancements (e.g., imaginary registers)
         if (ABISP abi = process->GetABI())
           m_reg_context_sp = abi->WrapRegisterContext(m_reg_context_sp);
@@ -66,16 +76,16 @@ bool ThreadSimulator::CalculateStopInfo() {
   if (!process)
     return false;
 
+  llvm::emu::System *sys = process->GetSystem();
+  if (!sys)
+    return false;
+
   // Check for history boundary first (reverse execution hit start of recording)
-  if (process->IsAtHistoryBoundary()) {
+  if (sys->isAtHistoryBoundary()) {
     SetStopInfo(StopInfo::CreateStopReasonHistoryBoundary(
         *this, "Beginning of recorded execution history"));
     return true;
   }
-
-  llvm::emu::System *sys = process->GetSystem();
-  if (!sys)
-    return false;
 
   auto reason = sys->getStopReason();
   StopInfoSP stop_info_sp;
