@@ -107,6 +107,12 @@ private:
   Semihost(System &Sys, std::unique_ptr<semihost::Backend> Back,
            semihost::PlatformConfig Config);
 
+  /// Create exit callback for backend initialization.
+  semihost::ExitCallback makeExitCallback();
+
+  /// Create timer callback for backend initialization.
+  static semihost::TimerCallback makeTimerCallback(System &Sys);
+
   void processRequest();
   void dispatchOpcode(semihost::ParsedRequest &Req);
 
