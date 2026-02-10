@@ -8,9 +8,11 @@
 
 #include "llvm/Emulator/System.h"
 #include "llvm/Emulator/Context.h"
+#include "llvm/Emulator/Semihost/Policy.h"
 
 using namespace llvm;
 using namespace llvm::emu;
+using namespace llvm::emu::semihost;
 
 std::unique_ptr<System> System::create(unsigned AddrBits,
                                        const std::string &SandboxDir) {
@@ -32,13 +34,17 @@ std::unique_ptr<System> System::create(unsigned AddrBits,
   uint8_t PtrSize = (AddrBits + 7) / 8;
   semihost::PlatformConfig Config(PtrSize, PtrSize, llvm::endianness::little);
 
-  // Create and add semihost
-  std::unique_ptr<Semihost> SemihostDev;
+  // Create security policy
+  std::unique_ptr<Policy> SemihostPolicy;
   if (!SandboxDir.empty()) {
-    SemihostDev = Semihost::create(*Sys, Config, SandboxDir);
+    SemihostPolicy = std::make_unique<SandboxedPolicy>(SandboxDir);
   } else {
-    SemihostDev = Semihost::createConsoleOnly(*Sys, Config);
+    SemihostPolicy = std::make_unique<ConsoleOnlyPolicy>();
   }
+
+  // Create and add semihost
+  std::unique_ptr<Semihost> SemihostDev =
+      Semihost::create(*Sys, Config, std::move(SemihostPolicy));
 
   // Compute semihost address per ZBC specification
   uint64_t ReservedStart = MemSize - (1ULL << (AddrBits / 2));

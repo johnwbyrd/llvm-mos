@@ -24,6 +24,7 @@
 
 #include "llvm/Emulator/Device.h"
 #include "llvm/Emulator/Semihost/Backend.h"
+#include "llvm/Emulator/Semihost/Policy.h"
 #include "llvm/Emulator/Semihost/RiffCodec.h"
 #include <cstdint>
 #include <memory>
@@ -34,10 +35,6 @@ namespace llvm {
 namespace emu {
 
 class System;
-
-namespace semihost {
-class SecureBackend;
-} // namespace semihost
 
 /// Semihosting device providing host I/O to guest programs.
 ///
@@ -51,28 +48,13 @@ class SecureBackend;
 /// \endcode
 class Semihost : public Device {
 public:
-  /// Create a semihost device with sandboxed filesystem access.
+  /// Create a semihost device with the given security policy.
   /// @param Sys System for memory access callbacks.
   /// @param Config Platform configuration for RIFF encoding.
-  /// @param SandboxDir Directory to sandbox file operations to.
+  /// @param ThePolicy Security policy controlling what operations are allowed.
   static std::unique_ptr<Semihost> create(System &Sys,
                                           semihost::PlatformConfig Config,
-                                          const std::string &SandboxDir);
-
-  /// Create a semihost device with UNRESTRICTED filesystem access.
-  /// WARNING: Guest code can read/write/delete any file!
-  /// @param Sys System for memory access callbacks.
-  /// @param Config Platform configuration for RIFF encoding.
-  static std::unique_ptr<Semihost> createInsecure(System &Sys,
-                                                  semihost::PlatformConfig Config);
-
-  /// Create a semihost device with console-only access.
-  /// Supports stdin/stdout/stderr and exit, but no filesystem access.
-  /// File operations will return errors to the guest.
-  /// @param Sys System for memory access callbacks.
-  /// @param Config Platform configuration for RIFF encoding.
-  static std::unique_ptr<Semihost> createConsoleOnly(System &Sys,
-                                                     semihost::PlatformConfig Config);
+                                          std::unique_ptr<semihost::Policy> ThePolicy);
 
   ~Semihost() override;
 
@@ -94,9 +76,10 @@ public:
   /// Set callback for exit events.
   void setExitCallback(semihost::ExitCallback CB);
 
-  /// Add an additional allowed path (secure mode only).
+  /// Add an additional allowed path (SandboxedPolicy only).
   /// @param Prefix Path prefix to allow (e.g., "/usr/lib/").
   /// @param AllowWrite If true, allow write operations to this path.
+  /// @note Only works if the Policy is a SandboxedPolicy.
   void addAllowedPath(const std::string &Prefix, bool AllowWrite = false);
 
   /// Check if response is ready (STATUS bit 0).
@@ -113,6 +96,7 @@ public:
 
 private:
   Semihost(System &Sys, std::unique_ptr<semihost::Backend> Back,
+           std::unique_ptr<semihost::Policy> Pol,
            semihost::PlatformConfig Config);
 
   /// Create exit callback for backend initialization.
@@ -132,7 +116,7 @@ private:
 
   System &Sys;
   std::unique_ptr<semihost::Backend> TheBackend;
-  semihost::SecureBackend *SecureBack = nullptr;  // Non-owning, for addAllowedPath
+  std::unique_ptr<semihost::Policy> ThePolicy;
   semihost::PlatformConfig Config;
 
   // Device registers
