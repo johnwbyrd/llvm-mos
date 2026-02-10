@@ -3,8 +3,8 @@ add_llvm_component_library(LLVMEmulatorSemihost
   FileBackend.cpp
   FileDescTable.cpp
   PathValidator.cpp
+  Policy.cpp
   RiffCodec.cpp
-  SecureBackend.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Emulator/Semihost

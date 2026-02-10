@@ -17,7 +17,6 @@
 
 #include "llvm/Emulator/Semihost/Backend.h"
 #include "llvm/Emulator/Semihost/FileDescTable.h"
-#include "llvm/Support/Error.h"
 #include <string>
 
 namespace llvm {
@@ -49,12 +48,10 @@ public:
   bool isTTY(int FD) override;
 
 protected:
-  /// Resolve and validate a path.
-  /// Subclasses override this to implement security policy.
+  /// Resolve a path (no security checks - security is in Policy layer).
   /// @param Path The requested path.
-  /// @param ForWrite True if the operation will write to the path.
-  /// @return Resolved path on success, Error if access denied.
-  virtual Expected<std::string> resolvePath(StringRef Path, bool ForWrite) = 0;
+  /// @return The path as a string.
+  std::string resolvePath(StringRef Path) { return std::string(Path); }
 
   FileDescTable FDTable_;
   int TmpNameCounter_ = 0;

@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Emulator/Semihost/FileBackend.h"
-#include "llvm/Support/Error.h"
 #include <cerrno>
 #include <cstdio>
 
@@ -15,22 +14,15 @@ using namespace llvm;
 using namespace llvm::emu::semihost;
 
 OpResult FileBackend::open(StringRef Path, OpenMode Mode) {
-  bool ForWrite = openModeIsWrite(Mode);
-
-  Expected<std::string> ResolvedPath = resolvePath(Path, ForWrite);
-  if (!ResolvedPath) {
-    consumeError(ResolvedPath.takeError());
-    LastErrno = EACCES;
-    return OpResult::error(EACCES);
-  }
-
   const char *ModeStr = openModeToString(Mode);
   if (!ModeStr) {
     LastErrno = EINVAL;
     return OpResult::error(EINVAL);
   }
 
-  FILE *FP = std::fopen(ResolvedPath->c_str(), ModeStr);
+  // Path is already resolved by Policy layer
+  std::string PathStr = resolvePath(Path);
+  FILE *FP = std::fopen(PathStr.c_str(), ModeStr);
   if (!FP) {
     LastErrno = errno;
     return OpResult::error(errno);
@@ -160,14 +152,9 @@ OpResult FileBackend::fileLength(int FD) {
 }
 
 OpResult FileBackend::remove(StringRef Path) {
-  Expected<std::string> ResolvedPath = resolvePath(Path, true);
-  if (!ResolvedPath) {
-    consumeError(ResolvedPath.takeError());
-    LastErrno = EACCES;
-    return OpResult::error(EACCES);
-  }
-
-  if (std::remove(ResolvedPath->c_str()) != 0) {
+  // Path is already resolved by Policy layer
+  std::string PathStr = resolvePath(Path);
+  if (std::remove(PathStr.c_str()) != 0) {
     LastErrno = errno;
     return OpResult::error(errno);
   }
@@ -176,21 +163,11 @@ OpResult FileBackend::remove(StringRef Path) {
 }
 
 OpResult FileBackend::rename(StringRef OldPath, StringRef NewPath) {
-  Expected<std::string> ResolvedOld = resolvePath(OldPath, true);
-  if (!ResolvedOld) {
-    consumeError(ResolvedOld.takeError());
-    LastErrno = EACCES;
-    return OpResult::error(EACCES);
-  }
+  // Paths are already resolved by Policy layer
+  std::string OldPathStr = resolvePath(OldPath);
+  std::string NewPathStr = resolvePath(NewPath);
 
-  Expected<std::string> ResolvedNew = resolvePath(NewPath, true);
-  if (!ResolvedNew) {
-    consumeError(ResolvedNew.takeError());
-    LastErrno = EACCES;
-    return OpResult::error(EACCES);
-  }
-
-  if (std::rename(ResolvedOld->c_str(), ResolvedNew->c_str()) != 0) {
+  if (std::rename(OldPathStr.c_str(), NewPathStr.c_str()) != 0) {
     LastErrno = errno;
     return OpResult::error(errno);
   }
