@@ -18,6 +18,10 @@ using namespace llvm::support;
 // Integer Read/Write with Runtime Size
 //===----------------------------------------------------------------------===//
 
+namespace llvm {
+namespace emu {
+namespace semihost {
+
 intmax_t readInt(const uint8_t *Buf, uint8_t Size,
                            llvm::endianness Endian) {
   uintmax_t Value = readUInt(Buf, Size, Endian);
@@ -348,3 +352,7 @@ void RiffBuilder::pad() {
     Buf[Offset++] = 0;
   }
 }
+
+} // namespace semihost
+} // namespace emu
+} // namespace llvm

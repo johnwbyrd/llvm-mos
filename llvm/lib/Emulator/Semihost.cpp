@@ -131,7 +131,7 @@ uint8_t Semihost::read(uint64_t Offset) {
   }
 
   // RIFF_PTR (8 bytes at offset 0x08, little-endian)
-  if (Offset >= DeviceReg::RiffPtr && Offset < DeviceReg::Doorbell) {
+  if (Offset >= DeviceReg::RiffPtr && Offset < DeviceReg::Reserved) {
     unsigned ByteIdx = Offset - DeviceReg::RiffPtr;
     return static_cast<uint8_t>((RiffPtr >> (ByteIdx * 8)) & 0xFF);
   }
@@ -149,7 +149,7 @@ void Semihost::write(uint64_t Offset, uint8_t Value) {
     return;
 
   // RIFF_PTR (8 bytes at offset 0x08, little-endian)
-  if (Offset >= DeviceReg::RiffPtr && Offset < DeviceReg::Doorbell) {
+  if (Offset >= DeviceReg::RiffPtr && Offset < DeviceReg::Reserved) {
     unsigned ByteIdx = Offset - DeviceReg::RiffPtr;
     uint64_t Mask = ~(uint64_t(0xFF) << (ByteIdx * 8));
     RiffPtr = (RiffPtr & Mask) | (uint64_t(Value) << (ByteIdx * 8));
@@ -290,11 +290,15 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
   }
 
   case Opcode::WriteC:
-    if (Req.Parms.empty()) {
+    // WriteC can receive the character via PARM or DATA chunk
+    if (!Req.Parms.empty()) {
+      TheBackend->writeChar(static_cast<char>(Req.Parms[0]));
+    } else if (!Req.DataChunks.empty() && !Req.DataChunks[0].Data.empty()) {
+      TheBackend->writeChar(static_cast<char>(Req.DataChunks[0].Data[0]));
+    } else {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    TheBackend->writeChar(static_cast<char>(Req.Parms[0]));
     Result = OpResult::success();
     break;
 
