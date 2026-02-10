@@ -25,12 +25,19 @@ std::unique_ptr<System> System::create(unsigned AddrBits,
   Sys->Mem = MemDev.get();
   Sys->addOwnedDevice(0, MemSize - 1, std::move(MemDev));
 
+  // Derive default platform config from address bits
+  // PtrSize = AddrBits / 8, IntSize = PtrSize (common for semihosting)
+  // Assume little-endian (most common, and RIFF is LE anyway)
+  // The guest can override via CNFG chunk in the first request
+  uint8_t PtrSize = (AddrBits + 7) / 8;
+  semihost::PlatformConfig Config(PtrSize, PtrSize, llvm::endianness::little);
+
   // Create and add semihost
   std::unique_ptr<Semihost> SemihostDev;
   if (!SandboxDir.empty()) {
-    SemihostDev = Semihost::create(*Sys, SandboxDir);
+    SemihostDev = Semihost::create(*Sys, Config, SandboxDir);
   } else {
-    SemihostDev = Semihost::createConsoleOnly(*Sys);
+    SemihostDev = Semihost::createConsoleOnly(*Sys, Config);
   }
 
   // Compute semihost address per ZBC specification
