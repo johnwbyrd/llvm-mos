@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "RegisterContextEmulator.h"
+#include "ThreadSimulator.h"
 #include "lldb/Utility/RegisterValue.h"
 
 using namespace lldb;
@@ -14,10 +15,13 @@ using namespace lldb_private;
 
 RegisterContextEmulator::RegisterContextEmulator(Thread &thread,
                                                  uint32_t frame_idx,
-                                                 DynamicRegisterInfo &reg_info,
-                                                 llvm::emu::Context *context)
-    : RegisterContext(thread, frame_idx), m_reg_info(reg_info),
-      m_context(context) {}
+                                                 DynamicRegisterInfo &reg_info)
+    : RegisterContext(thread, frame_idx), m_reg_info(reg_info) {}
+
+llvm::emu::Context *RegisterContextEmulator::GetContext() {
+  auto *thread = static_cast<ThreadSimulator *>(&GetThread());
+  return thread ? thread->GetEmulatorContext() : nullptr;
+}
 
 RegisterContextEmulator::~RegisterContextEmulator() = default;
 
@@ -39,14 +43,15 @@ const RegisterSet *RegisterContextEmulator::GetRegisterSet(size_t set) {
 
 bool RegisterContextEmulator::ReadRegister(const RegisterInfo *reg_info,
                                            RegisterValue &reg_value) {
-  if (!reg_info || !m_context)
+  llvm::emu::Context *ctx = GetContext();
+  if (!reg_info || !ctx)
     return false;
 
   unsigned dwarf_num = reg_info->kinds[eRegisterKindDWARF];
   size_t size = reg_info->byte_size;
 
   uint8_t buf[8] = {0};
-  if (!m_context->readRegister(dwarf_num, buf, size))
+  if (!ctx->readRegister(dwarf_num, buf, size))
     return false;
 
   reg_value.SetBytes(buf, size, eByteOrderLittle);
@@ -55,7 +60,8 @@ bool RegisterContextEmulator::ReadRegister(const RegisterInfo *reg_info,
 
 bool RegisterContextEmulator::WriteRegister(const RegisterInfo *reg_info,
                                             const RegisterValue &reg_value) {
-  if (!reg_info || !m_context)
+  llvm::emu::Context *ctx = GetContext();
+  if (!reg_info || !ctx)
     return false;
 
   unsigned dwarf_num = reg_info->kinds[eRegisterKindDWARF];
@@ -64,7 +70,7 @@ bool RegisterContextEmulator::WriteRegister(const RegisterInfo *reg_info,
   uint8_t buf[8] = {0};
   if (size <= sizeof(buf)) {
     memcpy(buf, reg_value.GetBytes(), size);
-    return m_context->writeRegister(dwarf_num, buf, size);
+    return ctx->writeRegister(dwarf_num, buf, size);
   }
   return false;
 }
