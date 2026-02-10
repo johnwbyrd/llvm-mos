@@ -7,10 +7,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Emulator/Semihost.h"
-#include "llvm/Emulator/Semihost/PathValidator.h"
-#include "llvm/Emulator/Semihost/SecureBackend.h"
+#include "llvm/Emulator/Semihost/FileBackend.h"
 #include "llvm/Emulator/System.h"
 #include "llvm/Support/Error.h"
+#include <cerrno>
 
 using namespace llvm;
 using namespace llvm::emu;
@@ -39,41 +39,17 @@ semihost::TimerCallback Semihost::makeTimerCallback(System &Sys) {
 }
 
 //===----------------------------------------------------------------------===//
-// Factory Methods
+// Factory Method
 //===----------------------------------------------------------------------===//
 
 std::unique_ptr<Semihost> Semihost::create(System &Sys,
                                            PlatformConfig Config,
-                                           const std::string &SandboxDir) {
-  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
+                                           std::unique_ptr<Policy> ThePolicy) {
+  auto Dev = std::unique_ptr<Semihost>(
+      new Semihost(Sys, nullptr, std::move(ThePolicy), Config));
 
-  PathValidatorConfig ValidatorConfig;
-  ValidatorConfig.SandboxDir = SandboxDir;
-
-  auto *Back = new SecureBackend(std::move(ValidatorConfig),
-                                 Dev->makeExitCallback(),
-                                 makeTimerCallback(Sys));
-  Dev->TheBackend.reset(Back);
-  Dev->SecureBack = Back;
-
-  return Dev;
-}
-
-std::unique_ptr<Semihost> Semihost::createInsecure(System &Sys,
-                                                   PlatformConfig Config) {
-  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
-
-  Dev->TheBackend = std::make_unique<InsecureBackend>(Dev->makeExitCallback(),
-                                                      makeTimerCallback(Sys));
-  return Dev;
-}
-
-std::unique_ptr<Semihost> Semihost::createConsoleOnly(System &Sys,
-                                                      PlatformConfig Config) {
-  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
-
-  Dev->TheBackend = std::make_unique<ConsoleBackend>(Dev->makeExitCallback(),
-                                                     makeTimerCallback(Sys));
+  Dev->TheBackend = std::make_unique<FileBackend>(Dev->makeExitCallback(),
+                                                  makeTimerCallback(Sys));
   return Dev;
 }
 
@@ -82,9 +58,10 @@ std::unique_ptr<Semihost> Semihost::createConsoleOnly(System &Sys,
 //===----------------------------------------------------------------------===//
 
 Semihost::Semihost(System &Sys, std::unique_ptr<semihost::Backend> Back,
+                   std::unique_ptr<semihost::Policy> Pol,
                    semihost::PlatformConfig Cfg)
-    : Sys(Sys), TheBackend(std::move(Back)), Config(Cfg),
-      WorkBuffer(WorkBufferSize) {}
+    : Sys(Sys), TheBackend(std::move(Back)), ThePolicy(std::move(Pol)),
+      Config(Cfg), WorkBuffer(WorkBufferSize) {}
 
 Semihost::~Semihost() = default;
 
@@ -97,9 +74,7 @@ void Semihost::setExitCallback(semihost::ExitCallback CB) {
 }
 
 void Semihost::addAllowedPath(const std::string &Prefix, bool AllowWrite) {
-  // SecureBackend stores a pointer to itself that we can check
-  if (SecureBack)
-    SecureBack->addAllowedPath(Prefix, AllowWrite);
+  ThePolicy->addAllowedPath(Prefix, AllowWrite);
 }
 
 //===----------------------------------------------------------------------===//
@@ -238,18 +213,44 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->open(Req.getDataAsString(0),
-                              static_cast<OpenMode>(Req.Parms[0]));
+    StringRef Path = Req.getDataAsString(0);
+    OpenMode Mode = static_cast<OpenMode>(Req.Parms[0]);
+
+    // Policy check
+    if (!ThePolicy->allowOpen(Path, Mode)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    // Resolve path through policy (may sandbox or reject)
+    bool ForWrite = openModeIsWrite(Mode);
+    Expected<std::string> ResolvedPath = ThePolicy->resolvePath(Path, ForWrite);
+    if (!ResolvedPath) {
+      consumeError(ResolvedPath.takeError());
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->open(*ResolvedPath, Mode);
     break;
   }
 
-  case Opcode::Close:
+  case Opcode::Close: {
     if (Req.Parms.empty()) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->close(static_cast<int>(Req.Parms[0]));
+    int FD = static_cast<int>(Req.Parms[0]);
+
+    // Policy check
+    if (!ThePolicy->allowClose(FD)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->close(FD);
     break;
+  }
 
   case Opcode::Read: {
     if (Req.Parms.size() < 2) {
@@ -258,6 +259,13 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
     }
     int FD = static_cast<int>(Req.Parms[0]);
     size_t Count = static_cast<size_t>(Req.Parms[1]);
+
+    // Policy check
+    if (!ThePolicy->allowRead(FD, Count)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
     Result = TheBackend->read(FD, Count);
     break;
   }
@@ -268,78 +276,180 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       return;
     }
     int FD = static_cast<int>(Req.Parms[0]);
-    Result = TheBackend->write(FD, Req.DataChunks[0].Data);
+    ArrayRef<uint8_t> Data = Req.DataChunks[0].Data;
+
+    // Policy check
+    if (!ThePolicy->allowWrite(FD, Data)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->write(FD, Data);
     break;
   }
 
-  case Opcode::WriteC:
-    // WriteC can receive the character via PARM or DATA chunk
+  case Opcode::WriteC: {
+    char C;
     if (!Req.Parms.empty()) {
-      TheBackend->writeChar(static_cast<char>(Req.Parms[0]));
+      C = static_cast<char>(Req.Parms[0]);
     } else if (!Req.DataChunks.empty() && !Req.DataChunks[0].Data.empty()) {
-      TheBackend->writeChar(static_cast<char>(Req.DataChunks[0].Data[0]));
+      C = static_cast<char>(Req.DataChunks[0].Data[0]);
     } else {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
+
+    // Policy check
+    if (!ThePolicy->allowWriteChar(C)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    TheBackend->writeChar(C);
     Result = OpResult::success();
     break;
+  }
 
-  case Opcode::Write0:
+  case Opcode::Write0: {
     if (Req.DataChunks.empty()) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    TheBackend->writeString(Req.getDataAsString(0));
+    StringRef Str = Req.getDataAsString(0);
+
+    // Policy check
+    if (!ThePolicy->allowWriteString(Str)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    TheBackend->writeString(Str);
     Result = OpResult::success();
     break;
+  }
 
   case Opcode::ReadC:
+    // Policy check
+    if (!ThePolicy->allowReadChar()) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
     Result = OpResult::success(TheBackend->readChar());
     break;
 
-  case Opcode::Seek:
+  case Opcode::Seek: {
     if (Req.Parms.size() < 2) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->seek(static_cast<int>(Req.Parms[0]),
-                              static_cast<int64_t>(Req.Parms[1]));
-    break;
+    int FD = static_cast<int>(Req.Parms[0]);
+    int64_t Offset = static_cast<int64_t>(Req.Parms[1]);
 
-  case Opcode::FLen:
+    // Policy check
+    if (!ThePolicy->allowSeek(FD, Offset)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->seek(FD, Offset);
+    break;
+  }
+
+  case Opcode::FLen: {
     if (Req.Parms.empty()) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->fileLength(static_cast<int>(Req.Parms[0]));
-    break;
+    int FD = static_cast<int>(Req.Parms[0]);
 
-  case Opcode::Remove:
+    // Policy check
+    if (!ThePolicy->allowFileLength(FD)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->fileLength(FD);
+    break;
+  }
+
+  case Opcode::Remove: {
     if (Req.DataChunks.empty()) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->remove(Req.getDataAsString(0));
-    break;
+    StringRef Path = Req.getDataAsString(0);
 
-  case Opcode::Rename:
+    // Policy check
+    if (!ThePolicy->allowRemove(Path)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    // Resolve path through policy
+    Expected<std::string> ResolvedPath = ThePolicy->resolvePath(Path, true);
+    if (!ResolvedPath) {
+      consumeError(ResolvedPath.takeError());
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->remove(*ResolvedPath);
+    break;
+  }
+
+  case Opcode::Rename: {
     if (Req.DataChunks.size() < 2) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->rename(Req.getDataAsString(0), Req.getDataAsString(1));
-    break;
+    StringRef OldPath = Req.getDataAsString(0);
+    StringRef NewPath = Req.getDataAsString(1);
 
-  case Opcode::TmpNam:
-    Result = TheBackend->tmpnam(Req.Parms.empty() ? 0 : static_cast<int>(Req.Parms[0]));
+    // Policy check
+    if (!ThePolicy->allowRename(OldPath, NewPath)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    // Resolve both paths through policy
+    Expected<std::string> ResolvedOld = ThePolicy->resolvePath(OldPath, true);
+    if (!ResolvedOld) {
+      consumeError(ResolvedOld.takeError());
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Expected<std::string> ResolvedNew = ThePolicy->resolvePath(NewPath, true);
+    if (!ResolvedNew) {
+      consumeError(ResolvedNew.takeError());
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->rename(*ResolvedOld, *ResolvedNew);
     break;
+  }
+
+  case Opcode::TmpNam: {
+    int Id = Req.Parms.empty() ? 0 : static_cast<int>(Req.Parms[0]);
+
+    // Policy check
+    if (!ThePolicy->allowTmpnam(Id)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->tmpnam(Id);
+    break;
+  }
 
   case Opcode::IsError:
     if (Req.Parms.empty()) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
+    // No policy check for IsError - it's a pure query
     Result = OpResult::success(
         TheBackend->isError(static_cast<int>(Req.Parms[0])) ? 1 : 0);
     break;
@@ -349,48 +459,76 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
+    // No policy check for IsTTY - it's a pure query
     Result =
         OpResult::success(TheBackend->isTTY(static_cast<int>(Req.Parms[0])) ? 1 : 0);
     break;
 
   case Opcode::Clock:
+    // No policy check for Clock - it's a pure query
     Result = TheBackend->clock();
     break;
 
   case Opcode::Time:
+    // No policy check for Time - it's a pure query
     Result = TheBackend->time();
     break;
 
   case Opcode::Elapsed:
+    // No policy check for Elapsed - it's a pure query
     Result = TheBackend->elapsed();
     break;
 
   case Opcode::TickFreq:
+    // No policy check for TickFreq - it's a pure query
     Result = TheBackend->tickFreq();
     break;
 
-  case Opcode::System:
+  case Opcode::System: {
     if (Req.DataChunks.empty()) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->system(Req.getDataAsString(0));
+    StringRef Command = Req.getDataAsString(0);
+
+    // Policy check - system() is dangerous
+    if (!ThePolicy->allowSystem(Command)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->system(Command);
     break;
+  }
 
   case Opcode::GetCmdLine:
+    // Policy check
+    if (!ThePolicy->allowGetCmdLine()) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
     Result = TheBackend->getCmdLine();
     break;
 
   case Opcode::HeapInfo:
+    // Policy check
+    if (!ThePolicy->allowHeapInfo()) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
     Result = TheBackend->heapInfo();
     break;
 
   case Opcode::Errno:
+    // No policy check for Errno - it's a pure query
     Result = OpResult::success(TheBackend->getErrno());
     break;
 
   case Opcode::Exit:
   case Opcode::ExitExtended: {
+    // No policy check for Exit - always allowed (guest wants to quit)
     unsigned Reason = Req.Parms.empty() ? 0 : static_cast<unsigned>(Req.Parms[0]);
     unsigned Subcode = Req.Parms.size() > 1 ? static_cast<unsigned>(Req.Parms[1]) : 0;
     TheBackend->exit(Reason, Subcode);
@@ -398,13 +536,22 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
     break;
   }
 
-  case Opcode::TimerConfig:
+  case Opcode::TimerConfig: {
     if (Req.Parms.empty()) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->timerConfig(static_cast<unsigned>(Req.Parms[0]));
+    unsigned RateHz = static_cast<unsigned>(Req.Parms[0]);
+
+    // Policy check
+    if (!ThePolicy->allowTimerConfig(RateHz)) {
+      Result = OpResult::error(EACCES);
+      break;
+    }
+
+    Result = TheBackend->timerConfig(RateHz);
     break;
+  }
   }
 
   // Write the result

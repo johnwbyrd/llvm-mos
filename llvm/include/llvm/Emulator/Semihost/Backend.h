@@ -65,14 +65,13 @@ using TimerCallback = std::function<void(unsigned RateHz)>;
 
 /// Abstract base class for semihosting backends.
 ///
-/// This base class is SECURE BY DEFAULT - all operations return errors.
 /// Subclasses override methods to enable specific capabilities:
 ///
-///   Backend (all errors)
+///   Backend (base, console only)
 ///     └── ConsoleBackend (adds stdin/stdout/stderr)
 ///             └── FileBackend (adds file operations)
-///                     ├── SecureBackend (sandboxed)
-///                     └── InsecureBackend (unrestricted)
+///
+/// Security is handled by the Policy layer, not the Backend hierarchy.
 ///
 class Backend {
 public:
