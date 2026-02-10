@@ -21,6 +21,24 @@ constexpr size_t WorkBufferSize = 4096;
 } // namespace
 
 //===----------------------------------------------------------------------===//
+// Callback Helpers
+//===----------------------------------------------------------------------===//
+
+semihost::ExitCallback Semihost::makeExitCallback() {
+  return [this](unsigned Reason, unsigned Subcode) {
+    Exited = true;
+    ExitReason = Reason;
+    ExitSubcode = Subcode;
+    if (OnExit)
+      OnExit(Reason, Subcode);
+  };
+}
+
+semihost::TimerCallback Semihost::makeTimerCallback(System &Sys) {
+  return [&Sys](unsigned RateHz) { Sys.configureTimer(RateHz); };
+}
+
+//===----------------------------------------------------------------------===//
 // Factory Methods
 //===----------------------------------------------------------------------===//
 
@@ -28,24 +46,14 @@ std::unique_ptr<Semihost> Semihost::create(System &Sys,
                                            const std::string &SandboxDir) {
   // MOS 6502: 8-bit CPU, 16-bit pointers, little-endian
   PlatformConfig Config(2, 2, llvm::endianness::little);
-
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
 
-  // Create secure backend with sandbox
   PathValidatorConfig ValidatorConfig;
   ValidatorConfig.SandboxDir = SandboxDir;
 
-  auto OnExit = [Dev = Dev.get()](unsigned Reason, unsigned Subcode) {
-    Dev->Exited = true;
-    Dev->ExitReason = Reason;
-    Dev->ExitSubcode = Subcode;
-    if (Dev->OnExit)
-      Dev->OnExit(Reason, Subcode);
-  };
-
-  auto OnTimer = [&Sys](unsigned RateHz) { Sys.configureTimer(RateHz); };
-
-  auto *Back = new SecureBackend(std::move(ValidatorConfig), OnExit, OnTimer);
+  auto *Back = new SecureBackend(std::move(ValidatorConfig),
+                                 Dev->makeExitCallback(),
+                                 makeTimerCallback(Sys));
   Dev->TheBackend.reset(Back);
   Dev->SecureBack = Back;
 
@@ -54,41 +62,19 @@ std::unique_ptr<Semihost> Semihost::create(System &Sys,
 
 std::unique_ptr<Semihost> Semihost::createInsecure(System &Sys) {
   PlatformConfig Config(2, 2, llvm::endianness::little);
-
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
 
-  auto OnExit = [Dev = Dev.get()](unsigned Reason, unsigned Subcode) {
-    Dev->Exited = true;
-    Dev->ExitReason = Reason;
-    Dev->ExitSubcode = Subcode;
-    if (Dev->OnExit)
-      Dev->OnExit(Reason, Subcode);
-  };
-
-  auto OnTimer = [&Sys](unsigned RateHz) { Sys.configureTimer(RateHz); };
-
-  Dev->TheBackend = std::make_unique<InsecureBackend>(OnExit, OnTimer);
-
+  Dev->TheBackend = std::make_unique<InsecureBackend>(Dev->makeExitCallback(),
+                                                      makeTimerCallback(Sys));
   return Dev;
 }
 
 std::unique_ptr<Semihost> Semihost::createConsoleOnly(System &Sys) {
   PlatformConfig Config(2, 2, llvm::endianness::little);
-
   auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
 
-  auto OnExit = [Dev = Dev.get()](unsigned Reason, unsigned Subcode) {
-    Dev->Exited = true;
-    Dev->ExitReason = Reason;
-    Dev->ExitSubcode = Subcode;
-    if (Dev->OnExit)
-      Dev->OnExit(Reason, Subcode);
-  };
-
-  auto OnTimer = [&Sys](unsigned RateHz) { Sys.configureTimer(RateHz); };
-
-  Dev->TheBackend = std::make_unique<ConsoleBackend>(OnExit, OnTimer);
-
+  Dev->TheBackend = std::make_unique<ConsoleBackend>(Dev->makeExitCallback(),
+                                                     makeTimerCallback(Sys));
   return Dev;
 }
 
@@ -253,10 +239,8 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    StringRef Path(reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
-                   Req.DataChunks[0].Data.size());
-    OpenMode Mode = static_cast<OpenMode>(Req.Parms[0]);
-    Result = TheBackend->open(Path, Mode);
+    Result = TheBackend->open(Req.getDataAsString(0),
+                              static_cast<OpenMode>(Req.Parms[0]));
     break;
   }
 
@@ -307,9 +291,7 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    TheBackend->writeString(StringRef(
-        reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
-        Req.DataChunks[0].Data.size()));
+    TheBackend->writeString(Req.getDataAsString(0));
     Result = OpResult::success();
     break;
 
@@ -339,9 +321,7 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->remove(StringRef(
-        reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
-        Req.DataChunks[0].Data.size()));
+    Result = TheBackend->remove(Req.getDataAsString(0));
     break;
 
   case Opcode::Rename:
@@ -349,11 +329,7 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->rename(
-        StringRef(reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
-                  Req.DataChunks[0].Data.size()),
-        StringRef(reinterpret_cast<const char *>(Req.DataChunks[1].Data.data()),
-                  Req.DataChunks[1].Data.size()));
+    Result = TheBackend->rename(Req.getDataAsString(0), Req.getDataAsString(1));
     break;
 
   case Opcode::TmpNam:
@@ -399,9 +375,7 @@ void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
       consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
       return;
     }
-    Result = TheBackend->system(StringRef(
-        reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
-        Req.DataChunks[0].Data.size()));
+    Result = TheBackend->system(Req.getDataAsString(0));
     break;
 
   case Opcode::GetCmdLine:

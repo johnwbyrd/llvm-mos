@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Emulator/Semihost/FileDescTable.h"
-#include <algorithm>
 #include <cstdio>
 
 using namespace llvm::emu::semihost;
@@ -24,11 +23,7 @@ FileDescTable::~FileDescTable() { closeAll(); }
 
 FileDescTable::FileDescTable(FileDescTable &&Other) noexcept
     : Files_(Other.Files_) {
-  // Clear the source to prevent double-close
   Other.Files_.fill(nullptr);
-  Other.Files_[0] = stdin;
-  Other.Files_[1] = stdout;
-  Other.Files_[2] = stderr;
 }
 
 FileDescTable &FileDescTable::operator=(FileDescTable &&Other) noexcept {
@@ -36,9 +31,6 @@ FileDescTable &FileDescTable::operator=(FileDescTable &&Other) noexcept {
     closeAll();
     Files_ = Other.Files_;
     Other.Files_.fill(nullptr);
-    Other.Files_[0] = stdin;
-    Other.Files_[1] = stdout;
-    Other.Files_[2] = stderr;
   }
   return *this;
 }
