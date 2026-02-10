@@ -18,10 +18,14 @@ using namespace llvm::emu::semihost;
 // ConsoleBackend Implementation
 //===----------------------------------------------------------------------===//
 
-void ConsoleBackend::writeChar(char C) { std::putchar(C); }
+void ConsoleBackend::writeChar(char C) {
+  std::putchar(C);
+  std::fflush(stdout);
+}
 
 void ConsoleBackend::writeString(StringRef Str) {
   std::fwrite(Str.data(), 1, Str.size(), stdout);
+  std::fflush(stdout);
 }
 
 int ConsoleBackend::readChar() { return std::getchar(); }
