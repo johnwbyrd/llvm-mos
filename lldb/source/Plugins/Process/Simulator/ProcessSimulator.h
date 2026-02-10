@@ -70,7 +70,7 @@ protected:
                           ThreadList &new_thread_list) override;
 
 private:
-  bool InitializeEmulator();
+  Status InitializeEmulator();
   bool LoadSections(ObjectFile *obj_file);
   uint32_t GetRegisterSizeInBytes(llvm::MCRegister Reg) const;
 
