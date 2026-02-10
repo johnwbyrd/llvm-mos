@@ -58,7 +58,6 @@ ProcessSP ProcessSimulator::CreateInstance(TargetSP target_sp,
   if (!target_sp)
     return nullptr;
 
-  // Check if an emulator exists for this architecture
   const ArchSpec &arch = target_sp->GetArchitecture();
   llvm::Triple triple = arch.GetTriple();
 
@@ -84,18 +83,21 @@ bool ProcessSimulator::CanDebug(TargetSP target_sp, bool plugin_specified) {
   return plugin_specified;
 }
 
-bool ProcessSimulator::InitializeEmulator() {
+Status ProcessSimulator::InitializeEmulator() {
   if (m_emulator_initialized)
-    return true;
+    return Status();
 
   const ArchSpec &arch = GetTarget().GetArchitecture();
   llvm::Triple triple = arch.GetTriple();
+  std::string triple_str = triple.getTriple();
 
   std::string error_str;
   const llvm::Target *target =
       llvm::TargetRegistry::lookupTarget(triple, error_str);
   if (!target)
-    return false;
+    return Status::FromErrorStringWithFormat(
+        "No target registered for '%s': %s", triple_str.c_str(),
+        error_str.c_str());
 
   // Get MCRegisterInfo from ABI if available, otherwise create our own
   ABISP abi_sp = GetABI();
@@ -104,7 +106,8 @@ bool ProcessSimulator::InitializeEmulator() {
   } else {
     m_reg_info.reset(target->createMCRegInfo(triple));
     if (!m_reg_info)
-      return false;
+      return Status::FromErrorStringWithFormat(
+          "Failed to create register info for '%s'", triple_str.c_str());
     m_reg_info_external = m_reg_info.get();
   }
 
@@ -113,11 +116,13 @@ bool ProcessSimulator::InitializeEmulator() {
   m_asm_info.reset(
       target->createMCAsmInfo(*m_reg_info_external, triple, mc_options));
   if (!m_asm_info)
-    return false;
+    return Status::FromErrorStringWithFormat(
+        "Failed to create asm info for '%s'", triple_str.c_str());
 
   m_subtarget_info.reset(target->createMCSubtargetInfo(triple, "", ""));
   if (!m_subtarget_info)
-    return false;
+    return Status::FromErrorStringWithFormat(
+        "Failed to create subtarget info for '%s'", triple_str.c_str());
 
   m_mc_context = std::make_unique<llvm::MCContext>(
       triple, m_asm_info.get(), m_reg_info_external, m_subtarget_info.get());
@@ -125,7 +130,8 @@ bool ProcessSimulator::InitializeEmulator() {
   // Create the emulator
   m_context.reset(target->createEmulator(*m_subtarget_info, *m_mc_context));
   if (!m_context)
-    return false;
+    return Status::FromErrorStringWithFormat(
+        "No emulator available for '%s'", triple_str.c_str());
 
   // Create system with memory and semihosting
   unsigned addr_bits = m_context->getAddressBits();
@@ -133,7 +139,7 @@ bool ProcessSimulator::InitializeEmulator() {
   m_system->addContext(m_context.get());
 
   m_emulator_initialized = true;
-  return true;
+  return Status();
 }
 
 bool ProcessSimulator::LoadSections(ObjectFile *obj_file) {
@@ -163,8 +169,8 @@ bool ProcessSimulator::LoadSections(ObjectFile *obj_file) {
 
 Status ProcessSimulator::DoLaunch(Module *exe_module,
                                   ProcessLaunchInfo &launch_info) {
-  if (!InitializeEmulator())
-    return Status::FromErrorString("Failed to initialize emulator");
+  if (Status error = InitializeEmulator(); error.Fail())
+    return error;
 
   // Load ELF sections into memory
   ObjectFile *obj_file = exe_module ? exe_module->GetObjectFile() : nullptr;
