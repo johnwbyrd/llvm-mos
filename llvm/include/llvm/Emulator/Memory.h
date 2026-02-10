@@ -5,9 +5,18 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This file defines a simple RAM/ROM device for the emulator.
-//
+///
+/// \file
+/// \brief Byte-addressable RAM and ROM.
+///
+/// Memory is the most fundamental device - it holds the code being executed
+/// and the data being operated on. This implementation is a simple byte array
+/// with optional write protection for ROM. Out-of-bounds reads return 0xFF
+/// (floating bus behavior), and out-of-bounds writes are silently ignored.
+///
+/// System::create() sets up a Memory device covering the full address space,
+/// then overlays other devices (like Semihost) at specific addresses.
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_EMULATOR_MEMORY_H
@@ -87,7 +96,7 @@ public:
   /// @param Mem The memory device to write to.
   /// @return Error if loading fails.
   static llvm::Error loadObject(const llvm::object::ObjectFile &Obj,
-                                 Memory &Mem);
+                                Memory &Mem);
 
 private:
   std::vector<uint8_t> Data;

@@ -91,7 +91,7 @@ void Context::reset() {
   NMIPending = 0;
 
   // Load reset vector
-  PC = read16(0xFFFC);
+  PC = read(0xFFFC) | (read(0xFFFD) << 8);
 }
 
 void Context::halt(int Code) {
