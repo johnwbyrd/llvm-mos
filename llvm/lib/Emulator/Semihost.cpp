@@ -7,244 +7,432 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Emulator/Semihost.h"
+#include "llvm/Emulator/Semihost/PathValidator.h"
+#include "llvm/Emulator/Semihost/SecureBackend.h"
 #include "llvm/Emulator/System.h"
-
-// Include ZBC headers
-#define ZBC_HOST
-#include "llvm/Emulator/Semihost/zbc_semihost.h"
+#include "llvm/Support/Error.h"
 
 using namespace llvm;
 using namespace llvm::emu;
-using namespace llvm::zbc;
+using namespace llvm::emu::semihost;
 
-// Register offsets within the 32-byte device region
 namespace {
-constexpr uint64_t REG_RIFF_PTR = 0x08;  // 8 bytes (little-endian pointer)
-constexpr uint64_t REG_RESERVED1 = 0x10; // 8 bytes
-constexpr uint64_t REG_DOORBELL = 0x18;  // 1 byte (write triggers call)
-constexpr uint64_t REG_STATUS = 0x19;    // 1 byte (bit 0 = response ready)
-constexpr uint64_t DEVICE_SIZE = 0x20;   // 32 bytes total
-
-constexpr size_t WORK_BUFFER_SIZE = 1024;
+constexpr size_t WorkBufferSize = 4096;
 } // namespace
 
-// Backend mode for constructor
-enum class BackendMode { Secure, Insecure, ConsoleOnly };
+//===----------------------------------------------------------------------===//
+// Factory Methods
+//===----------------------------------------------------------------------===//
 
 std::unique_ptr<Semihost> Semihost::create(System &Sys,
                                            const std::string &SandboxDir) {
-  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, true, SandboxDir));
-  Dev->initSecureBackend(SandboxDir);
+  // MOS 6502: 8-bit CPU, 16-bit pointers, little-endian
+  PlatformConfig Config(2, 2, llvm::endianness::little);
+
+  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
+
+  // Create secure backend with sandbox
+  PathValidatorConfig ValidatorConfig;
+  ValidatorConfig.SandboxDir = SandboxDir;
+
+  auto OnExit = [Dev = Dev.get()](unsigned Reason, unsigned Subcode) {
+    Dev->Exited = true;
+    Dev->ExitReason = Reason;
+    Dev->ExitSubcode = Subcode;
+    if (Dev->OnExit)
+      Dev->OnExit(Reason, Subcode);
+  };
+
+  auto OnTimer = [&Sys](unsigned RateHz) { Sys.configureTimer(RateHz); };
+
+  auto *Back = new SecureBackend(std::move(ValidatorConfig), OnExit, OnTimer);
+  Dev->TheBackend.reset(Back);
+  Dev->SecureBack = Back;
+
   return Dev;
 }
 
 std::unique_ptr<Semihost> Semihost::createInsecure(System &Sys) {
-  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, false, ""));
-  Dev->initInsecureBackend();
+  PlatformConfig Config(2, 2, llvm::endianness::little);
+
+  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
+
+  auto OnExit = [Dev = Dev.get()](unsigned Reason, unsigned Subcode) {
+    Dev->Exited = true;
+    Dev->ExitReason = Reason;
+    Dev->ExitSubcode = Subcode;
+    if (Dev->OnExit)
+      Dev->OnExit(Reason, Subcode);
+  };
+
+  auto OnTimer = [&Sys](unsigned RateHz) { Sys.configureTimer(RateHz); };
+
+  Dev->TheBackend = std::make_unique<InsecureBackend>(OnExit, OnTimer);
+
   return Dev;
 }
 
 std::unique_ptr<Semihost> Semihost::createConsoleOnly(System &Sys) {
-  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, false, ""));
-  Dev->initConsoleBackend();
+  PlatformConfig Config(2, 2, llvm::endianness::little);
+
+  auto Dev = std::unique_ptr<Semihost>(new Semihost(Sys, nullptr, Config));
+
+  auto OnExit = [Dev = Dev.get()](unsigned Reason, unsigned Subcode) {
+    Dev->Exited = true;
+    Dev->ExitReason = Reason;
+    Dev->ExitSubcode = Subcode;
+    if (Dev->OnExit)
+      Dev->OnExit(Reason, Subcode);
+  };
+
+  auto OnTimer = [&Sys](unsigned RateHz) { Sys.configureTimer(RateHz); };
+
+  Dev->TheBackend = std::make_unique<ConsoleBackend>(OnExit, OnTimer);
+
   return Dev;
 }
 
-Semihost::Semihost(System &Sys, bool Secure, const std::string &SandboxDir)
-    : Sys(Sys), Secure(Secure), WorkBuffer(WORK_BUFFER_SIZE) {
-  HostState = std::make_unique<zbc_host_state_t>();
-  // Backend initialization is done by the factory methods
-  (void)SandboxDir; // Used by initSecureBackend called from factory
+//===----------------------------------------------------------------------===//
+// Constructor/Destructor
+//===----------------------------------------------------------------------===//
+
+Semihost::Semihost(System &Sys, std::unique_ptr<semihost::Backend> Back,
+                   semihost::PlatformConfig Cfg)
+    : Sys(Sys), TheBackend(std::move(Back)), Config(Cfg),
+      WorkBuffer(WorkBufferSize) {}
+
+Semihost::~Semihost() = default;
+
+//===----------------------------------------------------------------------===//
+// Configuration
+//===----------------------------------------------------------------------===//
+
+void Semihost::setExitCallback(semihost::ExitCallback CB) {
+  OnExit = std::move(CB);
 }
 
-Semihost::~Semihost() {
-  // Clean up backend state
-  if (SecureState) {
-    zbc_ansi_cleanup(SecureState.get());
-  }
-  if (InsecureState) {
-    zbc_ansi_insecure_cleanup(InsecureState.get());
-  }
-  if (ConsoleState) {
-    zbc_ansi_console_cleanup(ConsoleState.get());
-  }
+void Semihost::addAllowedPath(const std::string &Prefix, bool AllowWrite) {
+  // SecureBackend stores a pointer to itself that we can check
+  if (SecureBack)
+    SecureBack->addAllowedPath(Prefix, AllowWrite);
 }
 
-void Semihost::initSecureBackend(const std::string &SandboxDir) {
-  SecureState = std::make_unique<zbc_ansi_state_t>();
-  zbc_ansi_init(SecureState.get(), SandboxDir.c_str());
-
-  // Set up exit and timer config callbacks
-  zbc_ansi_set_callbacks(SecureState.get(), nullptr, onExitCallback,
-                         onTimerConfigCallback, this);
-
-  // Initialize host state
-  zbc_host_mem_ops_t MemOps = {memReadU8, memWriteU8, memReadBlock,
-                               memWriteBlock};
-  zbc_host_init(HostState.get(), &MemOps, this, zbc_backend_ansi(),
-                SecureState.get(), WorkBuffer.data(), WorkBuffer.size());
-}
-
-void Semihost::initInsecureBackend() {
-  InsecureState = std::make_unique<zbc_ansi_insecure_state_t>();
-  zbc_ansi_insecure_init(InsecureState.get());
-
-  // Initialize host state
-  zbc_host_mem_ops_t MemOps = {memReadU8, memWriteU8, memReadBlock,
-                               memWriteBlock};
-  zbc_host_init(HostState.get(), &MemOps, this, zbc_backend_ansi_insecure(),
-                InsecureState.get(), WorkBuffer.data(), WorkBuffer.size());
-}
-
-void Semihost::initConsoleBackend() {
-  ConsoleState = std::make_unique<zbc_ansi_console_state_t>();
-  zbc_ansi_console_init(ConsoleState.get());
-
-  // Set up exit callback
-  zbc_ansi_console_set_exit_callback(ConsoleState.get(), onExitCallback, this);
-
-  // Set up timer config callback
-  zbc_ansi_console_set_timer_callback(ConsoleState.get(), onTimerConfigCallback,
-                                      this);
-
-  // Initialize host state
-  zbc_host_mem_ops_t MemOps = {memReadU8, memWriteU8, memReadBlock,
-                               memWriteBlock};
-  zbc_host_init(HostState.get(), &MemOps, this, zbc_backend_console(),
-                ConsoleState.get(), WorkBuffer.data(), WorkBuffer.size());
-}
+//===----------------------------------------------------------------------===//
+// Device Interface
+//===----------------------------------------------------------------------===//
 
 uint8_t Semihost::read(uint64_t Offset) {
-  if (Offset >= DEVICE_SIZE)
+  if (Offset >= DeviceReg::Size)
     return 0xFF;
 
   // Signature (8 bytes at offset 0)
-  if (Offset < 8) {
+  if (Offset < SignatureSize) {
     return static_cast<uint8_t>(Signature[Offset]);
   }
 
   // RIFF_PTR (8 bytes at offset 0x08, little-endian)
-  if (Offset >= REG_RIFF_PTR && Offset < REG_RESERVED1) {
-    unsigned ByteIdx = Offset - REG_RIFF_PTR;
+  if (Offset >= DeviceReg::RiffPtr && Offset < DeviceReg::Doorbell) {
+    unsigned ByteIdx = Offset - DeviceReg::RiffPtr;
     return static_cast<uint8_t>((RiffPtr >> (ByteIdx * 8)) & 0xFF);
   }
 
   // STATUS (1 byte at offset 0x19)
-  if (Offset == REG_STATUS) {
-    return ResponseReady ? 0x01 : 0x00;
+  if (Offset == DeviceReg::Status) {
+    return ResponseReady ? Status::Timer : Status::None;
   }
 
-  // Reserved/unmapped reads return 0
   return 0x00;
 }
 
 void Semihost::write(uint64_t Offset, uint8_t Value) {
-  if (Offset >= DEVICE_SIZE)
+  if (Offset >= DeviceReg::Size)
     return;
 
   // RIFF_PTR (8 bytes at offset 0x08, little-endian)
-  if (Offset >= REG_RIFF_PTR && Offset < REG_RESERVED1) {
-    unsigned ByteIdx = Offset - REG_RIFF_PTR;
-    uint64_t Mask = ~(static_cast<uint64_t>(0xFF) << (ByteIdx * 8));
-    RiffPtr = (RiffPtr & Mask) | (static_cast<uint64_t>(Value) << (ByteIdx * 8));
+  if (Offset >= DeviceReg::RiffPtr && Offset < DeviceReg::Doorbell) {
+    unsigned ByteIdx = Offset - DeviceReg::RiffPtr;
+    uint64_t Mask = ~(uint64_t(0xFF) << (ByteIdx * 8));
+    RiffPtr = (RiffPtr & Mask) | (uint64_t(Value) << (ByteIdx * 8));
     return;
   }
 
   // DOORBELL (1 byte at offset 0x18) - any write triggers processing
-  if (Offset == REG_DOORBELL) {
+  if (Offset == DeviceReg::Doorbell) {
     processRequest();
     return;
   }
 
   // STATUS (writing 0 clears response ready and deasserts IRQ)
-  if (Offset == REG_STATUS) {
+  if (Offset == DeviceReg::Status) {
     if (Value == 0) {
       ResponseReady = false;
-      // Deassert IRQ when guest acknowledges by writing 0 to STATUS
-      // This matches MAME's level-triggered IRQ behavior
       if (Context *Ctx = Sys.getContext(0))
         Ctx->deassertIRQ();
     }
     return;
   }
-
-  // Writes to signature and reserved areas are ignored
 }
+
+//===----------------------------------------------------------------------===//
+// Memory Access
+//===----------------------------------------------------------------------===//
+
+uint8_t Semihost::readMem(uint64_t Addr) { return Sys.read(Addr); }
+
+void Semihost::writeMem(uint64_t Addr, uint8_t Val) { Sys.write(Addr, Val); }
+
+void Semihost::readMemBlock(uint8_t *Dest, uint64_t Addr, size_t Size) {
+  for (size_t I = 0; I < Size; ++I)
+    Dest[I] = Sys.read(Addr + I);
+}
+
+void Semihost::writeMemBlock(uint64_t Addr, const uint8_t *Src, size_t Size) {
+  for (size_t I = 0; I < Size; ++I)
+    Sys.write(Addr + I, Src[I]);
+}
+
+//===----------------------------------------------------------------------===//
+// Request Processing
+//===----------------------------------------------------------------------===//
 
 void Semihost::processRequest() {
-  // Clear response ready before processing
   ResponseReady = false;
 
-  // Process the semihost request
-  int Result = zbc_host_process(HostState.get(), static_cast<uintptr_t>(RiffPtr));
+  // Read RIFF buffer from guest memory
+  // First, read enough to get the RIFF header and determine size
+  if (WorkBuffer.size() < sizeof(RiffHeader))
+    WorkBuffer.resize(sizeof(RiffHeader));
 
-  // Set response ready (even on error, so guest knows to check)
+  readMemBlock(WorkBuffer.data(), RiffPtr, sizeof(RiffHeader));
+
+  // Parse the header to get total size
+  auto *Hdr = reinterpret_cast<const RiffHeader *>(WorkBuffer.data());
+  if (support::endian::read32le(&Hdr->RiffId) != FourCC::RIFF) {
+    ResponseReady = true;
+    return;
+  }
+
+  size_t TotalSize = 8 + support::endian::read32le(&Hdr->Size);
+  if (TotalSize > WorkBuffer.size())
+    WorkBuffer.resize(TotalSize);
+
+  // Read the full RIFF message
+  readMemBlock(WorkBuffer.data(), RiffPtr, TotalSize);
+
+  // Parse the request
+  Expected<ParsedRequest> MaybeReq =
+      parseRequest(WorkBuffer.data(), TotalSize, Config);
+  if (!MaybeReq) {
+    consumeError(MaybeReq.takeError());
+    ResponseReady = true;
+    return;
+  }
+
+  ParsedRequest &Req = *MaybeReq;
+
+  // Update config from CNFG chunk if present
+  if (Req.HasCnfg)
+    Config = Req.Config;
+
+  // Dispatch the opcode
+  if (Req.HasCall)
+    dispatchOpcode(Req);
+
+  // Write response back to guest memory
+  writeMemBlock(RiffPtr, WorkBuffer.data(), TotalSize);
+
   ResponseReady = true;
-
-  (void)Result; // Result is written to RIFF buffer
 }
 
-void Semihost::addAllowedPath(const std::string &Prefix, bool AllowWrite) {
-  if (Secure && SecureState) {
-    zbc_ansi_add_path(SecureState.get(), Prefix.c_str(), AllowWrite ? 1 : 0);
+void Semihost::dispatchOpcode(semihost::ParsedRequest &Req) {
+  OpResult Result;
+
+  switch (Req.Op) {
+  case Opcode::Open: {
+    if (Req.DataChunks.empty() || Req.Parms.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    StringRef Path(reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
+                   Req.DataChunks[0].Data.size());
+    OpenMode Mode = static_cast<OpenMode>(Req.Parms[0]);
+    Result = TheBackend->open(Path, Mode);
+    break;
   }
-}
 
-//===----------------------------------------------------------------------===//
-// Memory Callbacks
-//===----------------------------------------------------------------------===//
+  case Opcode::Close:
+    if (Req.Parms.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = TheBackend->close(static_cast<int>(Req.Parms[0]));
+    break;
 
-uint8_t Semihost::memReadU8(uintptr_t Addr, void *Ctx) {
-  auto *Self = static_cast<Semihost *>(Ctx);
-  return Self->Sys.read(Addr);
-}
-
-void Semihost::memWriteU8(uintptr_t Addr, uint8_t Val, void *Ctx) {
-  auto *Self = static_cast<Semihost *>(Ctx);
-  Self->Sys.write(Addr, Val);
-}
-
-void Semihost::memReadBlock(void *Dest, uintptr_t Addr, size_t Size,
-                            void *Ctx) {
-  auto *Self = static_cast<Semihost *>(Ctx);
-  auto *DestBytes = static_cast<uint8_t *>(Dest);
-  for (size_t I = 0; I < Size; ++I) {
-    DestBytes[I] = Self->Sys.read(Addr + I);
+  case Opcode::Read: {
+    if (Req.Parms.size() < 2) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    int FD = static_cast<int>(Req.Parms[0]);
+    size_t Count = static_cast<size_t>(Req.Parms[1]);
+    Result = TheBackend->read(FD, Count);
+    break;
   }
-}
 
-void Semihost::memWriteBlock(uintptr_t Addr, const void *Src, size_t Size,
-                             void *Ctx) {
-  auto *Self = static_cast<Semihost *>(Ctx);
-  const auto *SrcBytes = static_cast<const uint8_t *>(Src);
-  for (size_t I = 0; I < Size; ++I) {
-    Self->Sys.write(Addr + I, SrcBytes[I]);
+  case Opcode::Write: {
+    if (Req.Parms.empty() || Req.DataChunks.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    int FD = static_cast<int>(Req.Parms[0]);
+    Result = TheBackend->write(FD, Req.DataChunks[0].Data);
+    break;
   }
-}
 
-//===----------------------------------------------------------------------===//
-// Exit Callback
-//===----------------------------------------------------------------------===//
+  case Opcode::WriteC:
+    if (Req.Parms.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    TheBackend->writeChar(static_cast<char>(Req.Parms[0]));
+    Result = OpResult::success();
+    break;
 
-void Semihost::onExitCallback(void *Ctx, unsigned Reason, unsigned Subcode) {
-  auto *Self = static_cast<Semihost *>(Ctx);
-  Self->Exited = true;
-  Self->ExitReason = Reason;
-  Self->ExitSubcode = Subcode;
+  case Opcode::Write0:
+    if (Req.DataChunks.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    TheBackend->writeString(StringRef(
+        reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
+        Req.DataChunks[0].Data.size()));
+    Result = OpResult::success();
+    break;
 
-  if (Self->OnExit) {
-    Self->OnExit(Reason, Subcode);
+  case Opcode::ReadC:
+    Result = OpResult::success(TheBackend->readChar());
+    break;
+
+  case Opcode::Seek:
+    if (Req.Parms.size() < 2) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = TheBackend->seek(static_cast<int>(Req.Parms[0]),
+                              static_cast<int64_t>(Req.Parms[1]));
+    break;
+
+  case Opcode::FLen:
+    if (Req.Parms.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = TheBackend->fileLength(static_cast<int>(Req.Parms[0]));
+    break;
+
+  case Opcode::Remove:
+    if (Req.DataChunks.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = TheBackend->remove(StringRef(
+        reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
+        Req.DataChunks[0].Data.size()));
+    break;
+
+  case Opcode::Rename:
+    if (Req.DataChunks.size() < 2) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = TheBackend->rename(
+        StringRef(reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
+                  Req.DataChunks[0].Data.size()),
+        StringRef(reinterpret_cast<const char *>(Req.DataChunks[1].Data.data()),
+                  Req.DataChunks[1].Data.size()));
+    break;
+
+  case Opcode::TmpNam:
+    Result = TheBackend->tmpnam(Req.Parms.empty() ? 0 : static_cast<int>(Req.Parms[0]));
+    break;
+
+  case Opcode::IsError:
+    if (Req.Parms.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = OpResult::success(
+        TheBackend->isError(static_cast<int>(Req.Parms[0])) ? 1 : 0);
+    break;
+
+  case Opcode::IsTTY:
+    if (Req.Parms.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result =
+        OpResult::success(TheBackend->isTTY(static_cast<int>(Req.Parms[0])) ? 1 : 0);
+    break;
+
+  case Opcode::Clock:
+    Result = TheBackend->clock();
+    break;
+
+  case Opcode::Time:
+    Result = TheBackend->time();
+    break;
+
+  case Opcode::Elapsed:
+    Result = TheBackend->elapsed();
+    break;
+
+  case Opcode::TickFreq:
+    Result = TheBackend->tickFreq();
+    break;
+
+  case Opcode::System:
+    if (Req.DataChunks.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = TheBackend->system(StringRef(
+        reinterpret_cast<const char *>(Req.DataChunks[0].Data.data()),
+        Req.DataChunks[0].Data.size()));
+    break;
+
+  case Opcode::GetCmdLine:
+    Result = TheBackend->getCmdLine();
+    break;
+
+  case Opcode::HeapInfo:
+    Result = TheBackend->heapInfo();
+    break;
+
+  case Opcode::Errno:
+    Result = OpResult::success(TheBackend->getErrno());
+    break;
+
+  case Opcode::Exit:
+  case Opcode::ExitExtended: {
+    unsigned Reason = Req.Parms.empty() ? 0 : static_cast<unsigned>(Req.Parms[0]);
+    unsigned Subcode = Req.Parms.size() > 1 ? static_cast<unsigned>(Req.Parms[1]) : 0;
+    TheBackend->exit(Reason, Subcode);
+    Result = OpResult::success();
+    break;
   }
-}
 
-//===----------------------------------------------------------------------===//
-// Timer Config Callback
-//===----------------------------------------------------------------------===//
+  case Opcode::TimerConfig:
+    if (Req.Parms.empty()) {
+      consumeError(writeError(WorkBuffer.data(), Req, ProtoError::InvalidParams));
+      return;
+    }
+    Result = TheBackend->timerConfig(static_cast<unsigned>(Req.Parms[0]));
+    break;
+  }
 
-void Semihost::onTimerConfigCallback(void *Ctx, unsigned RateHz) {
-  auto *Self = static_cast<Semihost *>(Ctx);
-  // Register ourselves with System so it can call setTimerTick() on timer fire
-  Self->Sys.setSemihostDevice(Self);
-  // Configure the timer in System
-  Self->Sys.configureTimer(RateHz);
+  // Write the result
+  if (auto Err = writeReturn(WorkBuffer.data(), Req, Result.Value, Result.Errno,
+                             Result.Data)) {
+    consumeError(std::move(Err));
+  }
 }
