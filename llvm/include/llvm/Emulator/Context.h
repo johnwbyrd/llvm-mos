@@ -5,10 +5,24 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This file defines the abstract base class for CPU execution contexts.
-// Each Context represents one CPU with its own registers and program counter.
-//
+///
+/// \file
+/// \brief Abstract base class for CPU execution contexts.
+///
+/// A Context represents one CPU core with its own registers, PC, and cycle
+/// counter. Subclasses implement step() to execute one instruction. Memory
+/// access routes through the parent System, which handles device mapping,
+/// watchpoints, and undo logging.
+///
+/// For reverse debugging, register writes must be logged. Subclasses should
+/// use recordAndSet() instead of direct assignment, or override writeRegister
+/// to call System::recordRegisterWrite() before modifying state.
+///
+/// SAIL integration: The z-prefixed methods (zreadMem, zwriteMem) are called
+/// by SAIL-generated instruction implementations. SAIL is a formal ISA
+/// specification language; the emulator backend compiles SAIL to C++ that
+/// inherits from Context.
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_EMULATOR_CONTEXT_H
@@ -37,7 +51,30 @@ class TraceWriter;
 /// Each target architecture provides a concrete implementation.
 class Context {
 public:
-  virtual ~Context() = default;
+  virtual ~Context() = default; //===-- llvm/Emulator/Trace.h - Execution Trace
+                                //Interface ------*- C++ -*-===//
+                                //
+  // Part of LLVM-MOS, under the Apache License v2.0 with LLVM Exceptions.
+  // See https://llvm.org/LICENSE.txt for license information.
+  // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+  //
+  //===----------------------------------------------------------------------===//
+  ///
+  /// \file
+  /// \brief Records CPU execution for debugging and analysis.
+  ///
+  /// Tracing captures every instruction executed, along with register and
+  /// memory state, producing a complete record of program behavior. This is
+  /// invaluable for debugging (comparing expected vs actual execution),
+  /// validating the emulator against hardware or reference implementations, and
+  /// understanding unfamiliar code.
+  ///
+  /// Three output formats are provided:
+  /// - Text: human-readable, tab-separated for easy grepping
+  /// - JSON Lines: machine-parseable, one object per line for streaming
+  /// - VCD: IEEE 1364 waveform format for visualization in GTKWave
+  ///
+  //===----------------------------------------------------------------------===//
 
   //===--------------------------------------------------------------------===//
   // Execution Control
@@ -115,8 +152,7 @@ public:
     return semihost::PlatformConfig(
         PtrSize, // IntSize = PtrSize for semihosting
         PtrSize,
-        T.isLittleEndian() ? llvm::endianness::little
-                           : llvm::endianness::big);
+        T.isLittleEndian() ? llvm::endianness::little : llvm::endianness::big);
   }
 
   //===--------------------------------------------------------------------===//
@@ -194,33 +230,17 @@ public:
   // Memory Access (routes through System)
   //===--------------------------------------------------------------------===//
 
-  /// Read a byte from the given address.
   uint8_t read(uint64_t Addr);
-
-  /// Write a byte to the given address.
   void write(uint64_t Addr, uint8_t Value);
 
-  /// Read a 16-bit little-endian value from the given address.
-  uint16_t read16(uint64_t Addr) {
-    return read(Addr) | (read(Addr + 1) << 8);
-  }
-
-  /// Write a 16-bit little-endian value to the given address.
-  void write16(uint64_t Addr, uint16_t Value) {
-    write(Addr, Value & 0xFF);
-    write(Addr + 1, Value >> 8);
-  }
-
-  //===--------------------------------------------------------------------===//
-  // SAIL Wrappers (z-prefixed names for generated code)
-  //===--------------------------------------------------------------------===//
-
+  // SAIL wrappers - called by generated instruction implementations
   uint8_t zreadMem(uint64_t Addr) { return read(Addr); }
   void zwriteMem(uint64_t Addr, uint8_t Value) { write(Addr, Value); }
 
 protected:
   System *Sys = nullptr;
-  size_t ContextIndex = 0; ///< Index within the parent system (for undo journal)
+  size_t ContextIndex =
+      0; ///< Index within the parent system (for undo journal)
   MCInstPrinter *InstPrinter = nullptr;
   const MCSubtargetInfo *STI = nullptr;
   TraceWriter *Trace = nullptr;
@@ -231,8 +251,7 @@ protected:
   /// @param RegNum Register number for undo journal tracking.
   /// @param Reg Reference to the register variable.
   /// @param NewVal New value to set.
-  template <typename T>
-  void recordAndSet(unsigned RegNum, T &Reg, T NewVal);
+  template <typename T> void recordAndSet(unsigned RegNum, T &Reg, T NewVal);
 };
 
 } // namespace emu
