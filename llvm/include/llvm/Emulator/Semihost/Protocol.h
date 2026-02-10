@@ -129,7 +129,8 @@ constexpr uint32_t ERRO = makeFourCC('E', 'R', 'R', 'O');
 
 namespace DeviceReg {
 constexpr uint64_t Signature = 0x00;   // 8 bytes, R - ASCII "SEMIHOST"
-constexpr uint64_t RiffPtr = 0x08;     // 16 bytes, RW - pointer to RIFF buffer
+constexpr uint64_t RiffPtr = 0x08;     // 8 bytes, RW - pointer to RIFF buffer
+constexpr uint64_t Reserved = 0x10;    // 8 bytes, reserved
 constexpr uint64_t Doorbell = 0x18;    // 1 byte, W - write to trigger request
 constexpr uint64_t Status = 0x19;      // 1 byte, RW - interrupt pending
 constexpr uint64_t Size = 0x20;        // Total register space: 32 bytes
