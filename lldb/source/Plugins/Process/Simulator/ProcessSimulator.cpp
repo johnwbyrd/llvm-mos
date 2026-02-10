@@ -177,6 +177,13 @@ Status ProcessSimulator::DoLaunch(Module *exe_module,
   // Reset CPU (reads reset vector for MOS)
   m_context->reset();
 
+  // Enable recording for reverse debugging
+  m_system->enableRecording(true);
+  // Create initial checkpoint at program start
+  m_system->checkpoint();
+  m_current_checkpoint_idx = 0;
+  m_at_history_boundary = false;
+
   SetPrivateState(eStateStopped);
   return Status();
 }
@@ -184,10 +191,8 @@ Status ProcessSimulator::DoLaunch(Module *exe_module,
 void ProcessSimulator::DidLaunch() { SetID(1); }
 
 Status ProcessSimulator::DoResume(RunDirection direction) {
-  if (direction != RunDirection::eRunForward)
-    return Status::FromErrorString("Reverse execution not yet supported");
-
   m_system->clearStopReason();
+  m_at_history_boundary = false;
 
   // Check if any thread wants to single-step
   bool single_step = false;
@@ -202,24 +207,55 @@ Status ProcessSimulator::DoResume(RunDirection direction) {
     }
   }
 
-  // Set running state before execution
   SetPrivateState(eStateRunning);
 
-  if (single_step) {
-    m_context->step();
-    // Set stop reason so CalculateStopInfo can create a trace stop
-    m_system->setStopReason(llvm::emu::System::StopReason::SingleStep,
-                            m_context->getPC());
-  } else {
-    m_system->run();
+  if (direction == RunDirection::eRunForward) {
+    // Forward execution
+    if (single_step) {
+      m_context->step();
+      m_system->setStopReason(llvm::emu::System::StopReason::SingleStep,
+                              m_context->getPC());
+    } else {
+      m_system->run();
+      if (m_system->getStopReason() == llvm::emu::System::StopReason::Halted) {
+        SetExitStatus(m_system->getExitCode(), "");
+      }
+    }
+    // Create checkpoint after forward execution
+    m_system->checkpoint();
+    m_current_checkpoint_idx = m_system->getCheckpointCount() - 1;
 
-    auto reason = m_system->getStopReason();
-    if (reason == llvm::emu::System::StopReason::Halted) {
-      SetExitStatus(m_system->getExitCode(), "");
+  } else {
+    // Reverse execution
+    if (m_current_checkpoint_idx == 0) {
+      // Already at start of recording
+      m_at_history_boundary = true;
+    } else if (single_step) {
+      // Reverse single-step: go back one checkpoint
+      m_current_checkpoint_idx--;
+      m_system->restoreToCheckpoint(m_current_checkpoint_idx);
+      m_system->setStopReason(llvm::emu::System::StopReason::SingleStep,
+                              m_context->getPC());
+    } else {
+      // Reverse continue: search backward for breakpoint
+      bool found_breakpoint = false;
+      while (m_current_checkpoint_idx > 0) {
+        m_current_checkpoint_idx--;
+        m_system->restoreToCheckpoint(m_current_checkpoint_idx);
+
+        if (m_system->hasBreakpoint(m_context->getPC())) {
+          m_system->setStopReason(llvm::emu::System::StopReason::Breakpoint,
+                                  m_context->getPC());
+          found_breakpoint = true;
+          break;
+        }
+      }
+      if (!found_breakpoint) {
+        m_at_history_boundary = true;
+      }
     }
   }
 
-  // Synchronous execution - tell LLDB we stopped
   SetPrivateState(eStateStopped);
   return Status();
 }
@@ -228,6 +264,8 @@ Status ProcessSimulator::DoDestroy() {
   m_system.reset();
   m_context.reset();
   m_emulator_initialized = false;
+  m_current_checkpoint_idx = 0;
+  m_at_history_boundary = false;
   return Status();
 }
 

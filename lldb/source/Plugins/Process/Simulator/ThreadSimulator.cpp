@@ -66,6 +66,13 @@ bool ThreadSimulator::CalculateStopInfo() {
   if (!process)
     return false;
 
+  // Check for history boundary first (reverse execution hit start of recording)
+  if (process->IsAtHistoryBoundary()) {
+    SetStopInfo(StopInfo::CreateStopReasonHistoryBoundary(
+        *this, "Beginning of recorded execution history"));
+    return true;
+  }
+
   llvm::emu::System *sys = process->GetSystem();
   if (!sys)
     return false;
