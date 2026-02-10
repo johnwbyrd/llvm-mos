@@ -47,6 +47,7 @@ public:
   Status DoDestroy() override;
   void RefreshStateAfterStop() override;
   bool IsAlive() override;
+  bool SupportsReverseDirection() override { return true; }
 
   size_t DoReadMemory(lldb::addr_t addr, void *buf, size_t size,
                       Status &error) override;
@@ -62,6 +63,7 @@ public:
   llvm::emu::Context *GetEmulatorContext() { return m_context.get(); }
   const llvm::MCRegisterInfo *GetMCRegisterInfo() { return m_reg_info_external; }
   std::shared_ptr<DynamicRegisterInfo> GetRegisterInfo();
+  bool IsAtHistoryBoundary() const { return m_at_history_boundary; }
 
 protected:
   bool DoUpdateThreadList(ThreadList &old_thread_list,
@@ -87,6 +89,10 @@ private:
   std::unique_ptr<llvm::emu::Context> m_context;
 
   bool m_emulator_initialized = false;
+
+  // Reverse execution state
+  size_t m_current_checkpoint_idx = 0;
+  bool m_at_history_boundary = false;
 };
 
 } // namespace lldb_private
