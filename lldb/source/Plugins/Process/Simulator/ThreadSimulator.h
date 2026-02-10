@@ -18,8 +18,12 @@ class ProcessSimulator;
 
 class ThreadSimulator : public Thread {
 public:
+  /// Create a thread for the given emulator context.
+  /// @param process The parent process.
+  /// @param tid Thread ID (1-based, for LLDB).
+  /// @param context_idx Index of the emulator context in System (0-based).
   ThreadSimulator(ProcessSimulator &process, lldb::tid_t tid,
-                  llvm::emu::Context *context);
+                  size_t context_idx);
   ~ThreadSimulator() override;
 
   void RefreshStateAfterStop() override;
@@ -27,13 +31,14 @@ public:
   lldb::RegisterContextSP
   CreateRegisterContextForFrame(StackFrame *frame) override;
 
-  llvm::emu::Context *GetEmulatorContext() { return m_context; }
+  /// Get the emulator context for this thread.
+  llvm::emu::Context *GetEmulatorContext();
 
 protected:
   bool CalculateStopInfo() override;
 
 private:
-  llvm::emu::Context *m_context;
+  size_t m_context_idx;
   lldb::RegisterContextSP m_reg_context_sp;
 };
 

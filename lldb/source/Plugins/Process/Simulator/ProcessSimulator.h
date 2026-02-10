@@ -60,10 +60,8 @@ public:
   Status DisableWatchpoint(lldb::WatchpointSP wp_sp, bool notify) override;
 
   llvm::emu::System *GetSystem() { return m_system.get(); }
-  llvm::emu::Context *GetEmulatorContext() { return m_context.get(); }
   const llvm::MCRegisterInfo *GetMCRegisterInfo() { return m_reg_info_external; }
   std::shared_ptr<DynamicRegisterInfo> GetRegisterInfo();
-  bool IsAtHistoryBoundary() const { return m_at_history_boundary; }
 
 protected:
   bool DoUpdateThreadList(ThreadList &old_thread_list,
@@ -84,15 +82,11 @@ private:
   // Register info built from ABI
   std::shared_ptr<DynamicRegisterInfo> m_register_info_sp;
 
-  // Emulator state
+  // Emulator state - System coordinates execution, we own the Contexts
   std::unique_ptr<llvm::emu::System> m_system;
-  std::unique_ptr<llvm::emu::Context> m_context;
+  std::vector<std::unique_ptr<llvm::emu::Context>> m_owned_contexts;
 
   bool m_emulator_initialized = false;
-
-  // Reverse execution state
-  size_t m_current_checkpoint_idx = 0;
-  bool m_at_history_boundary = false;
 };
 
 } // namespace lldb_private
