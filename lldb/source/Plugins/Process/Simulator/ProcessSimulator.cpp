@@ -280,7 +280,8 @@ Status ProcessSimulator::DisableBreakpointSite(BreakpointSite *bp_site) {
   if (!bp_site)
     return Status::FromErrorString("Invalid breakpoint site");
 
-  m_system->removeBreakpoint(bp_site->GetLoadAddress());
+  if (m_system)
+    m_system->removeBreakpoint(bp_site->GetLoadAddress());
   bp_site->SetEnabled(false);
   return Status();
 }
@@ -306,7 +307,8 @@ Status ProcessSimulator::DisableWatchpoint(WatchpointSP wp_sp, bool notify) {
   if (!wp_sp)
     return Status::FromErrorString("Invalid watchpoint");
 
-  m_system->removeWatchpoint(wp_sp->GetLoadAddress());
+  if (m_system)
+    m_system->removeWatchpoint(wp_sp->GetLoadAddress());
   wp_sp->SetEnabled(false, notify);
   return Status();
 }
