@@ -5,10 +5,21 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This file defines the TraceWriter interface for recording execution traces.
-// Different implementations support various output formats (text, VCD, etc.)
-//
+///
+/// \file
+/// \brief Records CPU execution for debugging and analysis.
+///
+/// Tracing captures every instruction executed, along with register and memory
+/// state, producing a complete record of program behavior. This is invaluable
+/// for debugging (comparing expected vs actual execution), validating the
+/// emulator against hardware or reference implementations, and understanding
+/// unfamiliar code.
+///
+/// Three output formats are provided:
+/// - Text: human-readable, tab-separated for easy grepping
+/// - JSON Lines: machine-parseable, one object per line for streaming
+/// - VCD: IEEE 1364 waveform format for visualization in GTKWave
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_EMULATOR_TRACE_H
@@ -53,8 +64,7 @@ public:
   /// @param PC Program counter before execution
   /// @param Inst The instruction being executed
   /// @param Regs Register values before execution
-  virtual void traceInstruction(uint64_t Cycle, uint64_t PC,
-                                const MCInst &Inst,
+  virtual void traceInstruction(uint64_t Cycle, uint64_t PC, const MCInst &Inst,
                                 ArrayRef<TraceReg> Regs) = 0;
 
   /// Record a memory read.
@@ -143,7 +153,7 @@ private:
   struct RegInfo {
     std::string Name;
     unsigned Width;
-    char VCDId;      // Single-char VCD identifier
+    char VCDId; // Single-char VCD identifier
     uint64_t PrevValue = ~0ULL;
   };
   std::vector<RegInfo> Registers;

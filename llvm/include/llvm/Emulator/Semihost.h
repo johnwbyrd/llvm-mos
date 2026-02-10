@@ -5,18 +5,27 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This file defines the Semihost device for the emulator.
-// Semihosting provides host I/O services to guest programs.
-//
-// Device register layout (32 bytes):
-//   0x00-0x07: SIGNATURE - "SEMIHOST" magic (read-only)
-//   0x08-0x0F: RIFF_PTR  - Pointer to RIFF buffer in guest memory
-//   0x10-0x17: Reserved
-//   0x18:      DOORBELL  - Write triggers semihost call processing
-//   0x19:      STATUS    - Bit 0: response ready
-//   0x1A-0x1F: Reserved
-//
+///
+/// \file
+/// \brief Bridges guest code to host I/O services.
+///
+/// Without I/O, an emulated CPU is completely isolated. It can execute
+/// instructions and modify its own memory, but it cannot print output, read
+/// files, or even report whether it succeeded or failed. Semihosting solves
+/// this by providing a memory-mapped device that guest code can write to,
+/// triggering the host to perform I/O operations on its behalf.
+///
+/// This implementation uses the ZBC protocol: guest code builds a RIFF-encoded
+/// request in memory, writes the buffer address to RIFF_PTR, then writes to
+/// DOORBELL to trigger processing. The host reads the request, performs the
+/// operation, writes the response back, and sets STATUS to signal completion.
+///
+/// Register layout (32 bytes at mapped address):
+///   0x00-0x07: SIGNATURE  "SEMIHOST" magic (read-only)
+///   0x08-0x0F: RIFF_PTR   Pointer to request/response buffer
+///   0x18:      DOORBELL   Write triggers request processing
+///   0x19:      STATUS     Bit 0 set when response ready
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_EMULATOR_SEMIHOST_H
@@ -43,8 +52,8 @@ class System;
 ///
 /// Usage:
 /// \code
-///   auto Semihost = Semihost::create(System, "/sandbox/dir");
-///   System.addOwnedDevice(0xFCE0, 0xFCFF, std::move(Semihost));
+///   auto Semihost = Semihost::create(System, Config, Policy);
+///   System.addDevice(0xFCE0, 0xFCFF, std::move(Semihost));
 /// \endcode
 class Semihost : public Device {
 public:
@@ -52,9 +61,9 @@ public:
   /// @param Sys System for memory access callbacks.
   /// @param Config Platform configuration for RIFF encoding.
   /// @param ThePolicy Security policy controlling what operations are allowed.
-  static std::unique_ptr<Semihost> create(System &Sys,
-                                          semihost::PlatformConfig Config,
-                                          std::unique_ptr<semihost::Policy> ThePolicy);
+  static std::unique_ptr<Semihost>
+  create(System &Sys, semihost::PlatformConfig Config,
+         std::unique_ptr<semihost::Policy> ThePolicy);
 
   ~Semihost() override;
 

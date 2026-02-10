@@ -5,10 +5,19 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-//
-// This file defines the abstract device interface for the emulator.
-// Devices are memory-mapped components that respond to read/write operations.
-//
+///
+/// \file
+/// \brief Abstract interface for memory-mapped peripherals.
+///
+/// CPUs interact with the outside world through memory-mapped I/O: reading
+/// and writing to specific addresses that correspond to hardware registers
+/// rather than RAM. Device is the abstraction for anything that responds to
+/// these accesses - RAM, ROM, I/O controllers, timers, semihosting, etc.
+///
+/// System maintains a list of devices with address ranges. When the CPU
+/// reads or writes, System finds the matching device and calls its read()
+/// or write() method with an offset relative to the device's base address.
+///
 //===----------------------------------------------------------------------===//
 
 #ifndef LLVM_EMULATOR_DEVICE_H
