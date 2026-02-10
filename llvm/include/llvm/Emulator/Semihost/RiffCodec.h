@@ -88,6 +88,16 @@ struct ParsedRequest {
   size_t ErroPayloadCapacity = 0;
 
   ParsedRequest(PlatformConfig Cfg) : Config(Cfg) {}
+
+  /// Get a DATA chunk as a StringRef.
+  /// @param Index Index of the DATA chunk (0-based).
+  /// @return StringRef to the data, or empty if index out of bounds.
+  StringRef getDataAsString(size_t Index) const {
+    if (Index >= DataChunks.size())
+      return StringRef();
+    return StringRef(reinterpret_cast<const char *>(DataChunks[Index].Data.data()),
+                     DataChunks[Index].Data.size());
+  }
 };
 
 //===----------------------------------------------------------------------===//

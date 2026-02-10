@@ -136,39 +136,22 @@ Expected<std::string> PathValidator::resolveAndCheck(StringRef Path,
 }
 
 bool PathValidator::isAllowed(StringRef ResolvedPath, bool ForWrite) const {
-  // Ensure path has trailing separator for prefix matching
-  std::string PathWithSep(ResolvedPath);
-  if (!PathWithSep.empty() && !sys::path::is_separator(PathWithSep.back())) {
-    PathWithSep += sys::path::get_separator();
-  }
-
-  // Check sandbox directory
+  // Check sandbox directory (stored with trailing separator, e.g., "/sandbox/")
   if (!Config_.SandboxDir.empty()) {
-    if (StringRef(PathWithSep).starts_with(Config_.SandboxDir) ||
-        ResolvedPath == StringRef(Config_.SandboxDir).drop_back()) {
-      // Within sandbox - allowed (sandbox is read-write by default)
+    StringRef SandboxNoSep = StringRef(Config_.SandboxDir).drop_back();
+    // Allow the sandbox dir itself or anything under it
+    if (ResolvedPath == SandboxNoSep ||
+        ResolvedPath.starts_with(Config_.SandboxDir)) {
       return true;
     }
   }
 
   // Check additional allowed paths
-  for (const auto &Entry : Config_.AllowedPaths) {
-    const std::string &Prefix = Entry.first;
-    bool AllowWrite = Entry.second;
-
+  for (const auto &[Prefix, AllowWrite] : Config_.AllowedPaths) {
     if (ResolvedPath.starts_with(Prefix)) {
-      if (ForWrite && !AllowWrite) {
-        continue; // Need write access but path is read-only
-      }
-      return true;
+      if (!ForWrite || AllowWrite)
+        return true;
     }
-  }
-
-  // Check if it's the sandbox dir itself
-  if (!Config_.SandboxDir.empty()) {
-    StringRef SandboxNoSep = StringRef(Config_.SandboxDir).drop_back();
-    if (ResolvedPath == SandboxNoSep)
-      return true;
   }
 
   return false;
