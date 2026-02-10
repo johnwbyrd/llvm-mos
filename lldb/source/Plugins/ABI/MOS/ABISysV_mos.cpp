@@ -94,7 +94,16 @@ uint32_t ABISysV_mos::GetGenericNum(llvm::StringRef name) {
 
 void ABISysV_mos::AugmentRegisterInfo(
     std::vector<DynamicRegisterInfo::Register> &regs) {
-  // First, call base class to handle standard DWARF/EH frame numbers
+  // Strip "llvm_mos_" prefix from register names for user-facing display.
+  // MOS registers use this prefix internally to avoid conflicts with
+  // legacy assembly that uses register names as variables.
+  for (auto &reg : regs) {
+    llvm::StringRef name = reg.name.GetStringRef();
+    if (name.consume_front("llvm_mos_"))
+      reg.name = ConstString(name);
+  }
+
+  // Call base class to handle standard DWARF/EH frame numbers and generic kinds
   MCBasedABI::AugmentRegisterInfo(regs);
 
   // Add imaginary registers if we have a main module
