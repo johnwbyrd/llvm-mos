@@ -10,7 +10,7 @@
 // Semihosting provides host I/O services to guest programs.
 //
 // Device register layout (32 bytes):
-//   0x00-0x07: SIGNATURE - "ZBCSHOST" magic (read-only)
+//   0x00-0x07: SIGNATURE - "SEMIHOST" magic (read-only)
 //   0x08-0x0F: RIFF_PTR  - Pointer to RIFF buffer in guest memory
 //   0x10-0x17: Reserved
 //   0x18:      DOORBELL  - Write triggers semihost call processing
@@ -23,24 +23,21 @@
 #define LLVM_EMULATOR_SEMIHOST_H
 
 #include "llvm/Emulator/Device.h"
+#include "llvm/Emulator/Semihost/Backend.h"
+#include "llvm/Emulator/Semihost/RiffCodec.h"
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
-
-// Include ZBC headers for type definitions
-#define ZBC_HOST
-#include "llvm/Emulator/Semihost/zbc_semihost.h"
 
 namespace llvm {
 namespace emu {
 
 class System;
 
-/// Callback signature for exit events.
-/// Called when the guest program requests an exit.
-using ExitCallback = std::function<void(unsigned Reason, unsigned Subcode)>;
+namespace semihost {
+class SecureBackend;
+} // namespace semihost
 
 /// Semihosting device providing host I/O to guest programs.
 ///
@@ -87,7 +84,7 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// Set callback for exit events.
-  void setExitCallback(ExitCallback CB) { OnExit = std::move(CB); }
+  void setExitCallback(semihost::ExitCallback CB);
 
   /// Add an additional allowed path (secure mode only).
   /// @param Prefix Path prefix to allow (e.g., "/usr/lib/").
@@ -102,34 +99,27 @@ public:
   void setTimerTick() { ResponseReady = true; }
 
   /// Get the exit status if the guest has exited.
-  /// Returns true if the guest has exited.
   bool hasExited() const { return Exited; }
   unsigned getExitReason() const { return ExitReason; }
   unsigned getExitSubcode() const { return ExitSubcode; }
 
 private:
-  Semihost(System &Sys, bool Secure, const std::string &SandboxDir);
+  Semihost(System &Sys, std::unique_ptr<semihost::Backend> Back,
+           semihost::PlatformConfig Config);
 
-  void initSecureBackend(const std::string &SandboxDir);
-  void initInsecureBackend();
-  void initConsoleBackend();
   void processRequest();
+  void dispatchOpcode(semihost::ParsedRequest &Req);
 
-  // Memory callbacks for ZBC library
-  static uint8_t memReadU8(uintptr_t Addr, void *Ctx);
-  static void memWriteU8(uintptr_t Addr, uint8_t Val, void *Ctx);
-  static void memReadBlock(void *Dest, uintptr_t Addr, size_t Size, void *Ctx);
-  static void memWriteBlock(uintptr_t Addr, const void *Src, size_t Size,
-                            void *Ctx);
-
-  // Exit callback for secure backend
-  static void onExitCallback(void *Ctx, unsigned Reason, unsigned Subcode);
-
-  // Timer config callback for secure backend
-  static void onTimerConfigCallback(void *Ctx, unsigned RateHz);
+  // Read/write guest memory
+  uint8_t readMem(uint64_t Addr);
+  void writeMem(uint64_t Addr, uint8_t Val);
+  void readMemBlock(uint8_t *Dest, uint64_t Addr, size_t Size);
+  void writeMemBlock(uint64_t Addr, const uint8_t *Src, size_t Size);
 
   System &Sys;
-  bool Secure;
+  std::unique_ptr<semihost::Backend> TheBackend;
+  semihost::SecureBackend *SecureBack = nullptr;  // Non-owning, for addAllowedPath
+  semihost::PlatformConfig Config;
 
   // Device registers
   uint64_t RiffPtr = 0;
@@ -139,16 +129,12 @@ private:
   bool Exited = false;
   unsigned ExitReason = 0;
   unsigned ExitSubcode = 0;
-  ExitCallback OnExit;
+  semihost::ExitCallback OnExit;
 
-  // ZBC state
-  std::unique_ptr<zbc::zbc_host_state_t> HostState;
-  std::unique_ptr<zbc::zbc_ansi_state_t> SecureState;
-  std::unique_ptr<zbc::zbc_ansi_insecure_state_t> InsecureState;
-  std::unique_ptr<zbc::zbc_ansi_console_state_t> ConsoleState;
+  // Work buffer for RIFF processing
   std::vector<uint8_t> WorkBuffer;
 
-  // Signature bytes (per ZBC specification)
+  // Signature bytes
   static constexpr const char *Signature = "SEMIHOST";
 };
 
