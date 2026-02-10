@@ -127,16 +127,18 @@ Status ProcessSimulator::InitializeEmulator() {
   m_mc_context = std::make_unique<llvm::MCContext>(
       triple, m_asm_info.get(), m_reg_info_external, m_subtarget_info.get());
 
-  // Create the emulator
-  m_context.reset(target->createEmulator(*m_subtarget_info, *m_mc_context));
-  if (!m_context)
+  // Create the emulator context
+  auto context = std::unique_ptr<llvm::emu::Context>(
+      target->createEmulator(*m_subtarget_info, *m_mc_context));
+  if (!context)
     return Status::FromErrorStringWithFormat(
         "No emulator available for '%s'", triple_str.c_str());
 
   // Create system with memory and semihosting
-  unsigned addr_bits = m_context->getAddressBits();
+  unsigned addr_bits = context->getAddressBits();
   m_system = llvm::emu::System::create(addr_bits);
-  m_system->addContext(m_context.get());
+  m_system->addContext(context.get());
+  m_owned_contexts.push_back(std::move(context));
 
   m_emulator_initialized = true;
   return Status();
@@ -180,15 +182,13 @@ Status ProcessSimulator::DoLaunch(Module *exe_module,
   if (!LoadSections(obj_file))
     return Status::FromErrorString("Failed to load sections");
 
-  // Reset CPU (reads reset vector for MOS)
-  m_context->reset();
+  // Reset all CPUs
+  m_system->reset();
 
   // Enable recording for reverse debugging
   m_system->enableRecording(true);
   // Create initial checkpoint at program start
   m_system->checkpoint();
-  m_current_checkpoint_idx = 0;
-  m_at_history_boundary = false;
 
   SetPrivateState(eStateStopped);
   return Status();
@@ -198,7 +198,6 @@ void ProcessSimulator::DidLaunch() { SetID(1); }
 
 Status ProcessSimulator::DoResume(RunDirection direction) {
   m_system->clearStopReason();
-  m_at_history_boundary = false;
 
   // Check if any thread wants to single-step
   bool single_step = false;
@@ -216,49 +215,19 @@ Status ProcessSimulator::DoResume(RunDirection direction) {
   SetPrivateState(eStateRunning);
 
   if (direction == RunDirection::eRunForward) {
-    // Forward execution
     if (single_step) {
-      m_context->step();
-      m_system->setStopReason(llvm::emu::System::StopReason::SingleStep,
-                              m_context->getPC());
+      m_system->step();
     } else {
       m_system->run();
       if (m_system->getStopReason() == llvm::emu::System::StopReason::Halted) {
         SetExitStatus(m_system->getExitCode(), "");
       }
     }
-    // Create checkpoint after forward execution
-    m_system->checkpoint();
-    m_current_checkpoint_idx = m_system->getCheckpointCount() - 1;
-
   } else {
-    // Reverse execution
-    if (m_current_checkpoint_idx == 0) {
-      // Already at start of recording
-      m_at_history_boundary = true;
-    } else if (single_step) {
-      // Reverse single-step: go back one checkpoint
-      m_current_checkpoint_idx--;
-      m_system->restoreToCheckpoint(m_current_checkpoint_idx);
-      m_system->setStopReason(llvm::emu::System::StopReason::SingleStep,
-                              m_context->getPC());
+    if (single_step) {
+      m_system->stepReverse();
     } else {
-      // Reverse continue: search backward for breakpoint
-      bool found_breakpoint = false;
-      while (m_current_checkpoint_idx > 0) {
-        m_current_checkpoint_idx--;
-        m_system->restoreToCheckpoint(m_current_checkpoint_idx);
-
-        if (m_system->hasBreakpoint(m_context->getPC())) {
-          m_system->setStopReason(llvm::emu::System::StopReason::Breakpoint,
-                                  m_context->getPC());
-          found_breakpoint = true;
-          break;
-        }
-      }
-      if (!found_breakpoint) {
-        m_at_history_boundary = true;
-      }
+      m_system->runReverse();
     }
   }
 
@@ -268,10 +237,8 @@ Status ProcessSimulator::DoResume(RunDirection direction) {
 
 Status ProcessSimulator::DoDestroy() {
   m_system.reset();
-  m_context.reset();
+  m_owned_contexts.clear();
   m_emulator_initialized = false;
-  m_current_checkpoint_idx = 0;
-  m_at_history_boundary = false;
   return Status();
 }
 
@@ -280,7 +247,7 @@ void ProcessSimulator::RefreshStateAfterStop() {
 }
 
 bool ProcessSimulator::IsAlive() {
-  return m_emulator_initialized && m_context && !m_context->isHalted();
+  return m_emulator_initialized && m_system && !m_system->allHalted();
 }
 
 size_t ProcessSimulator::DoReadMemory(addr_t addr, void *buf, size_t size,
@@ -364,15 +331,11 @@ bool ProcessSimulator::DoUpdateThreadList(ThreadList &old_thread_list,
 
   size_t ctx_count = m_system->getContextCount();
   for (size_t i = 0; i < ctx_count; ++i) {
-    llvm::emu::Context *ctx = m_system->getContext(i);
-    if (!ctx)
-      continue;
-
     tid_t tid = i + 1;
 
     ThreadSP thread_sp = old_thread_list.FindThreadByID(tid, false);
     if (!thread_sp) {
-      thread_sp = std::make_shared<ThreadSimulator>(*this, tid, ctx);
+      thread_sp = std::make_shared<ThreadSimulator>(*this, tid, i);
     }
     new_thread_list.AddThread(thread_sp);
   }
@@ -399,11 +362,11 @@ std::shared_ptr<DynamicRegisterInfo> ProcessSimulator::GetRegisterInfo() {
   if (m_register_info_sp)
     return m_register_info_sp;
 
-  if (!m_context || !m_reg_info_external)
+  if (!m_system || m_system->getContextCount() == 0 || !m_reg_info_external)
     return nullptr;
 
   std::vector<DynamicRegisterInfo::Register> regs;
-  unsigned num_regs = m_context->getNumRegisters();
+  unsigned num_regs = m_system->getContext(0)->getNumRegisters();
 
   for (unsigned dwarf = 0; dwarf < num_regs; ++dwarf) {
     // Map DWARF number to MC register

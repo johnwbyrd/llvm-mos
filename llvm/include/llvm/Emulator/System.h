@@ -235,6 +235,8 @@ public:
           LastStopReason = StopReason::Breakpoint;
           LastStopAddress = Ctx->getPC();
           StoppedContext = Ctx;
+          if (RecordingEnabled)
+            checkpoint();
           return false; // Stopped at breakpoint
         }
 
@@ -253,6 +255,8 @@ public:
         // Check if a watchpoint was hit during the step
         if (LastStopReason == StopReason::Watchpoint) {
           StoppedContext = Ctx;
+          if (RecordingEnabled)
+            checkpoint();
           return false; // Stopped at watchpoint
         }
         // Note: IRQ is NOT deasserted here. It stays asserted until
@@ -262,6 +266,8 @@ public:
       // CPU halted normally
       LastStopReason = StopReason::Halted;
       StoppedContext = Ctx;
+      if (RecordingEnabled)
+        checkpoint();
       return true;
     }
 
@@ -274,6 +280,8 @@ public:
           LastStopReason = StopReason::Breakpoint;
           LastStopAddress = Ctx->getPC();
           StoppedContext = Ctx;
+          if (RecordingEnabled)
+            checkpoint();
           return false;
         }
         if (!Ctx->step())
@@ -281,11 +289,92 @@ public:
         // Check watchpoints
         if (LastStopReason == StopReason::Watchpoint) {
           StoppedContext = Ctx;
+          if (RecordingEnabled)
+            checkpoint();
           return false;
         }
       }
     }
+    if (RecordingEnabled)
+      checkpoint();
     return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // High-Level Execution Control (for debuggers)
+  //===--------------------------------------------------------------------===//
+
+  /// Single-step all contexts forward by one instruction.
+  /// Sets StopReason to SingleStep on completion.
+  /// Creates a checkpoint after the step if recording is enabled.
+  void step() {
+    clearStopReason();
+    AtHistoryBoundary = false;
+    for (auto &Entry : Contexts) {
+      if (!Entry.Ctx->isHalted()) {
+        Entry.Ctx->step();
+      }
+    }
+    // Set stop reason to single step with first non-halted context's PC
+    for (auto &Entry : Contexts) {
+      if (!Entry.Ctx->isHalted()) {
+        setStopReason(StopReason::SingleStep, Entry.Ctx->getPC());
+        StoppedContext = Entry.Ctx;
+        break;
+      }
+    }
+    if (RecordingEnabled)
+      checkpoint();
+  }
+
+  /// Single-step backward by one checkpoint.
+  /// Returns false if already at beginning of recording.
+  bool stepReverse() {
+    AtHistoryBoundary = false;
+    if (Checkpoints.size() <= 1) {
+      AtHistoryBoundary = true;
+      return false;
+    }
+    // Pop current checkpoint and restore to previous
+    Checkpoints.pop_back();
+    restoreToCheckpoint(Checkpoints.size() - 1);
+    // Set stop reason with first context's PC
+    for (auto &Entry : Contexts) {
+      setStopReason(StopReason::SingleStep, Entry.Ctx->getPC());
+      StoppedContext = Entry.Ctx;
+      break;
+    }
+    return true;
+  }
+
+  /// Run backward until a breakpoint is hit.
+  /// Returns false if hit beginning of recording without finding a breakpoint.
+  bool runReverse() {
+    AtHistoryBoundary = false;
+    while (Checkpoints.size() > 1) {
+      Checkpoints.pop_back();
+      restoreToCheckpoint(Checkpoints.size() - 1);
+
+      // Check if any context is at a breakpoint
+      for (auto &Entry : Contexts) {
+        if (hasBreakpoint(Entry.Ctx->getPC())) {
+          setStopReason(StopReason::Breakpoint, Entry.Ctx->getPC());
+          StoppedContext = Entry.Ctx;
+          return true;
+        }
+      }
+    }
+    AtHistoryBoundary = true;
+    return false;
+  }
+
+  /// Check if at the beginning of recorded history.
+  bool isAtHistoryBoundary() const { return AtHistoryBoundary; }
+
+  /// Reset all CPUs to their initial state.
+  void reset() {
+    for (auto &Entry : Contexts)
+      Entry.Ctx->reset();
   }
 
   /// Check if all CPUs have halted.
@@ -472,6 +561,9 @@ private:
     uint64_t CycleCount;
   };
   std::vector<Checkpoint> Checkpoints;
+
+  // Reverse execution state
+  bool AtHistoryBoundary = false;
 
   /// Route a write without logging (used during restore).
   void routeWriteNoLog(uint64_t Addr, uint8_t Value) {
