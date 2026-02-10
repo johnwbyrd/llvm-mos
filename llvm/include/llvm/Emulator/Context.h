@@ -14,7 +14,11 @@
 #ifndef LLVM_EMULATOR_CONTEXT_H
 #define LLVM_EMULATOR_CONTEXT_H
 
+#include "llvm/Emulator/Semihost/RiffCodec.h"
 #include "llvm/MC/MCInst.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/TargetParser/Triple.h"
+#include <cassert>
 #include <cstdint>
 #include <cstring>
 
@@ -93,9 +97,27 @@ public:
   virtual void assertNMI() {}
 
   /// Get the address bus width in bits.
-  /// Used to determine the memory size for emulation.
-  /// Subclasses should override this if different from 32 bits.
-  virtual unsigned getAddressBits() const { return 32; }
+  /// Derived from the target Triple's pointer width.
+  /// Requires STI to be set via setSubtargetInfo().
+  virtual unsigned getAddressBits() const {
+    assert(STI && "Context requires SubtargetInfo to be set");
+    return STI->getTargetTriple().getArchPointerBitWidth();
+  }
+
+  /// Get the platform configuration for semihosting.
+  /// Derived from the target Triple (pointer size, endianness).
+  /// IntSize defaults to PtrSize for semihosting protocol purposes.
+  /// Requires STI to be set via setSubtargetInfo().
+  virtual semihost::PlatformConfig getPlatformConfig() const {
+    assert(STI && "Context requires SubtargetInfo to be set");
+    const Triple &T = STI->getTargetTriple();
+    uint8_t PtrSize = T.getArchPointerBitWidth() / 8;
+    return semihost::PlatformConfig(
+        PtrSize, // IntSize = PtrSize for semihosting
+        PtrSize,
+        T.isLittleEndian() ? llvm::endianness::little
+                           : llvm::endianness::big);
+  }
 
   //===--------------------------------------------------------------------===//
   // System Integration

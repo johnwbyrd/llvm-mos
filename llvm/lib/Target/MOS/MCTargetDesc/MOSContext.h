@@ -148,7 +148,6 @@ public:
   bool isHalted() const override { return Halted; }
   void halt(int Code = 0) override;
   int getExitCode() const override { return ExitCode; }
-  unsigned getAddressBits() const override { return 16; }
 
   //===--------------------------------------------------------------------===//
   // Register Access (for LLDB integration)
