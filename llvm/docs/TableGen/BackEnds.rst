@@ -257,6 +257,106 @@ X86EVEX2VEX
 **Purpose**: This X86 specific tablegen backend emits tables that map EVEX
 encoded instructions to their VEX encoded identical instruction.
 
+Emulator
+--------
+
+**Purpose**: Generates C++ instruction emulator code. This backend supports
+two modes:
+
+1. **TableGen Emulate fields**: Processes the ``Emulate`` code field on
+   instruction records, resolving ``$Variable`` references to generate C++
+   switch cases.
+
+2. **SAIL IR**: When ``-sail-ir=<path>`` is provided, processes a SAIL Jib
+   IR file to generate complete instruction implementations from formal
+   specifications.
+
+The generated code integrates with the LLVM emulator framework (``emu::System``,
+``emu::Context``) to provide program execution, debugging, and instruction
+testing capabilities.
+
+**Output**:
+
+For TableGen Emulate fields:
+
+* ``GET_EMULATOR_CASES`` - Switch cases for each instruction with non-empty Emulate
+
+For SAIL IR:
+
+* ``GET_SAIL_CLASS_TYPES`` - Union and struct type definitions (namespace scope)
+* ``GET_SAIL_CLASS_BODY`` - Member variables and method implementations (class scope)
+
+See :doc:`../EmulatorFramework` for complete integration instructions.
+
+**Usage (TableGen Emulate)**:
+
+.. code-block:: text
+
+   llvm-tblgen -gen-emulator <tablegen-file>
+
+Instruction definitions include an ``Emulate`` field with inline C++:
+
+.. code-block:: text
+
+   let Emulate = [{ A |= $Value; setNZ(A); }] in {
+     def ORA_Immediate : Inst<0x09, "ora", Immediate>;
+     def ORA_ZeroPage  : Inst<0x05, "ora", ZeroPage>;
+   }
+
+The ``$Variable`` references are resolved from fields on the instruction record
+(following TableGen inheritance), enabling compositional patterns where
+addressing modes define ``$EA``, ``$Value``, etc.
+
+**Usage (SAIL IR)**:
+
+.. code-block:: text
+
+   llvm-tblgen -gen-emulator -sail-ir=<path-to-ir> <tablegen-file>
+
+The ``-sail-ir`` option specifies the path to a SAIL Jib IR file, produced by
+compiling SAIL specifications with the ``isla-sail`` plugin:
+
+.. code-block:: text
+
+   sail -plugin <path>/sail_plugin_isla.cmxs -isla -o output specs.sail
+
+**Example** (from MOS target CMakeLists.txt):
+
+.. code-block:: cmake
+
+   set(MOS_SAIL_IR ${CMAKE_CURRENT_SOURCE_DIR}/Sail/mos6502.ir)
+   tablegen(LLVM MOSGenEmulator.inc -gen-emulator
+            -sail-ir=${MOS_SAIL_IR} DEPENDS ${MOS_SAIL_IR})
+
+**Integration Pattern (SAIL)**:
+
+.. code-block:: cpp
+
+   // In YourTargetContext.h
+   namespace YourTarget {
+
+   // Include generated types at namespace scope
+   #define GET_SAIL_CLASS_TYPES
+   #include "YourTargetGenEmulator.inc"
+   #undef GET_SAIL_CLASS_TYPES
+
+   // Base class with generated SAIL code
+   class YourTargetSail {
+   public:
+     virtual ~YourTargetSail() = default;
+
+   #define GET_SAIL_CLASS_BODY
+   #include "YourTargetGenEmulator.inc"
+   #undef GET_SAIL_CLASS_BODY
+   };
+
+   // Implementation class providing memory callbacks
+   class Context : public emu::Context {
+     // ...
+   };
+
+   } // namespace YourTarget
+
 Clang BackEnds
 ==============
 
