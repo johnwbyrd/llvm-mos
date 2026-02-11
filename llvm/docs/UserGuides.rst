@@ -82,6 +82,8 @@ intermediate LLVM representation.
    WritingAnLLVMPass
    WritingAnLLVMNewPMPass
    WritingAnLLVMBackend
+   EmulatorFramework
+   LLDBSimulatorPlugin
    yaml2obj
 
 Clang
@@ -217,6 +219,14 @@ Code Generation
 
 :doc:`WritingAnLLVMBackend`
    Information on how to write LLVM backends for machine targets.
+
+:doc:`EmulatorFramework`
+   Guide to adding instruction emulation to LLVM targets for program execution,
+   debugging, and testing.
+
+:doc:`LLDBSimulatorPlugin`
+   Using LLDB with the in-process instruction emulator for debugging programs
+   without hardware, including reverse debugging support.
 
 :doc:`CodeGenerator`
    The design and implementation of the LLVM code generator.  Useful if you are
