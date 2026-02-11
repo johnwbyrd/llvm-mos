@@ -27,6 +27,7 @@ Basic Commands
    llvm-diff
    llvm-dis
    llvm-dwarfdump
+   llvm-emu
    llvm-dwarfutil
    llvm-ir2vec
    llvm-lib
