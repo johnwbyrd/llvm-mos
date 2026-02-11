@@ -85,6 +85,8 @@ NewPassManager
 ReportingGuide
 ResponseGuide
 TableGenFundamentals
+EmulatorFramework
+LLDBSimulatorPlugin
 yaml2obj
 ```
 
@@ -258,6 +260,16 @@ yaml2obj
 - {doc}`WritingAnLLVMBackend`
 
   Information on how to write LLVM backends for machine targets.
+
+- {doc}`EmulatorFramework`
+
+  Guide to adding instruction emulation to LLVM targets for program execution,
+  debugging, and testing.
+
+- {doc}`LLDBSimulatorPlugin`
+
+  Using LLDB with the in-process instruction emulator for debugging programs
+  without hardware, including reverse debugging support.
 
 - {doc}`CodeGenerator`
 

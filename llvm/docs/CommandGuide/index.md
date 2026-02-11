@@ -25,6 +25,7 @@ llvm-debuginfo-analyzer
 llvm-diff
 llvm-dis
 llvm-dwarfdump
+llvm-emu
 llvm-dwarfutil
 llvm-exegesis
 llvm-extract
@@ -89,6 +90,7 @@ interested in.
 * {doc}`llvm-diff`
 * {doc}`llvm-dis`
 * {doc}`llvm-dwarfdump`
+* {doc}`llvm-emu`
 * {doc}`llvm-dwarfutil`
 * {doc}`llvm-extract-bundle-entry`
 * {doc}`llvm-gsymutil`
