@@ -922,18 +922,21 @@ void MOSInstrInfo::loadStoreRegStackSlot(
     // STStk/LDStk need a scratch Imag16 for far accesses (offset >= 256).
     // For near accesses, the scratch is a dead def.
     //
-    // We use the reserved RS8 directly instead of creating a virtual register.
-    // This function is called by the spiller during register allocation;
-    // virtual registers created here would never be allocated, causing
-    // VirtRegRewriter to crash.
+    // Use the reserved RS10 directly instead of creating a virtual register.
+    // This function is called by the spiller during register allocation, so
+    // any virtual register created here would never be allocated and would
+    // trip VirtRegRewriter.
     //
-    // RS8 is reserved for scavenging (see MOSRegisterInfo::getReservedRegs).
-    // This is safe because: (1) for near accesses RS8 is dead, (2) for far
-    // accesses RS8 is used atomically within expandLDSTStk(), and (3) the
-    // scavenger checks liveness via canSaveScavengerRegister() before using
-    // RS8, so conflicts are detected. See also saveScavengerRegister() which
-    // has a defensive assertion.
-    Register Ptr = MOS::RS8;
+    // RS10 is reserved for exactly this purpose in reentrant functions (see
+    // MOSRegisterInfo::getReservedRegs). It is deliberately disjoint from RS8
+    // (the register scavenger's save area for A/Y/P via RC16/RC17) and RS9
+    // (the indirect-call callee register per MOSCallLowering). Using RS8
+    // collides with the scavenger; using RS9 aliases with the dst/src operand
+    // when the spiller is spilling RS9 itself (the indirect-call callee),
+    // which produces an aliased-def MI that fails verification. RS10 is
+    // callee-saved and has no other explicit physical-register use, so it is
+    // never chosen as the STStk/LDStk operand and cannot alias here.
+    Register Ptr = MOS::RS10;
     auto Instr = Builder.buildInstr(IsLoad ? MOS::LDStk : MOS::STStk);
     if (!IsLoad)
       Instr.addDef(Ptr, RegState::EarlyClobber | RegState::Dead);
