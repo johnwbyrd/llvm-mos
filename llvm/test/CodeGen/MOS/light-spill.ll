@@ -14,7 +14,8 @@ $_ZN4SubB2fnEv = comdat any
 
 define void @light_spill(i8 zeroext %sel) {
 ; CHECK-LABEL: light_spill:
-; CHECK:       ; %bb.0: ; %entry
+; CHECK:         .cfi_startproc
+; CHECK-NEXT:  ; %bb.0: ; %entry
 ; CHECK-NEXT:    sta __rc16
 ; CHECK-NEXT:    lda __rc20
 ; CHECK-NEXT:    pha
@@ -42,14 +43,18 @@ define void @light_spill(i8 zeroext %sel) {
 ; CHECK-NEXT:    beq .LBB0_5
 ; CHECK-NEXT:  ; %bb.4: ; %select.false2
 ; CHECK-NEXT:    ldx #mos16lo(_ZN4SubA2fnEv)
-; CHECK-NEXT:    stx __rc18
+; CHECK-NEXT:    stx __rc4
 ; CHECK-NEXT:    ldx #mos16hi(_ZN4SubA2fnEv)
 ; CHECK-NEXT:    jmp .LBB0_6
 ; CHECK-NEXT:  .LBB0_5:
 ; CHECK-NEXT:    ldx #mos16lo(_ZN4SubB2fnEv)
-; CHECK-NEXT:    stx __rc18
+; CHECK-NEXT:    stx __rc4
 ; CHECK-NEXT:    ldx #mos16hi(_ZN4SubB2fnEv)
 ; CHECK-NEXT:  .LBB0_6: ; %select.end1
+; CHECK-NEXT:    stx __rc5
+; CHECK-NEXT:    ldx __rc4
+; CHECK-NEXT:    stx __rc18
+; CHECK-NEXT:    ldx __rc5
 ; CHECK-NEXT:    stx __rc19
 ; CHECK-NEXT:    jsr __call_indir
 ; CHECK-NEXT:    pla
