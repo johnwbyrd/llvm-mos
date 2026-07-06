@@ -7,8 +7,11 @@
 ; registers were never allocated, causing VirtRegRewriter to crash with:
 ;   "Remaining virtual register %141...in instruction: STStk"
 ;
-; The fix uses the reserved RS8 register as the scratch operand instead of
-; creating a virtual register. See MOSInstrInfo::loadStoreRegStackSlot().
+; The fix uses a reserved physical register (RS9) as the scratch operand
+; instead of creating a virtual register. See
+; MOSInstrInfo::loadStoreRegStackSlot(). RS9 is kept disjoint from RS8, the
+; register scavenger's save area; see soft-stack-spill-scavenge.ll for a
+; related pattern exercising that split.
 ;
 ; Reduced from picolibc scanf implementation.
 

@@ -927,18 +927,19 @@ void MOSInstrInfo::loadStoreRegStackSlot(
     // STStk/LDStk need a scratch Imag16 for far accesses (offset >= 256).
     // For near accesses, the scratch is a dead def.
     //
-    // We use the reserved RS8 directly instead of creating a virtual register.
-    // This function is called by the spiller during register allocation;
-    // virtual registers created here would never be allocated, causing
-    // VirtRegRewriter to crash.
+    // Use the reserved RS9 directly instead of creating a virtual register.
+    // This function is called by the spiller during register allocation, so
+    // any virtual register created here would never be allocated and would
+    // trip VirtRegRewriter.
     //
-    // RS8 is reserved for scavenging (see MOSRegisterInfo::getReservedRegs).
-    // This is safe because: (1) for near accesses RS8 is dead, (2) for far
-    // accesses RS8 is used atomically within expandLDSTStk(), and (3) the
-    // scavenger checks liveness via canSaveScavengerRegister() before using
-    // RS8, so conflicts are detected. See also saveScavengerRegister() which
-    // has a defensive assertion.
-    Register Ptr = MOS::RS8;
+    // RS9 is reserved for exactly this purpose in reentrant functions (see
+    // MOSRegisterInfo::getReservedRegs) and is deliberately disjoint from
+    // RS8, which is the register scavenger's save area. Sharing a single
+    // register between the two roles lets a nested STStk expansion clobber
+    // a scavenger save-slot for A/Y/P and leaves the scavenger with no
+    // available survivor when the singleton-class registers are already
+    // spoken for.
+    Register Ptr = MOS::RS9;
     auto Instr = Builder.buildInstr(IsLoad ? MOS::LDStk : MOS::STStk);
     if (!IsLoad)
       Instr.addDef(Ptr, RegState::EarlyClobber | RegState::Dead);

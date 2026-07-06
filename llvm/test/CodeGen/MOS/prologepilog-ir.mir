@@ -652,7 +652,7 @@ frameInfo:
 body: |
   bb.0.entry:
     ; 6502-LABEL: name: interrupt_caller
-    ; 6502: liveins: $a, $x, $y, $rc2, $rc3, $rc4, $rc5, $rc6, $rc7, $rc8, $rc9, $rc10, $rc11, $rc12, $rc13, $rc14, $rc15, $rc18, $rc19
+    ; 6502: liveins: $a, $x, $y, $rc2, $rc3, $rc4, $rc5, $rc6, $rc7, $rc8, $rc9, $rc10, $rc11, $rc12, $rc13, $rc14, $rc15
     ; 6502-NEXT: {{  $}}
     ; 6502-NEXT: CLD_Implied
     ; 6502-NEXT: PH $a
@@ -831,7 +831,7 @@ body: |
     ; 6502-NEXT: RTI implicit $a, implicit $x, implicit $y, implicit $rc2, implicit $rc3, implicit $rc4, implicit $rc5, implicit $rc6, implicit $rc7, implicit $rc8, implicit $rc9, implicit $rc10, implicit $rc11, implicit $rc12, implicit $rc13, implicit $rc14, implicit $rc15, implicit $rc16, implicit $rc17, implicit $rc18, implicit $rc19
     ;
     ; 65C02-LABEL: name: interrupt_caller
-    ; 65C02: liveins: $a, $x, $y, $rc2, $rc3, $rc4, $rc5, $rc6, $rc7, $rc8, $rc9, $rc10, $rc11, $rc12, $rc13, $rc14, $rc15, $rc18, $rc19
+    ; 65C02: liveins: $a, $x, $y, $rc2, $rc3, $rc4, $rc5, $rc6, $rc7, $rc8, $rc9, $rc10, $rc11, $rc12, $rc13, $rc14, $rc15
     ; 65C02-NEXT: {{  $}}
     ; 65C02-NEXT: CLD_Implied
     ; 65C02-NEXT: PH $a

@@ -86,10 +86,18 @@ MOSRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
 }
 
 BitVector MOSRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
-  const TargetFrameLowering *TFI = getFrameLowering(MF);
+  const MOSFrameLowering *TFI = getFrameLowering(MF);
   BitVector Reserved = this->Reserved;
   if (TFI->hasFP(MF))
     reserveAllSubregs(&Reserved, getFrameRegister(MF));
+  // Reserve RS9 as a dedicated scratch for the soft-stack STStk/LDStk pseudos
+  // in reentrant functions. Keeping this disjoint from RS8 (the register
+  // scavenger's save area) prevents the scavenger's save/restore of A, Y, or
+  // P via RC16/RC17 from colliding with a nested STStk expansion that also
+  // uses that same physical storage. Static-stack functions never emit
+  // STStk/LDStk, so this reservation is unnecessary there.
+  if (!TFI->usesStaticStack(MF))
+    reserveAllSubregs(&Reserved, MOS::RS9);
   return Reserved;
 }
 
@@ -203,24 +211,13 @@ bool MOSRegisterInfo::saveScavengerRegister(MachineBasicBlock &MBB,
     if (UseHardStack)
       Builder.buildInstr(MOS::PH, {}, {Reg});
     else {
-      // We're about to use RS8 (specifically RC16 or RC17) as a save location.
-      // This must not conflict with other uses of RS8, such as the scratch
-      // register in STStk/LDStk pseudo-instructions. The canSaveScavengerRegister
-      // function checks liveness to prevent such conflicts, but we add this
-      // assertion as a defensive check.
-      //
-      // If this assertion fires, it means either:
-      // 1. canSaveScavengerRegister has a bug and approved a conflicting save
-      // 2. Someone called saveScavengerRegister without checking
-      //    canSaveScavengerRegister first
-      // 3. RS8 is being used in an unanticipated way (e.g., STStk scratch)
-      //
-      // See MOSInstrInfo::loadStoreRegStackSlot for details on STStk's use of
-      // RS8 and why this should be safe.
+      // Using RC16 or RC17 (subregisters of the reserved RS8) as a save
+      // location. This must not collide with an outer scavenger save that
+      // has already committed the same slot; canSaveScavengerRegister
+      // checks liveness for that.
       assert(canSaveScavengerRegister(Reg, I, UseMI) &&
-             "RS8 conflict: register is live in save region, cannot use as "
-             "scavenger save location. This may indicate a conflict with "
-             "STStk/LDStk scratch register usage.");
+             "save register is live in save region; this should have been "
+             "caught by canSaveScavengerRegister before we got here");
       Builder.buildInstr(MOS::STImag8, {Save}, {Reg});
     }
 
@@ -256,13 +253,11 @@ bool MOSRegisterInfo::canSaveScavengerRegister(
   if (UseHardStack)
     return true;
 
-  // RS8 (containing RC16 and RC17) may already be in use. This can happen if:
-  // 1. The scavenger ran previously and is still using RS8 for another save
-  // 2. An STStk/LDStk pseudo-instruction is using RS8 as its scratch register
-  //    (see MOSInstrInfo::loadStoreRegStackSlot)
-  //
-  // We check liveness to detect these conflicts. If the save register is live
-  // anywhere in the region between I and UseMI, we cannot use it.
+  // RC16 and RC17 (subregisters of the reserved RS8) may already be in use
+  // because a prior scavenger save committed the same slot and its stored
+  // value is still live. Detect that by checking liveness at both endpoints
+  // of the region: if the save register is live at either end, another save
+  // is already occupying the slot and we cannot use it.
   Register Save = Reg == MOS::A ? MOS::RC16 : MOS::RC17;
   LivePhysRegs LPR(*STI.getRegisterInfo());
   LPR.addLiveOuts(*I->getParent());
