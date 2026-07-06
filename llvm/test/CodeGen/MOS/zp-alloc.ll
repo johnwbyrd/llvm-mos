@@ -12,8 +12,8 @@ define i64 @foo(i64 %live_across_call) norecurse {
 ; CHECK-LABEL: foo:
 ; CHECK:         .cfi_startproc
 ; CHECK-NEXT:  ; %bb.0: ; %entry
-; CHECK-NEXT:    sta mos8(.Lfoo_zp_stk) ; 1-byte Folded Spill
-; CHECK-NEXT:    stx mos8(.Lfoo_zp_stk+1) ; 1-byte Folded Spill
+; CHECK-NEXT:    sta mos8(.Lfoo_zp_stk)
+; CHECK-NEXT:    stx mos8(.Lfoo_zp_stk+1)
 ; CHECK-NEXT:    ldx __rc2
 ; CHECK-NEXT:    stx mos8(.Lfoo_zp_stk+2)
 ; CHECK-NEXT:    ldx __rc3
