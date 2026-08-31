@@ -35,8 +35,9 @@ enum Value {
   ScalableVector = 2,
   WasmLocal = 3,
   ScalablePredicateVector = 4,
-  MosStatic = 5,
-  MosZeroPage = 6,
+  AvrAlign = 5,
+  MosStatic = 6,
+  MosZeroPage = 7,
   NoAlloc = 255
 };
 }

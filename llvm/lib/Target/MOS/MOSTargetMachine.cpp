@@ -234,7 +234,7 @@ void MOSPassConfig::addIRPasses() {
 bool MOSPassConfig::addPreISel() { return false; }
 
 bool MOSPassConfig::addIRTranslator() {
-  addPass(new IRTranslator(getOptLevel()));
+  addPass(new IRTranslatorLegacy(getOptLevel()));
   return false;
 }
 
@@ -246,7 +246,7 @@ void MOSPassConfig::addPreLegalizeMachineIR() {
 }
 
 bool MOSPassConfig::addLegalizeMachineIR() {
-  addPass(new Legalizer());
+  addPass(new LegalizerLegacy());
   addPass(createMOSInternalizePass());
   return false;
 }
@@ -258,7 +258,7 @@ void MOSPassConfig::addPreRegBankSelect() {
 }
 
 bool MOSPassConfig::addRegBankSelect() {
-  addPass(new RegBankSelect());
+  addPass(new RegBankSelectLegacy());
   return false;
 }
 
@@ -266,11 +266,11 @@ void MOSPassConfig::addPreGlobalInstructionSelect() {
   // This pass helps reduce the live ranges of constants to within a basic
   // block, which can greatly improve machine scheduling, as they can now be
   // moved around to keep register pressure low.
-  addPass(new Localizer());
+  addPass(new LocalizerLegacy());
 }
 
 bool MOSPassConfig::addGlobalInstructionSelect() {
-  addPass(new InstructionSelect());
+  addPass(new InstructionSelectLegacy());
   return false;
 }
 

@@ -371,6 +371,8 @@ static const StringMap<MachineInfo> TargetMap{
     {"elf64-s390", {ELF::EM_S390, true, false}},
     // MOS
     {"elf32-mos", {ELF::EM_MOS, false, true}},
+    // AMDGPU
+    {"elf64-amdgpu", {ELF::EM_AMDGPU, true, true}},
 };
 
 static Expected<TargetInfo>
