@@ -53,7 +53,8 @@
 // 2. If C_out = 1:  force subtract D from the 24-bit R.  The 24-bit
 // SBC's borrow "consumes" the 2^24 bit that shifted out, so the
 // stored 24-bit R correctly reflects the 25-bit R minus D.
-// 3. Else:  trial subtract R - D.  Commit only if no borrow.
+// 3. Else:  compare R with D (high byte first, early-out) and
+// subtract in place only if R >= D.
 // 4. If we subtracted (in either branch), set Q bit 0 = 1.
 //
 // A post-loop cleanup handles the exact-division boundary: if R >= D
@@ -126,16 +127,17 @@
 // __rc9   A_M1      a mantissa byte 1 (from register X)
 // __rc10  A_SIGN -> Q_HI     a's sign in bit 7; after dispatch reused
 // as bit 24 of the quotient
-// __rc11  B_SIGN -> TMP0     b's sign; after dispatch reused as trial-
-// subtract scratch
+// __rc11  B_SIGN -> TMP0     b's sign; after the divide loop reused as
+// the sticky flag
 // __rc12  R_SIGN            result sign in bit 7
 // __rc13  R_EXP_LO          signed 16-bit result exponent, low byte
 // __rc14  R_EXP_HI          ... high byte
 // __rc15  R0                remainder byte 0
 // __rc16  R1
 // __rc17  R2
-// __rc18  CNT               divide loop counter (25 iterations)
-// __rc19  TMP1              trial-subtract scratch / round bit / pack
+// __rc18  CNT               shift counter for the subnormal-result
+//                           shift (the divide loop counts down in Y)
+// __rc19  TMP1              round bit / pack scratch
 //
 // A_M0/A_M1/A_M2 double as Q0/Q1/Q2 during the divide loop (numerator
 // is consumed as quotient bits shift up from below).
@@ -496,8 +498,7 @@ __divsf3:
         sta R2
         .L__divsf3_no_presub:
 
-        lda #24
-        sta CNT
+        ldy #24
 
         // ================================================================
         // Phase 7b -- DIVIDE LOOP: 24 iterations of shift-subtract.
@@ -510,7 +511,7 @@ __divsf3:
         // "true" post-shift R was >= 2^24 > D.
         // 2. If R_hi = 1: force subtract D from R (the borrow in the
         // 24-bit SBC exactly cancels the 2^24 bit we shifted out).
-        // 3. Else: trial subtract; commit only if no borrow.
+        // 3. Else: compare R with D and subtract in place only if R >= D.
         // 4. If we subtracted, set Q bit 0 = 1.
         // ================================================================
         .L__divsf3_div_loop:
@@ -520,33 +521,31 @@ __divsf3:
         rol R0
         rol R1
         rol R2   // C_out = pre-shift R2 bit 7
-        bcs .L__divsf3_div_force_sub
+        bcs .L__divsf3_div_do_sub
 
-        // C_out = 0: trial subtract.
-        sec
-        lda R0
-        sbc D0
-        sta TMP0
-        lda R1
-        sbc D1
-        sta TMP1
+        // C_out = 0: decide with a 24-bit compare (high byte first, with
+        // early-out), then subtract in place only if it commits.  This is
+        // cheaper than subtracting into scratch and copying back: the
+        // no-subtract half of the iterations costs three instructions
+        // instead of a full 24-bit SBC chain plus two copies.
         lda R2
-        sbc D2
+        cmp D2
         bcc .L__divsf3_div_no_sub
-        // Commit trial subtract.
-        sta R2
-        lda TMP1
-        sta R1
-        lda TMP0
-        sta R0
-        inc A_M0   // Q bit 0 = 1
-        jmp .L__divsf3_div_no_sub
+        bne .L__divsf3_div_do_sub
+        lda R1
+        cmp D1
+        bcc .L__divsf3_div_no_sub
+        bne .L__divsf3_div_do_sub
+        lda R0
+        cmp D0
+        bcc .L__divsf3_div_no_sub
 
-        .L__divsf3_div_force_sub:
-        // C_out = 1: true post-shift R was in [2^24, 2^25) > D.  Sub D
-        // from 24-bit R; the resulting borrow reflects the 2^24 bit we
-        // shifted out.  The 24-bit stored R is the correct low-24 bits
-        // of the 25-bit post-subtract value.
+        .L__divsf3_div_do_sub:
+        // Either C_out = 1 (true post-shift R was in [2^24, 2^25) > D, so
+        // the subtract is forced -- the borrow out of the 24-bit SBC chain
+        // exactly consumes the 2^24 bit that shifted out), or the compare
+        // above proved R >= D.  Both cases subtract D from R in place and
+        // set the quotient bit.
         sec
         lda R0
         sbc D0
@@ -560,7 +559,7 @@ __divsf3:
         inc A_M0   // Q bit 0 = 1
 
         .L__divsf3_div_no_sub:
-        dec CNT
+        dey
         bne .L__divsf3_div_loop
 
         // ================================================================

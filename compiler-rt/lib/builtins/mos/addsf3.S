@@ -84,7 +84,6 @@
 //   __rc14   A_EXP   a's biased exponent
 //   __rc15   A_SIGN  a's sign in bit 7
 //   __rc16   A_STK   a's sticky bit
-//   __rc17   TMP2    second scratch (align)
 //
 // After the magnitude-compare swap, `a` always holds the operand with
 // the larger absolute value.
@@ -168,7 +167,6 @@
 #define A_STK  __rc16
 ; __rc17..__rc18 are free; align scratch reuses __rc9 (TMP).
 #define TMP  __rc9
-#define TMP2  __rc17   ; second scratch (align)
 
 
 .text
@@ -504,14 +502,15 @@ __addsf3:
         ; sticky is "any bit was 1 anywhere below the LSB" -- exact value
         ; doesn't matter, only nonzero-ness).
 
-        ; Count is saved on hardware stack via PHA/PLA around the shuffle
-        ; since we need A for the byte moves.
+        ; Count is parked in Y across the shuffle (which needs A for the
+        ; byte moves).  Y is dead here -- the align entry test finished
+        ; with it, and the bit loop below reloads it via TAY.
         .L__addsf3_align_byte_check:
         cmp #8
         bcc .L__addsf3_align_bit_setup
         sec
         sbc #8
-        pha   ; save residual count
+        tay   ; park residual count
         lda B_M0
         beq 11f
         sta B_STK   ; any nonzero suffices for sticky
@@ -523,7 +522,7 @@ __addsf3:
         sta B_M2
         lda #0
         sta B_M3
-        pla
+        tya
         jmp .L__addsf3_align_byte_check
 
         ; Bit loop for the residual 1..7 shifts.  After the LSR/ROR chain,
@@ -599,13 +598,14 @@ __addsf3:
         sta A_M3
         inc A_EXP
         .L__addsf3_add_no_carry:
-        ; Merge b's sticky into a's sticky (as a plain OR: any nonzero
-        ; b-stk makes a-stk nonzero).
+        ; Merge b's sticky into a's sticky.  A plain OR is enough here:
+        ; downstream of the add path sticky is only ever tested for
+        ; zero/nonzero (phase 11's ORA chain), never shifted bit by bit --
+        ; that is the subtract path's normalize loop, which this path
+        ; cannot reach.
         lda B_STK
-        beq .L__addsf3_skip_stk_or
-        lda #1
+        ora A_STK
         sta A_STK
-        .L__addsf3_skip_stk_or:
         jmp .L__addsf3_after_arith
 
         .L__addsf3_do_subtract:

@@ -152,7 +152,8 @@
 // __rc15 PH0     product high accumulator, byte 0
 // __rc16 PH1
 // __rc17 PH2     product high, MSB (bit 47 lands here after multiply)
-// __rc18 CNT     multiply loop counter (24 iterations)
+// __rc18 CNT     shift counter for the subnormal-result shift
+//                (the multiply loop counts down in Y)
 // __rc19 TMP     scratch (used by subnormal-result shift and pack)
 //
 // After unpack, __rc2 (A_M2) and __rc3 (A_EXP) hold a's transformed
@@ -531,9 +532,43 @@ __mulsf3:
         sta PH0
         sta PH1
         sta PH2
-        lda #24
-        sta CNT
+        ldy #24
 
+        // Skip whole bytes of a multiplier whose low byte(s) are zero.
+        // Those iterations add nothing (the multiplier bit is 0) and only
+        // shift a still-zero accumulator, so they can be replaced by a
+        // byte-shuffle of the multiplier plus a smaller iteration count:
+        // running the same loop with (M >> 8) for 16 instead of 24
+        // iterations leaves the 48-bit register holding A * M unchanged,
+        // because each retained multiplier bit ends up shifted 8 places
+        // less, exactly compensating the 8 places M was shifted down.
+        //
+        // This is free-ish when it does not fire (6 cycles) and saves
+        // ~420 cycles per skipped byte.  It fires for the constants real
+        // code multiplies by most often -- every float whose value is a
+        // small integer or a simple fraction (2.0, 0.5, 10.0, 100.0, ...)
+        // has trailing zero mantissa bytes.
+        //
+        // At most two bytes can be skipped: the multiplier is normalized
+        // here (B_M2 bit 7 set), so after two shuffles B_M0 is nonzero.
+        lda B_M0
+        bne .L__mulsf3_mul_pre
+        lda B_M1
+        sta B_M0
+        lda B_M2
+        sta B_M1
+        lda #0
+        sta B_M2
+        ldy #16
+        lda B_M0
+        bne .L__mulsf3_mul_pre
+        lda B_M1   // == old B_M2, nonzero
+        sta B_M0
+        lda #0
+        sta B_M1   // B_M2 is already 0
+        ldy #8
+
+        .L__mulsf3_mul_pre:
         // Pre-shift: shift multiplier right by 1 to get bit 0 into C.
         lsr B_M2
         ror B_M1
@@ -558,7 +593,7 @@ __mulsf3:
         ror B_M2
         ror B_M1
         ror B_M0
-        dec CNT
+        dey
         bne .L__mulsf3_mul_loop
 
         // ================================================================
